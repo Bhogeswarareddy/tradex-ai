@@ -14,7 +14,9 @@ from app.core.db import SyncSessionLocal
 from app.models import (
     Base, Buyer, Category, Certification, Company, Order, OrderItem,
     Payment, PriceTier, Product, ProductImage, Quotation, Review, RFQ, RFQItem,
-    Role, Shipment, ShipmentEvent, Supplier, SupplierCertification, User
+    Role, Shipment, ShipmentEvent, Supplier, SupplierCertification, User,
+    SimulatedFreightRate, SimulatedTariffDuty, SimulatedPortHandlingFee, SimulatedExchangeRate,
+    Thread, Message, Notification
 )
 
 import bcrypt
@@ -479,13 +481,13 @@ def seed():
             session.add(rfq_item)
             session.flush()
 
-            # 5 Comparative Quotations from the 5 suppliers
+            # 5 Comparative Quotations from the 5 suppliers (Prompt 14 exact seed values)
             quotes_specs = [
-                ("QT-2026-001", "Sri Bharat Spices Pvt Ltd", 2.85, 3.02, 0.17, 18, "LC at sight, 30% advance", 96.5, date(2026, 11, 15)),
-                ("QT-2026-002", "NatureFarm Global", 2.95, 3.10, 0.15, 14, "100% Irrevocable LC", 94.2, date(2026, 11, 20)),
-                ("QT-2026-003", "Madhav Agro Exports", 2.80, 3.08, 0.28, 22, "TT 20% advance, 80% against BL", 91.0, date(2026, 11, 10)),
-                ("QT-2026-004", "Vijaya Export House", 3.10, 3.25, 0.15, 16, "LC 60 days", 88.5, date(2026, 11, 18)),
-                ("QT-2026-005", "Shree Spices India", 3.15, 3.32, 0.17, 20, "LC at sight", 85.0, date(2026, 11, 12)),
+                ("QT-2026-001", "Sri Bharat Spices Pvt Ltd", 3.10, 3.42, 0.20, 25, "LC at sight, 30% advance", 95.0, date(2026, 11, 15)),
+                ("QT-2026-002", "NatureFarm Global", 3.05, 3.38, 0.20, 28, "100% Irrevocable LC", 92.0, date(2026, 11, 20)),
+                ("QT-2026-003", "Madhav Agro Exports", 3.20, 3.45, 0.16, 20, "TT 20% advance, 80% against BL", 88.0, date(2026, 11, 10)),
+                ("QT-2026-004", "Vijaya Export House", 3.15, 3.48, 0.22, 30, "LC 60 days", 85.0, date(2026, 11, 18)),
+                ("QT-2026-005", "Shree Spices India", 3.30, 3.65, 0.23, 22, "LC at sight", 80.0, date(2026, 11, 12)),
             ]
 
             winning_quote = None
@@ -521,14 +523,13 @@ def seed():
                         quotation_id=winning_quote.id,
                         buyer_id=buyer_profile.id,
                         supplier_id=winning_quote.supplier_id,
-                        total_amount=Decimal(str(2.85 * 20000)),
+                        total_amount=Decimal(str(3.10 * 20000)),
                         currency="EUR",
                         status="in_production",
                         incoterm="CIF Hamburg",
                     )
                     session.add(order)
                     session.flush()
-
                     order_item = OrderItem(
                         order_id=order.id,
                         product_id=turmeric_prod.id if turmeric_prod else None,
@@ -602,6 +603,25 @@ def seed():
                     ]
                     session.add_all(events)
 
+        # Update quotes to Prompt 14 seed values if already present
+        quotes_specs = [
+            ("QT-2026-001", "Sri Bharat Spices Pvt Ltd", 3.10, 3.42, 0.20, 25, "LC at sight, 30% advance", 95.0, date(2026, 11, 15)),
+            ("QT-2026-002", "NatureFarm Global", 3.05, 3.38, 0.20, 28, "100% Irrevocable LC", 92.0, date(2026, 11, 20)),
+            ("QT-2026-003", "Madhav Agro Exports", 3.20, 3.45, 0.16, 20, "TT 20% advance, 80% against BL", 88.0, date(2026, 11, 10)),
+            ("QT-2026-004", "Vijaya Export House", 3.15, 3.48, 0.22, 30, "LC 60 days", 85.0, date(2026, 11, 18)),
+            ("QT-2026-005", "Shree Spices India", 3.30, 3.65, 0.23, 22, "LC at sight", 80.0, date(2026, 11, 12)),
+        ]
+        for q_num, s_name, u_price, l_cost, f_cost, l_days, terms, score, v_until in quotes_specs:
+            q_ex = session.execute(select(Quotation).where(Quotation.quote_number == q_num)).scalar_one_or_none()
+            if q_ex:
+                q_ex.unit_price = Decimal(str(u_price))
+                q_ex.landed_cost = Decimal(str(l_cost))
+                q_ex.freight_cost = Decimal(str(f_cost))
+                q_ex.lead_time_days = l_days
+                q_ex.ai_score = score
+                q_ex.payment_terms = terms
+        session.flush()
+
         # 9. Seed realistic reviews for Sri Bharat Spices Pvt Ltd
         sri_bharat_supp = session.execute(
             select(Supplier).join(Company).where(Company.name == "Sri Bharat Spices Pvt Ltd")
@@ -626,6 +646,216 @@ def seed():
                     comment="All phytosanitary, APEDA and organic transaction certificates were clean and cleared German customs without inspection delay.",
                 )
                 session.add_all([r1, r2])
+
+        # 10. Seed Simulated Landed Cost Tables (Prompt 14)
+        existing_freight = session.execute(select(SimulatedFreightRate)).first()
+        if not existing_freight:
+            freight_rates = [
+                SimulatedFreightRate(
+                    origin_port="Chennai",
+                    origin_country="India",
+                    destination_port="Hamburg",
+                    destination_country="Germany",
+                    container_type="20FT",
+                    rate=Decimal("2400.00"),
+                    currency="EUR",
+                    transit_days=24,
+                ),
+                SimulatedFreightRate(
+                    origin_port="Kochi",
+                    origin_country="India",
+                    destination_port="Hamburg",
+                    destination_country="Germany",
+                    container_type="20FT",
+                    rate=Decimal("2200.00"),
+                    currency="EUR",
+                    transit_days=22,
+                ),
+                SimulatedFreightRate(
+                    origin_port="Nhava Sheva",
+                    origin_country="India",
+                    destination_port="Hamburg",
+                    destination_country="Germany",
+                    container_type="20FT",
+                    rate=Decimal("2100.00"),
+                    currency="EUR",
+                    transit_days=21,
+                ),
+                SimulatedFreightRate(
+                    origin_port="Ho Chi Minh",
+                    origin_country="Vietnam",
+                    destination_port="Hamburg",
+                    destination_country="Germany",
+                    container_type="20FT",
+                    rate=Decimal("2600.00"),
+                    currency="EUR",
+                    transit_days=28,
+                ),
+                SimulatedFreightRate(
+                    origin_port="Chennai",
+                    origin_country="India",
+                    destination_port="Rotterdam",
+                    destination_country="Netherlands",
+                    container_type="20FT",
+                    rate=Decimal("2350.00"),
+                    currency="EUR",
+                    transit_days=23,
+                ),
+                SimulatedFreightRate(
+                    origin_port="Nhava Sheva",
+                    origin_country="India",
+                    destination_port="New York",
+                    destination_country="United States",
+                    container_type="20FT",
+                    rate=Decimal("3200.00"),
+                    currency="USD",
+                    transit_days=32,
+                ),
+            ]
+            session.add_all(freight_rates)
+
+        existing_tariffs = session.execute(select(SimulatedTariffDuty)).first()
+        if not existing_tariffs:
+            tariff_duties = [
+                SimulatedTariffDuty(
+                    hs_code="0910.30",
+                    destination_country="Germany",
+                    duty_rate=0.0,
+                    vat_tax_rate=0.07,
+                    description="Turmeric (curcuma) - EU GSP Tariff Exemption",
+                ),
+                SimulatedTariffDuty(
+                    hs_code="0910.30",
+                    destination_country="United States",
+                    duty_rate=0.015,
+                    vat_tax_rate=0.0,
+                    description="Turmeric (curcuma) - US MFN Tariff Rate 1.5%",
+                ),
+                SimulatedTariffDuty(
+                    hs_code="0904.11",
+                    destination_country="Germany",
+                    duty_rate=0.04,
+                    vat_tax_rate=0.07,
+                    description="Black Pepper neither crushed nor ground",
+                ),
+                SimulatedTariffDuty(
+                    hs_code="5201.00",
+                    destination_country="Germany",
+                    duty_rate=0.0,
+                    vat_tax_rate=0.19,
+                    description="Raw cotton, not carded or combed",
+                ),
+            ]
+            session.add_all(tariff_duties)
+
+        existing_handling = session.execute(select(SimulatedPortHandlingFee)).first()
+        if not existing_handling:
+            port_fees = [
+                SimulatedPortHandlingFee(
+                    port_name="Hamburg",
+                    country="Germany",
+                    terminal_handling_per_kg=Decimal("0.0350"),
+                    customs_clearance_flat=Decimal("150.00"),
+                    currency="EUR",
+                ),
+                SimulatedPortHandlingFee(
+                    port_name="Rotterdam",
+                    country="Netherlands",
+                    terminal_handling_per_kg=Decimal("0.0320"),
+                    customs_clearance_flat=Decimal("140.00"),
+                    currency="EUR",
+                ),
+                SimulatedPortHandlingFee(
+                    port_name="Chennai",
+                    country="India",
+                    terminal_handling_per_kg=Decimal("0.0200"),
+                    customs_clearance_flat=Decimal("90.00"),
+                    currency="EUR",
+                ),
+            ]
+            session.add_all(port_fees)
+
+        existing_fx = session.execute(select(SimulatedExchangeRate)).first()
+        if not existing_fx:
+            fx_rates = [
+                SimulatedExchangeRate(from_currency="USD", to_currency="EUR", rate=Decimal("0.920000")),
+                SimulatedExchangeRate(from_currency="EUR", to_currency="USD", rate=Decimal("1.087000")),
+                SimulatedExchangeRate(from_currency="INR", to_currency="EUR", rate=Decimal("0.011000")),
+                SimulatedExchangeRate(from_currency="EUR", to_currency="EUR", rate=Decimal("1.000000")),
+                SimulatedExchangeRate(from_currency="USD", to_currency="USD", rate=Decimal("1.000000")),
+            ]
+            session.add_all(fx_rates)
+
+        # 11. Seed Negotiation Thread & Offer History (Prompt 15)
+        existing_thread = session.execute(select(Thread)).first()
+        rfq_obj = session.execute(select(RFQ).where(RFQ.rfq_number == "RFQ-2026-1042")).scalar_one_or_none()
+        winning_quote = session.execute(select(Quotation).where(Quotation.quote_number == "QT-2026-001")).scalar_one_or_none()
+        if not existing_thread and sri_bharat_supp and buyer_profile and rfq_obj:
+            # Query buyer user and supplier user
+            buyer_user = session.execute(select(User).where(User.email == "bhogeswara@tradex.ai")).scalar_one_or_none()
+            supp_user = session.execute(select(User).where(User.email == "supplier@sribharat.com")).scalar_one_or_none()
+
+            thread = Thread(
+                title="RFQ-2026-1042: 20 MT Organic Turmeric - Commercial Negotiation",
+                rfq_id=rfq_obj.id,
+                quotation_id=winning_quote.id if winning_quote else None,
+                buyer_id=buyer_profile.id,
+                supplier_id=sri_bharat_supp.id,
+            )
+            session.add(thread)
+            session.flush()
+
+            if buyer_user and supp_user:
+                m1 = Message(
+                    thread_id=thread.id,
+                    sender_id=buyer_user.id,
+                    body="Hello Sri Bharat team, we reviewed your initial quote of €3.10/kg. Given our 20 MT order size and quarterly recurring demand, could you consider €3.00/kg CIF Hamburg?",
+                    message_type="offer",
+                    offer_data={
+                        "price": 3.00,
+                        "quantity": 20000,
+                        "unit": "kg",
+                        "lead_time_days": 25,
+                        "currency": "EUR",
+                        "status": "countered",
+                        "notes": "Target budget for recurring 20 MT volume",
+                    },
+                    is_read=True,
+                )
+                m2 = Message(
+                    thread_id=thread.id,
+                    sender_id=supp_user.id,
+                    body="Dear Bhogeswara, thank you for the inquiry. With current Guntur market mandis and certified EU organic batch testing, €3.00 is tight. We can meet you at €3.05/kg with 25 days dispatch.",
+                    message_type="offer",
+                    offer_data={
+                        "price": 3.05,
+                        "quantity": 20000,
+                        "unit": "kg",
+                        "lead_time_days": 25,
+                        "currency": "EUR",
+                        "status": "accepted",
+                        "notes": "Compromise counter-offer with Eurofins test guarantee",
+                    },
+                    is_read=True,
+                )
+                m3 = Message(
+                    thread_id=thread.id,
+                    sender_id=buyer_user.id,
+                    body="Agreed on €3.05/kg. We will issue the Purchase Order and Letter of Credit draft today.",
+                    message_type="text",
+                    is_read=False,
+                )
+                session.add_all([m1, m2, m3])
+
+                notif = Notification(
+                    user_id=buyer_user.id,
+                    title="Counter-offer Accepted",
+                    message="Sri Bharat Spices accepted your agreed rate of €3.05/kg CIF Hamburg for RFQ-2026-1042.",
+                    event_type="counter_offer",
+                    is_read=False,
+                    link="/rfq/rfq-2026-1042",
+                )
+                session.add(notif)
 
         session.commit()
         print("=== Seed Completed Successfully! ===")

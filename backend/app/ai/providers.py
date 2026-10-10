@@ -105,7 +105,16 @@ class MockProvider(LLMProvider):
         if not prompt_text and messages:
             prompt_text = messages[0].get("content", "")
 
-        res_json = self._extract_search_requirement(prompt_text)
+        schema_str = json.dumps(json_schema or {})
+        prompt_lower = prompt_text.lower()
+
+        if "quote_compare" in prompt_lower or "quotes_data" in prompt_lower or "winner_supplier_name" in schema_str or "trade_offs" in schema_str:
+            res_json = self._mock_quote_compare(prompt_text)
+        elif "negotiation" in prompt_lower or "chat_history" in prompt_lower or "draft_message_to_counterparty" in schema_str:
+            res_json = self._mock_negotiation_assist(prompt_text)
+        else:
+            res_json = self._extract_search_requirement(prompt_text)
+
         content_str = json.dumps(res_json, indent=2)
         latency = (time.time() - t0) * 1000
 
@@ -120,6 +129,31 @@ class MockProvider(LLMProvider):
             provider="mock",
             is_mock=True,
         )
+
+    def _mock_quote_compare(self, text: str) -> Dict[str, Any]:
+        """Deterministic comparison output citing real numbers from Prompt 14 data."""
+        return {
+            "winner_quote_id": "QT-2026-001",
+            "winner_supplier_name": "Sri Bharat Spices Pvt Ltd",
+            "winner_landed_cost": 3.42,
+            "why": "Sri Bharat Spices achieves the highest composite score (95) with accredited EU Organic and ISO 22000 certification, competitive CIF landed cost of €3.42/kg, and proven German port fulfillment reliability.",
+            "trade_offs": "NatureFarm is EUR 0.04 cheaper (€3.38/kg landed) but 3 days slower (28 days vs 25 days lead time).",
+            "risks": [
+                "Madhav Agro provides fastest 20-day delivery but higher freight charges (€0.28/kg) and advance TT payment terms",
+                "Vijaya Export House has a 30-day factory lead time exceeding optimal scheduling",
+            ],
+            "negotiation_tip": "Leverage NatureFarm's €3.05/kg quote to request Sri Bharat Spices to discount their €3.10/kg base price for 20 MT commitment.",
+        }
+
+    def _mock_negotiation_assist(self, text: str) -> Dict[str, Any]:
+        """Deterministic negotiation assistance with recommended counter terms."""
+        return {
+            "recommended_counter_price": 3.05,
+            "suggested_incoterm": "CIF Hamburg",
+            "compromise_terms": "Counter-offer of €3.05/kg with 25 days lead time and standard 30% advance LC terms.",
+            "reasoning": "Compromise price splits the difference between the €3.00/kg buyer budget and €3.10/kg supplier quote, securing €1,000 net savings on a 20 MT volume contract.",
+            "draft_message_to_counterparty": "Thank you for the detailed offer. Given our 20 MT order volume and recurring import cycle, we propose meeting at €3.05/kg CIF Hamburg with a 25-day delivery window. We can issue the Purchase Order and LC draft immediately upon confirmation.",
+        }
 
     def _extract_search_requirement(self, text: str) -> Dict[str, Any]:
         """Match against 10 fixtures or apply heuristic trade entity extractor."""

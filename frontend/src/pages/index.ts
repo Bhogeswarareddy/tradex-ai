@@ -14,3 +14,4 @@ export * from "./SupplierPortalPage";
 export * from "./AiSearchPage";
 export * from "./RfqsPage";
 export * from "./RfqDetailPage";
+export * from "./MessagesPage";

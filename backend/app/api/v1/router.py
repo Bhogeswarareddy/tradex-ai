@@ -12,6 +12,8 @@ from app.api.v1.routes.documents import router as documents_router
 from app.api.v1.routes.messages import router as messages_router
 from app.api.v1.routes.orders import router as orders_router
 from app.api.v1.routes.products import router as products_router
+from app.api.v1.routes.quote_comparison import router as quote_comparison_router
+from app.api.v1.routes.communication import router as communication_router
 from app.api.v1.routes.quotes import router as quotes_router
 from app.api.v1.routes.rfqs import router as rfqs_router
 from app.api.v1.routes.saved import router as saved_router
@@ -46,6 +48,8 @@ api_router.include_router(suppliers_router)
 api_router.include_router(supplier_portal_router)
 api_router.include_router(rfqs_router)
 api_router.include_router(quotes_router)
+api_router.include_router(quote_comparison_router)
+api_router.include_router(communication_router)
 api_router.include_router(orders_router)
 api_router.include_router(shipments_router)
 api_router.include_router(documents_router)

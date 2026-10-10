@@ -200,7 +200,7 @@ async def test_apscheduler_closes_expired_rfqs():
             pytest.skip("No buyer found for scheduler test")
 
         past_rfq = RFQ(
-            rfq_number=f"RFQ-2026-{uuid.uuid4().hex[:4]}",
+            rfq_number=f"RFQ-2026-{uuid.uuid4().hex[:8]}",
             buyer_id=buyer.id,
             title="Expired Soybean Inquiry",
             status="active",

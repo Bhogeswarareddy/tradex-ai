@@ -216,3 +216,56 @@ class ShipmentEvent(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
 
     shipment: Mapped["Shipment"] = relationship("Shipment", back_populates="events")
+
+
+class SimulatedFreightRate(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "simulated_freight_rates"
+    __table_args__ = (
+        Index("idx_freight_route", "origin_port", "destination_port"),
+    )
+
+    origin_port: Mapped[str] = mapped_column(String(100), nullable=False)
+    origin_country: Mapped[str] = mapped_column(String(100), nullable=False)
+    destination_port: Mapped[str] = mapped_column(String(100), nullable=False)
+    destination_country: Mapped[str] = mapped_column(String(100), nullable=False)
+    container_type: Mapped[str] = mapped_column(String(50), default="20FT", nullable=False)
+    rate: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), default="EUR", nullable=False)
+    transit_days: Mapped[int] = mapped_column(Integer, default=21, nullable=False)
+
+
+class SimulatedTariffDuty(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "simulated_tariff_duties"
+    __table_args__ = (
+        Index("idx_tariff_hs_dest", "hs_code", "destination_country"),
+    )
+
+    hs_code: Mapped[str] = mapped_column(String(50), nullable=False)
+    destination_country: Mapped[str] = mapped_column(String(100), nullable=False)
+    duty_rate: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    vat_tax_rate: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+
+class SimulatedPortHandlingFee(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "simulated_port_handling_fees"
+    __table_args__ = (
+        Index("idx_port_handling_name", "port_name"),
+    )
+
+    port_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    country: Mapped[str] = mapped_column(String(100), nullable=False)
+    terminal_handling_per_kg: Mapped[float] = mapped_column(Numeric(12, 4), default=0.035, nullable=False)
+    customs_clearance_flat: Mapped[float] = mapped_column(Numeric(12, 4), default=150.0, nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), default="EUR", nullable=False)
+
+
+class SimulatedExchangeRate(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "simulated_exchange_rates"
+    __table_args__ = (
+        Index("idx_fx_pair", "from_currency", "to_currency"),
+    )
+
+    from_currency: Mapped[str] = mapped_column(String(10), nullable=False)
+    to_currency: Mapped[str] = mapped_column(String(10), nullable=False)
+    rate: Mapped[float] = mapped_column(Numeric(12, 6), nullable=False)

@@ -546,7 +546,7 @@ async def create_supplier_review(
             Order.status.in_(["completed", "confirmed", "delivered", "in_transit", "in_production"]),
         )
     )
-    completed_order = order_check.scalar_one_or_none()
+    completed_order = order_check.scalars().first()
     if not completed_order:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

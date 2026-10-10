@@ -17,6 +17,7 @@ import {
   AiSearchPage,
   RfqsPage,
   RfqDetailPage,
+  MessagesPage,
 } from "../pages";
 import { AppLayout } from "../components/layout";
 import { RoleGuard } from "../features/auth";
@@ -114,24 +115,8 @@ export const AppRoutes: React.FC = () => {
             />
           }
         />
-        <Route
-          path="/messages"
-          element={
-            <ModulePlaceholderPage
-              title="Trade Messages & Counter-Offers"
-              description="Direct supplier-buyer negotiation chat with AI suggested counter-offers."
-            />
-          }
-        />
-        <Route
-          path="/negotiations"
-          element={
-            <ModulePlaceholderPage
-              title="Trade Messages & Counter-Offers"
-              description="Direct supplier-buyer negotiation chat with AI suggested counter-offers."
-            />
-          }
-        />
+        <Route path="/messages" element={<MessagesPage />} />
+        <Route path="/negotiations" element={<MessagesPage />} />
         <Route
           path="/saved"
           element={

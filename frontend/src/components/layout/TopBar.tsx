@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Search,
-  Bell,
   MessageSquare,
   Globe,
   DollarSign,
@@ -16,6 +15,7 @@ import {
 } from "lucide-react";
 import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
+import { NotificationBellDropdown } from "../../features/communication";
 
 export interface TopBarProps {
   onToggleSidebar: () => void;
@@ -121,17 +121,8 @@ export const TopBar: React.FC<TopBarProps> = ({
           </span>
         </Link>
 
-        {/* Notification bell with count */}
-        <button
-          type="button"
-          className="relative p-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
-          title="Notifications"
-        >
-          <Bell className="w-5 h-5" />
-          <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-[#2563EB] text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-            5
-          </span>
-        </button>
+        {/* Notification bell dropdown with unread count & popover */}
+        <NotificationBellDropdown />
 
         {/* Vertical divider */}
         <div className="h-6 w-px bg-slate-200 mx-1" />

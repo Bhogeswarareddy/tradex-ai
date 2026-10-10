@@ -40,19 +40,59 @@ class DocumentExtraction(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     document: Mapped["Document"] = relationship("Document", back_populates="extractions")
 
 
+class Thread(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "threads"
+    __table_args__ = (
+        Index("idx_threads_buyer_id", "buyer_id"),
+        Index("idx_threads_supplier_id", "supplier_id"),
+        Index("idx_threads_rfq_id", "rfq_id"),
+    )
+
+    title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    rfq_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rfqs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    quotation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("quotations.id", ondelete="SET NULL"), nullable=True
+    )
+    order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True
+    )
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL"), nullable=True
+    )
+    buyer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("buyers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    supplier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    buyer: Mapped["Buyer"] = relationship("Buyer")
+    supplier: Mapped["Supplier"] = relationship("Supplier")
+    messages: Mapped[List["Message"]] = relationship("Message", back_populates="thread", cascade="all, delete-orphan")
+
+
 class Message(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "messages"
     __table_args__ = (
         Index("idx_messages_thread_id", "thread_id"),
     )
 
-    thread_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    thread_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("threads.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     sender_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     body: Mapped[str] = mapped_column(Text, nullable=False)
+    message_type: Mapped[str] = mapped_column(String(50), default="text", nullable=False)
+    offer_data: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     attachments: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    thread: Mapped["Thread"] = relationship("Thread", back_populates="messages")
+    sender: Mapped["User"] = relationship("User")
 
 
 class Notification(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -63,6 +103,7 @@ class Notification(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(50), default="general", nullable=False)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     link: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 

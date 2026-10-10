@@ -117,3 +117,39 @@ async def root_health():
 
 # Mount versioned API routes (/api/v1)
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+
+# WebSocket /ws Real-Time Handshake (Prompt 15)
+from fastapi import WebSocket, WebSocketDisconnect
+from jose import JWTError, jwt
+from app.services.websocket_manager import ws_manager
+import json
+
+
+@app.websocket("/ws")
+@app.websocket("/api/v1/ws")
+async def websocket_endpoint(websocket: WebSocket, token: str = None):
+    user_id = "anonymous"
+    if token:
+        try:
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+            sub = payload.get("sub")
+            if sub:
+                user_id = str(sub)
+        except JWTError:
+            pass
+
+    await ws_manager.connect(websocket, user_id)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            try:
+                msg_json = json.loads(data)
+                if msg_json.get("type") == "ping":
+                    await websocket.send_text(json.dumps({"type": "pong"}))
+            except Exception:
+                pass
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket, user_id)
+    except Exception:
+        ws_manager.disconnect(websocket, user_id)
