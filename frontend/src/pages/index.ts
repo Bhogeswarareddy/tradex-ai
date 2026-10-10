@@ -15,3 +15,8 @@ export * from "./AiSearchPage";
 export * from "./RfqsPage";
 export * from "./RfqDetailPage";
 export * from "./MessagesPage";
+export * from "./OrdersPage";
+export * from "./OrderDetailPage";
+export * from "./TradeFinancePage";
+export * from "./ShipmentsPage";
+export * from "./ShipmentDetailPage";

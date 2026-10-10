@@ -112,6 +112,8 @@ class MockProvider(LLMProvider):
             res_json = self._mock_quote_compare(prompt_text)
         elif "negotiation" in prompt_lower or "chat_history" in prompt_lower or "draft_message_to_counterparty" in schema_str:
             res_json = self._mock_negotiation_assist(prompt_text)
+        elif "shipment" in prompt_lower or "tracking_events" in prompt_lower or "delay_risk_level" in schema_str:
+            res_json = self._mock_shipment_summary(prompt_text)
         else:
             res_json = self._extract_search_requirement(prompt_text)
 
@@ -129,6 +131,22 @@ class MockProvider(LLMProvider):
             provider="mock",
             is_mock=True,
         )
+
+    def _mock_shipment_summary(self, text: str) -> Dict[str, Any]:
+        """Deterministic shipment tracking summary with delay risk and operational steps."""
+        return {
+            "current_status": "Vessel MV Ocean Star is transiting the Arabian Sea corridor on schedule toward the Suez Canal.",
+            "progress_percentage": 65,
+            "eta": "2026-10-14",
+            "delay_risk_level": "low",
+            "reasons": [
+                "Favorable maritime weather conditions across the Red Sea shipping corridor",
+                "Port of Nhava Sheva / Chennai customs export clearance completed without holds",
+                "Standard 18-hour container berth window reserved at Port of Hamburg Waltershof terminal",
+            ],
+            "operational_next_steps": "Ensure Hamburg import customs entry declaration and phytosanitary certificate verification are ready prior to vessel arrival on Oct 14.",
+            "label": "Simulated estimate",
+        }
 
     def _mock_quote_compare(self, text: str) -> Dict[str, Any]:
         """Deterministic comparison output citing real numbers from Prompt 14 data."""

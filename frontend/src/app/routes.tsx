@@ -18,6 +18,11 @@ import {
   RfqsPage,
   RfqDetailPage,
   MessagesPage,
+  OrdersPage,
+  OrderDetailPage,
+  TradeFinancePage,
+  ShipmentsPage,
+  ShipmentDetailPage,
 } from "../pages";
 import { AppLayout } from "../components/layout";
 import { RoleGuard } from "../features/auth";
@@ -59,44 +64,12 @@ export const AppRoutes: React.FC = () => {
         <Route path="/rfqs" element={<RfqsPage />} />
         <Route path="/rfq/:id" element={<RfqDetailPage />} />
         <Route path="/rfqs/:id" element={<RfqDetailPage />} />
-        <Route
-          path="/orders"
-          element={
-            <ModulePlaceholderPage
-              title="Orders & Milestone Tracking"
-              description="Digital purchase contracts, escrow milestones, and fulfillment progress."
-            />
-          }
-        />
-        <Route
-          path="/shipments"
-          element={
-            <ModulePlaceholderPage
-              title="Shipments & Logistics"
-              description="Container vessel tracking, Bill of Lading, and customs clearances."
-            />
-          }
-        />
-        <Route
-          path="/trade-finance"
-          element={
-            <ModulePlaceholderPage
-              title="Trade Finance & Escrow"
-              description="Simulated Letter of Credit (LC), milestone escrow payments, and currency hedging."
-              simulated={true}
-            />
-          }
-        />
-        <Route
-          path="/simulated/finance"
-          element={
-            <ModulePlaceholderPage
-              title="Trade Finance & Escrow"
-              description="Simulated Letter of Credit (LC), milestone escrow payments, and currency hedging."
-              simulated={true}
-            />
-          }
-        />
+        <Route path="/orders" element={<OrdersPage />} />
+        <Route path="/orders/:id" element={<OrderDetailPage />} />
+        <Route path="/shipments" element={<ShipmentsPage />} />
+        <Route path="/shipments/:id" element={<ShipmentDetailPage />} />
+        <Route path="/trade-finance" element={<TradeFinancePage />} />
+        <Route path="/simulated/finance" element={<TradeFinancePage />} />
         <Route
           path="/documents"
           element={

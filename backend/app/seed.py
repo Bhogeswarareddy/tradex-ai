@@ -527,6 +527,7 @@ def seed():
                         currency="EUR",
                         status="in_production",
                         incoterm="CIF Hamburg",
+                        payment_terms="LC at sight, 30% advance",
                     )
                     session.add(order)
                     session.flush()
@@ -547,6 +548,7 @@ def seed():
                         currency="EUR",
                         status="escrow_locked",
                         payment_method="Escrow",
+                        payment_type="advance",
                         simulated=True,
                         transaction_ref="SIM-TXN-EUR-57000",
                     )
@@ -559,6 +561,16 @@ def seed():
                         tracking_number="MAEU-98218721",
                         origin="Port of Nhava Sheva (INNSA), India",
                         destination="Port of Hamburg (DEHAM), Germany",
+                        mode="sea",
+                        vessel_or_flight="MV Ocean Star",
+                        container_number="TCNU1234567",
+                        freight_forwarder="OceanLink Logistics",
+                        incoterm="CIF Hamburg",
+                        goods="Organic Turmeric Powder, 20,000 kg",
+                        eta=date(2026, 10, 14),
+                        current_latitude=12.50,
+                        current_longitude=50.00,
+                        current_location="Gulf of Aden",
                         estimated_delivery=date(2026, 11, 2),
                         status="in_transit",
                     )
