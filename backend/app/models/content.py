@@ -1,6 +1,7 @@
 import uuid
 from typing import List, Optional
-from sqlalchemy import Boolean, CheckConstraint, Float, ForeignKey, Index, Integer, String, Text
+from datetime import date, datetime
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -11,20 +12,37 @@ class Document(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "documents"
     __table_args__ = (
         Index("idx_documents_doc_type", "doc_type"),
+        Index("idx_documents_status", "status"),
+        Index("idx_documents_order_id", "order_id"),
+        Index("idx_documents_supplier_id", "supplier_id"),
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(255), default="document.pdf", nullable=False)
     file_path: Mapped[str] = mapped_column(String(512), nullable=False)
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)
     mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    doc_type: Mapped[str] = mapped_column(String(50), default="specification", nullable=False)
+    doc_type: Mapped[str] = mapped_column(String(50), default="other", nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="uploaded", nullable=False)  # uploaded, processing, extracted, needs_review, verified, rejected
+
+    order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True
+    )
+    rfq_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rfqs.id", ondelete="SET NULL"), nullable=True
+    )
+    supplier_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("suppliers.id", ondelete="SET NULL"), nullable=True
+    )
+    expiry_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     extractions: Mapped[List["DocumentExtraction"]] = relationship(
         "DocumentExtraction", back_populates="document", cascade="all, delete-orphan"
     )
+    user: Mapped["User"] = relationship("User")
 
 
 class DocumentExtraction(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -35,7 +53,11 @@ class DocumentExtraction(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     extracted_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
     confidence_score: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
-    status: Mapped[str] = mapped_column(String(50), default="completed", nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="needs_review", nullable=False)  # needs_review, confirmed, rejected
+    reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     document: Mapped["Document"] = relationship("Document", back_populates="extractions")
 

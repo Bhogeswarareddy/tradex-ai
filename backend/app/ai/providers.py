@@ -114,6 +114,8 @@ class MockProvider(LLMProvider):
             res_json = self._mock_negotiation_assist(prompt_text)
         elif "shipment" in prompt_lower or "tracking_events" in prompt_lower or "delay_risk_level" in schema_str:
             res_json = self._mock_shipment_summary(prompt_text)
+        elif "doc_extract" in prompt_lower or "document_text" in prompt_lower or "certificate_number" in schema_str or "invoice_amount" in schema_str:
+            res_json = self._mock_doc_extract(prompt_text)
         else:
             res_json = self._extract_search_requirement(prompt_text)
 
@@ -147,6 +149,98 @@ class MockProvider(LLMProvider):
             "operational_next_steps": "Ensure Hamburg import customs entry declaration and phytosanitary certificate verification are ready prior to vessel arrival on Oct 14.",
             "label": "Simulated estimate",
         }
+
+    def _mock_doc_extract(self, text: str) -> Dict[str, Any]:
+        """Deterministic trade document extraction with field-level confidence ratings."""
+        untrusted = ""
+        if "<untrusted_input>" in text and "</untrusted_input>" in text:
+            untrusted = text.split("<untrusted_input>")[1].split("</untrusted_input>")[0].lower()
+        else:
+            untrusted = text.lower()
+
+        target_schema = ""
+        if "target schema:" in text.lower():
+            target_schema = text.lower().split("target schema:")[1].split("\n")[0].strip()
+
+        combined = f"{untrusted} {target_schema}"
+
+        if any(k in combined for k in ["cert", "organic", "iso", "apeda", "haccp"]):
+            return {
+                "company_name": "Sri Bharat Spices Pvt Ltd",
+                "product": "Spices & Botanicals (Turmeric, Ginger, Black Pepper)",
+                "certification_type": "EU Organic / ISO 22000:2018",
+                "certificate_number": "IN-BIO-149-CU-892110",
+                "issue_date": "2025-11-01",
+                "expiry_date": "2027-10-31",
+                "quantity": None,
+                "unit": None,
+                "hs_codes": ["0910.30"],
+                "capacity": "15,000 MT/year",
+                "invoice_amount": None,
+                "currency": None,
+                "field_confidences": {
+                    "company_name": 0.99,
+                    "certification_type": 0.97,
+                    "certificate_number": 0.99,
+                    "issue_date": 0.95,
+                    "expiry_date": 0.96,
+                    "capacity": 0.85,
+                    "hs_codes": 0.90,
+                },
+                "confidence_score": 0.95,
+                "status": "extracted",
+            }
+        elif "packing" in combined:
+            return {
+                "company_name": "Sri Bharat Spices Pvt Ltd",
+                "product": "Organic Turmeric Powder 5% Curcumin",
+                "certification_type": None,
+                "certificate_number": None,
+                "issue_date": "2026-09-18",
+                "expiry_date": None,
+                "quantity": 20000.0,
+                "unit": "kg",
+                "hs_codes": ["0910.30.00"],
+                "capacity": "800 multi-wall kraft paper bags (25kg net)",
+                "invoice_amount": None,
+                "currency": None,
+                "field_confidences": {
+                    "company_name": 0.96,
+                    "product": 0.93,
+                    "quantity": 0.98,
+                    "unit": 0.99,
+                    "capacity": 0.88,
+                    "issue_date": 0.91,
+                },
+                "confidence_score": 0.94,
+                "status": "extracted",
+            }
+        else:  # Commercial Invoice
+            return {
+                "company_name": "Sri Bharat Spices Pvt Ltd",
+                "product": "Organic Turmeric Powder (Alleppey Curcumin 5.2%)",
+                "certification_type": None,
+                "certificate_number": None,
+                "issue_date": "2026-09-15",
+                "expiry_date": None,
+                "quantity": 20000.0,
+                "unit": "kg",
+                "hs_codes": ["0910.30.00"],
+                "capacity": None,
+                "invoice_amount": 57000.0,
+                "currency": "EUR",
+                "field_confidences": {
+                    "company_name": 0.98,
+                    "product": 0.95,
+                    "quantity": 0.99,
+                    "hs_codes": 0.92,
+                    "invoice_amount": 0.99,
+                    "currency": 0.99,
+                    "issue_date": 0.94,
+                },
+                "confidence_score": 0.96,
+                "status": "extracted",
+            }
 
     def _mock_quote_compare(self, text: str) -> Dict[str, Any]:
         """Deterministic comparison output citing real numbers from Prompt 14 data."""

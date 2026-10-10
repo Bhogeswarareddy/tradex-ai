@@ -23,6 +23,7 @@ import {
   TradeFinancePage,
   ShipmentsPage,
   ShipmentDetailPage,
+  DocumentsPage,
 } from "../pages";
 import { AppLayout } from "../components/layout";
 import { RoleGuard } from "../features/auth";
@@ -69,16 +70,7 @@ export const AppRoutes: React.FC = () => {
         <Route path="/shipments" element={<ShipmentsPage />} />
         <Route path="/shipments/:id" element={<ShipmentDetailPage />} />
         <Route path="/trade-finance" element={<TradeFinancePage />} />
-        <Route path="/simulated/finance" element={<TradeFinancePage />} />
-        <Route
-          path="/documents"
-          element={
-            <ModulePlaceholderPage
-              title="Trade Documents Vault"
-              description="OCR processed proforma invoices, packing lists, and origin certificates."
-            />
-          }
-        />
+        <Route path="/documents" element={<DocumentsPage />} />
         <Route
           path="/analytics"
           element={
