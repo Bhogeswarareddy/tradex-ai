@@ -61,8 +61,12 @@ class SuggestedPrompt(BaseModel):
 class CopilotChatRequest(BaseModel):
     message: str
     context: Optional[dict] = None
+    conversation_id: Optional[str] = None
 
 
 class CopilotChatResponse(BaseModel):
     response: str
     suggested_actions: List[str] = Field(default_factory=list)
+    sources: Optional[List[dict]] = Field(default_factory=list)
+    conversation_id: Optional[str] = None
+

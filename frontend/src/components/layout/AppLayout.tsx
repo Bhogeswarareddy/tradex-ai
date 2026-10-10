@@ -5,6 +5,7 @@ import { Drawer } from "../ui/Drawer";
 import { useAuth } from "../../features/auth/AuthContext";
 import { useLocation } from "react-router-dom";
 import { AlertCircle } from "lucide-react";
+import { CopilotDrawer } from "../../features/copilot";
 
 export interface AppLayoutProps {
   children: React.ReactNode;
@@ -72,6 +73,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
           {children}
         </main>
+
+        {/* Global AI Trade Copilot Floating Drawer */}
+        <CopilotDrawer />
       </div>
     </div>
   );

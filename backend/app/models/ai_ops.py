@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -62,14 +62,24 @@ class KnowledgeChunk(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "knowledge_chunks"
     __table_args__ = (
         Index("idx_knowledge_chunks_entity", "entity_type", "entity_id"),
+        Index("idx_knowledge_chunks_guide_slug", "guide_slug"),
+        Index("idx_knowledge_chunks_is_public", "is_public"),
+        Index("idx_knowledge_chunks_company_id", "company_id"),
     )
 
-    entity_type: Mapped[str] = mapped_column(String(50), nullable=False)  # 'supplier', 'product', 'spec'
+    entity_type: Mapped[str] = mapped_column(String(50), default="guide", nullable=False)  # 'guide', 'supplier', 'product', 'spec'
     entity_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding = mapped_column(Vector(1536), nullable=False)
+    embedding = mapped_column(Vector(1536), nullable=True)
     chunk_metadata: Mapped[Optional[dict]] = mapped_column("metadata", JSONB, nullable=True)
+    guide_slug: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    source_uri: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    company_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+
 
 
 class MarketInsight(Base, UUIDPrimaryKeyMixin, TimestampMixin):

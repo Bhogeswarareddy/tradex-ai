@@ -21,3 +21,4 @@ export * from "./TradeFinancePage";
 export * from "./ShipmentsPage";
 export * from "./ShipmentDetailPage";
 export * from "./DocumentsPage";
+export * from "./CopilotPage";

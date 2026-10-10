@@ -24,6 +24,7 @@ import {
   ShipmentsPage,
   ShipmentDetailPage,
   DocumentsPage,
+  CopilotPage,
 } from "../pages";
 import { AppLayout } from "../components/layout";
 import { RoleGuard } from "../features/auth";
@@ -100,15 +101,7 @@ export const AppRoutes: React.FC = () => {
             />
           }
         />
-        <Route
-          path="/copilot"
-          element={
-            <ModulePlaceholderPage
-              title="AI Trade Copilot"
-              description="Interactive AI assistant for trade discovery, HS code lookup, and RFQ generation."
-            />
-          }
-        />
+        <Route path="/copilot" element={<CopilotPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/design-system" element={<DesignSystemPage />} />
 

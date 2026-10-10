@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Bot, Send, Sparkles, ArrowRight } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Bot, Send, Sparkles, ArrowRight, ExternalLink } from "lucide-react";
 import { dashboardApi, SuggestedPromptItem } from "../../lib/api/dashboard";
 
 interface AiCopilotPanelProps {
@@ -89,9 +90,13 @@ export const AiCopilotPanel: React.FC<AiCopilotPanelProps> = ({ suggestedPrompts
             <p className="text-xs text-slate-400">RAG-powered global trade intelligence</p>
           </div>
         </div>
-        <span className="text-xs font-semibold text-slate-400 font-mono hidden sm:inline">
-          v2.4 Trade Model
-        </span>
+        <Link
+          to="/copilot"
+          className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition-colors"
+        >
+          Full Copilot
+          <ExternalLink className="w-3 h-3" />
+        </Link>
       </div>
 
       {/* Suggested Prompts Grid */}

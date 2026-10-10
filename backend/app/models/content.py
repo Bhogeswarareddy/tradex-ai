@@ -159,3 +159,38 @@ class SavedItem(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     item_type: Mapped[str] = mapped_column(String(50), nullable=False)  # 'product' or 'supplier'
     item_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+
+
+class CopilotConversation(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "copilot_conversations"
+    __table_args__ = (
+        Index("idx_copilot_conversations_user_id", "user_id"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    title: Mapped[str] = mapped_column(String(255), default="New Trade Inquiry", nullable=False)
+
+    messages: Mapped[List["CopilotMessage"]] = relationship(
+        "CopilotMessage", back_populates="conversation", cascade="all, delete-orphan", order_by="CopilotMessage.created_at"
+    )
+    user: Mapped["User"] = relationship("User")
+
+
+class CopilotMessage(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "copilot_messages"
+    __table_args__ = (
+        Index("idx_copilot_messages_conversation_id", "conversation_id"),
+    )
+
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("copilot_conversations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)  # 'user' | 'assistant'
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    sources: Mapped[Optional[List[dict]]] = mapped_column(JSONB, nullable=True)
+    suggested_actions: Mapped[Optional[List[dict]]] = mapped_column(JSONB, nullable=True)
+
+    conversation: Mapped["CopilotConversation"] = relationship("CopilotConversation", back_populates="messages")
+
