@@ -23,11 +23,12 @@ services:
       dockerfile: Dockerfile
     container_name: tradex-backend
     environment:
-      ENVIRONMENT: ${ENVIRONMENT:-development}
+      ENV: ${ENV:-development}
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://tradex_user:tradex_password@db:5432/tradex}
+      SYNC_DATABASE_URL: ${SYNC_DATABASE_URL:-postgresql+psycopg2://tradex_user:tradex_password@db:5432/tradex}
       AI_PROVIDER: ${AI_PROVIDER:-deterministic_fallback}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      SECRET_KEY: ${SECRET_KEY:-development-secret-key-tradex-32bytes}
+      SECRET_KEY: ${SECRET_KEY:-development-secret-key-tradex-32bytes-secure}
       LOCAL_STORAGE_PATH: /app/storage
     volumes:
       - ./backend:/app
