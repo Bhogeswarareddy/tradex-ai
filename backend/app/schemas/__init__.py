@@ -11,6 +11,29 @@ from app.schemas.auth import (
 )
 from app.schemas.health import HealthResponse
 from app.schemas.pagination import PaginatedResponse, PaginationParams
+from app.schemas.dashboard import (
+    DashboardSummaryResponse,
+    HeroStats,
+    KPICard,
+    RecommendedSupplier,
+    MarketInsightItem,
+    SuggestedPrompt,
+    CopilotChatRequest,
+    CopilotChatResponse,
+)
+from app.schemas.products import (
+    ProductListItem,
+    PaginatedProductsResponse,
+    PriceTierItem,
+    ProductDetailResponse,
+    SupplierSummary,
+    AISummary,
+    ReviewsSummary,
+    CategoryNode,
+    CompareProductsRequest,
+    CompareProductsResponse,
+    CompareAttributeRow,
+)
 
 __all__ = [
     "HealthResponse",
@@ -25,4 +48,23 @@ __all__ = [
     "ResetPasswordRequest",
     "ChangePasswordRequest",
     "UserUpdateRequest",
+    "DashboardSummaryResponse",
+    "HeroStats",
+    "KPICard",
+    "RecommendedSupplier",
+    "MarketInsightItem",
+    "SuggestedPrompt",
+    "CopilotChatRequest",
+    "CopilotChatResponse",
+    "ProductListItem",
+    "PaginatedProductsResponse",
+    "PriceTierItem",
+    "ProductDetailResponse",
+    "SupplierSummary",
+    "AISummary",
+    "ReviewsSummary",
+    "CategoryNode",
+    "CompareProductsRequest",
+    "CompareProductsResponse",
+    "CompareAttributeRow",
 ]

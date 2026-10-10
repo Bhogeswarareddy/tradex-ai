@@ -6,3 +6,5 @@ export * from "./RegisterPage";
 export * from "./ForgotPasswordPage";
 export * from "./ProfilePage";
 export * from "./DesignSystemPage";
+export * from "./ProductsPage";
+export * from "./ProductDetailPage";

@@ -4,12 +4,14 @@ from app.api.v1.routes.admin import router as admin_router
 from app.api.v1.routes.ai import router as ai_router
 from app.api.v1.routes.analytics import router as analytics_router
 from app.api.v1.routes.auth import router as auth_router
+from app.api.v1.routes.dashboard import router as dashboard_router
 from app.api.v1.routes.documents import router as documents_router
 from app.api.v1.routes.messages import router as messages_router
 from app.api.v1.routes.orders import router as orders_router
 from app.api.v1.routes.products import router as products_router
 from app.api.v1.routes.quotes import router as quotes_router
 from app.api.v1.routes.rfqs import router as rfqs_router
+from app.api.v1.routes.saved import router as saved_router
 from app.api.v1.routes.shipments import router as shipments_router
 from app.api.v1.routes.suppliers import router as suppliers_router
 from app.api.v1.routes.users import router as users_router
@@ -31,9 +33,11 @@ async def api_health() -> HealthResponse:
 
 
 # Mount domain routers
+api_router.include_router(dashboard_router)
 api_router.include_router(auth_router)
 api_router.include_router(users_router)
 api_router.include_router(products_router)
+api_router.include_router(saved_router)
 api_router.include_router(suppliers_router)
 api_router.include_router(rfqs_router)
 api_router.include_router(quotes_router)

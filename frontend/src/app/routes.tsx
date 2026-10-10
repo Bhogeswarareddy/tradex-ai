@@ -9,6 +9,8 @@ import {
   ForgotPasswordPage,
   ProfilePage,
   DesignSystemPage,
+  ProductsPage,
+  ProductDetailPage,
 } from "../pages";
 import { AppLayout } from "../components/layout";
 import { RoleGuard } from "../features/auth";
@@ -41,15 +43,9 @@ export const AppRoutes: React.FC = () => {
             />
           }
         />
-        <Route
-          path="/products"
-          element={
-            <ModulePlaceholderPage
-              title="Product Catalog & Tier Pricing"
-              description="Multi-tier categories, specifications, and volume tiered pricing."
-            />
-          }
-        />
+        <Route path="/products" element={<ProductsPage />} />
+        <Route path="/products/:slug" element={<ProductDetailPage />} />
+        <Route path="/ai-search" element={<ProductsPage />} />
         <Route
           path="/suppliers"
           element={
