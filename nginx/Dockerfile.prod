@@ -1,0 +1,15 @@
+# Multi-stage frontend build to embed static assets in production proxy
+FROM node:20-alpine AS frontend-builder
+WORKDIR /app
+COPY ../frontend/package*.json ./
+RUN npm ci
+COPY ../frontend .
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=frontend-builder /app/dist /usr/share/nginx/html
+COPY nginx.prod.conf /etc/nginx/nginx.conf
+
+EXPOSE 80 443
+
+CMD ["nginx", "-g", "daemon off;"]

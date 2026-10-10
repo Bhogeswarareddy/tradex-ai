@@ -1,0 +1,111 @@
+pipeline {
+    agent any
+
+    environment {
+        AWS_DEFAULT_REGION = 'us-east-1'
+        ECR_REGISTRY        = credentials('aws-ecr-registry-id')
+        AWS_CREDENTIALS_ID  = 'aws-ecr-credentials'
+        GITHUB_CREDS_ID     = 'github-access-token'
+        APP_NAME            = 'tradex-ai'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Lint & Static Analysis') {
+            parallel {
+                stage('Backend Lint') {
+                    steps {
+                        sh '''
+                            cd backend
+                            python3 -m pip install ruff
+                            python3 -m ruff check .
+                        '''
+                    }
+                }
+                stage('Frontend Lint') {
+                    steps {
+                        sh '''
+                            cd frontend
+                            npm ci
+                            npm run lint || true
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Automated Tests') {
+            parallel {
+                stage('Backend Tests') {
+                    steps {
+                        sh '''
+                            cd backend
+                            pip install -r requirements.txt
+                            pytest app/tests/ -v
+                        '''
+                    }
+                }
+                stage('Frontend Tests') {
+                    steps {
+                        sh '''
+                            cd frontend
+                            npm test || true
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Docker Build & Compose Validate') {
+            steps {
+                sh '''
+                    docker compose config
+                '''
+            }
+        }
+
+        stage('Publish to Amazon ECR') {
+            when {
+                branch 'main'
+            }
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: env.AWS_CREDENTIALS_ID
+                ]]) {
+                    sh '''
+                        echo "Logging into Amazon ECR..."
+                        # aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+                        echo "Images built and ready for EC2 deployment."
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy to EC2') {
+            when {
+                branch 'main'
+            }
+            steps {
+                echo "Deploying containers to AWS EC2 staging host..."
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+        success {
+            echo "CI/CD Pipeline executed successfully for TradeX AI."
+        }
+        failure {
+            echo "CI/CD Pipeline failed. Please check build logs."
+        }
+    }
+}

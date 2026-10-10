@@ -1,0 +1,76 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: tradex-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tradex}
+      POSTGRES_USER: ${POSTGRES_USER:-tradex_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tradex_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tradex_user} -d ${POSTGRES_DB:-tradex}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tradex-backend
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://tradex_user:tradex_password@db:5432/tradex}
+      AI_PROVIDER: ${AI_PROVIDER:-deterministic_fallback}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SECRET_KEY: ${SECRET_KEY:-development-secret-key-tradex-32bytes}
+      LOCAL_STORAGE_PATH: /app/storage
+    volumes:
+      - ./backend:/app
+      - storage_data:/app/storage
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: tradex-frontend
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000/api/v1
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: tradex-nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+      - frontend
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+    name: tradex_pgdata
+  storage_data:
+    name: tradex_storage
+  frontend_node_modules:
+    name: tradex_frontend_node_modules
