@@ -1,5 +1,5 @@
 from app.models.base import Base, SoftDeleteMixin, TimestampMixin, UUIDPrimaryKeyMixin
-from app.models.identity import Buyer, Company, Role, Supplier, User
+from app.models.identity import Buyer, Company, RefreshToken, Role, Supplier, User
 from app.models.catalog import Category, Certification, PriceTier, Product, ProductImage, SupplierCertification
 from app.models.trade import Order, OrderItem, Payment, Quotation, RFQ, RFQItem, Shipment, ShipmentEvent
 from app.models.content import Document, DocumentExtraction, Message, Notification, Review, SavedItem
@@ -13,6 +13,7 @@ __all__ = [
     # Identity
     "Role",
     "User",
+    "RefreshToken",
     "Company",
     "Buyer",
     "Supplier",

@@ -1,6 +1,7 @@
 import uuid
+from datetime import datetime
 from typing import List, Optional
-from sqlalchemy import Boolean, CheckConstraint, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -32,6 +33,20 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     role_rel: Mapped[Optional["Role"]] = relationship("Role", back_populates="users")
     buyers: Mapped[List["Buyer"]] = relationship("Buyer", back_populates="user")
     suppliers: Mapped[List["Supplier"]] = relationship("Supplier", back_populates="user")
+    refresh_tokens: Mapped[List["RefreshToken"]] = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
+
+
+class RefreshToken(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "refresh_tokens"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+
+    user: Mapped["User"] = relationship("User", back_populates="refresh_tokens")
 
 
 class Company(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):

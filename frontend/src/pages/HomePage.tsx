@@ -98,7 +98,7 @@ export const HomePage: React.FC = () => {
               title: "Marketplace & AI Search",
               desc: "Vector-powered natural language supplier and product discovery.",
               icon: Compass,
-              href: "/",
+              href: "/search",
               simulated: false,
             },
             {
@@ -119,14 +119,14 @@ export const HomePage: React.FC = () => {
               title: "RFQ & AI Quote Comparison",
               desc: "Automated RFQ distribution and multi-supplier bid matrix comparison.",
               icon: FileText,
-              href: "/rfqs",
+              href: "/rfq",
               simulated: false,
             },
             {
               title: "Negotiation Chat",
               desc: "Real-time communication with automated counter-offer guidance.",
               icon: MessageSquare,
-              href: "/negotiations",
+              href: "/messages",
               simulated: false,
             },
             {
@@ -161,19 +161,20 @@ export const HomePage: React.FC = () => {
               title: "Payments & Escrow",
               desc: "Simulated milestone escrow releases and multi-currency transactions.",
               icon: CreditCard,
-              href: "/simulated/finance",
+              href: "/trade-finance",
               simulated: true,
             },
           ].map((card) => {
             const Icon = card.icon;
             return (
-              <div
+              <Link
                 key={card.title}
-                className="bg-white border border-slate-200 rounded-xl p-5 hover:border-indigo-300 hover:shadow-sm transition flex flex-col justify-between"
+                to={card.href}
+                className="bg-white border border-slate-200 rounded-xl p-5 hover:border-indigo-300 hover:shadow-sm transition flex flex-col justify-between group"
               >
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <div className="p-2.5 rounded-lg bg-indigo-50 text-indigo-600">
+                    <div className="p-2.5 rounded-lg bg-indigo-50 text-indigo-600 group-hover:bg-indigo-100 transition-colors">
                       <Icon className="w-5 h-5" />
                     </div>
                     {card.simulated && <SimulatedBadge />}
@@ -182,9 +183,9 @@ export const HomePage: React.FC = () => {
                   <p className="text-sm text-slate-500 mt-1 leading-relaxed">{card.desc}</p>
                 </div>
                 <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                  <span className="text-xs font-semibold text-indigo-600">Explore Module &rarr;</span>
+                  <span className="text-xs font-semibold text-indigo-600 group-hover:underline">Explore Module &rarr;</span>
                 </div>
-              </div>
+              </Link>
             );
           })}
         </div>

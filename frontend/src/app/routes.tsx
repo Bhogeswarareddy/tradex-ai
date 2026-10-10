@@ -1,94 +1,201 @@
 import React from "react";
-import { Routes, Route } from "react-router-dom";
-import { HomePage, ModulePlaceholderPage, NotFoundPage } from "../pages";
+import { Routes, Route, Outlet } from "react-router-dom";
+import {
+  HomePage,
+  ModulePlaceholderPage,
+  NotFoundPage,
+  LoginPage,
+  RegisterPage,
+  ForgotPasswordPage,
+  ProfilePage,
+  DesignSystemPage,
+} from "../pages";
+import { AppLayout } from "../components/layout";
+import { RoleGuard } from "../features/auth";
+
+const LayoutWrapper: React.FC = () => {
+  return (
+    <AppLayout>
+      <Outlet />
+    </AppLayout>
+  );
+};
 
 export const AppRoutes: React.FC = () => {
   return (
     <Routes>
-      <Route path="/" element={<HomePage />} />
-      <Route
-        path="/suppliers"
-        element={
-          <ModulePlaceholderPage
-            title="Supplier Profiles & Verification"
-            description="Verified supplier capabilities, compliance certifications, and auditing."
-          />
-        }
-      />
-      <Route
-        path="/products"
-        element={
-          <ModulePlaceholderPage
-            title="Product Catalog & Specifications"
-            description="Multi-tier categories, specifications, and volume pricing tiers."
-          />
-        }
-      />
-      <Route
-        path="/rfqs"
-        element={
-          <ModulePlaceholderPage
-            title="RFQs & AI Quote Comparison"
-            description="Automated RFQ distribution and multi-supplier bid matrix comparison."
-          />
-        }
-      />
-      <Route
-        path="/negotiations"
-        element={
-          <ModulePlaceholderPage
-            title="Negotiation Chat & Counter-Offer Engine"
-            description="Real-time communication with automated counter-offer guidance."
-          />
-        }
-      />
-      <Route
-        path="/orders"
-        element={
-          <ModulePlaceholderPage
-            title="Orders & Milestone Tracking"
-            description="Milestone contract generation and multi-modal shipment timeline."
-          />
-        }
-      />
-      <Route
-        path="/copilot"
-        element={
-          <ModulePlaceholderPage
-            title="AI Trade Copilot (RAG)"
-            description="Retrieval-Augmented Generation assistant for international trade."
-          />
-        }
-      />
-      <Route
-        path="/analytics"
-        element={
-          <ModulePlaceholderPage
-            title="Analytics & Spend Reporting"
-            description="Spend analytics, supplier fulfillment reliability, and trade metrics."
-          />
-        }
-      />
-      <Route
-        path="/admin"
-        element={
-          <ModulePlaceholderPage
-            title="Admin & Platform Governance"
-            description="Role-based access, audit logging, and platform administration."
-          />
-        }
-      />
-      <Route
-        path="/simulated/finance"
-        element={
-          <ModulePlaceholderPage
-            title="Trade Finance & Milestone Escrow"
-            description="Simulated payments, escrow hold & release, customs tariffs, and freight."
-            simulated={true}
-          />
-        }
-      />
-      <Route path="*" element={<NotFoundPage />} />
+      {/* Standalone Authentication Pages (No sidebar layout) */}
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+
+      {/* Main Dashboard Pages (Inside AppLayout) */}
+      <Route element={<LayoutWrapper />}>
+        <Route path="/" element={<HomePage />} />
+        <Route
+          path="/search"
+          element={
+            <ModulePlaceholderPage
+              title="AI Semantic & Multimodal Search"
+              description="Hybrid dense vector + BM25 keyword search across products, specs, and verified suppliers."
+            />
+          }
+        />
+        <Route
+          path="/products"
+          element={
+            <ModulePlaceholderPage
+              title="Product Catalog & Tier Pricing"
+              description="Multi-tier categories, specifications, and volume tiered pricing."
+            />
+          }
+        />
+        <Route
+          path="/suppliers"
+          element={
+            <ModulePlaceholderPage
+              title="Verified Supplier Directory"
+              description="Audited supplier profiles, compliance certifications, and track record metrics."
+            />
+          }
+        />
+        <Route
+          path="/rfq"
+          element={
+            <ModulePlaceholderPage
+              title="RFQ Marketplace"
+              description="Request for Quotations, automated broadcast, and AI quote comparison."
+            />
+          }
+        />
+        <Route
+          path="/rfqs"
+          element={
+            <ModulePlaceholderPage
+              title="RFQ Marketplace"
+              description="Request for Quotations, automated broadcast, and AI quote comparison."
+            />
+          }
+        />
+        <Route
+          path="/orders"
+          element={
+            <ModulePlaceholderPage
+              title="Orders & Milestone Tracking"
+              description="Digital purchase contracts, escrow milestones, and fulfillment progress."
+            />
+          }
+        />
+        <Route
+          path="/shipments"
+          element={
+            <ModulePlaceholderPage
+              title="Shipments & Logistics"
+              description="Container vessel tracking, Bill of Lading, and customs clearances."
+            />
+          }
+        />
+        <Route
+          path="/trade-finance"
+          element={
+            <ModulePlaceholderPage
+              title="Trade Finance & Escrow"
+              description="Simulated Letter of Credit (LC), milestone escrow payments, and currency hedging."
+              simulated={true}
+            />
+          }
+        />
+        <Route
+          path="/simulated/finance"
+          element={
+            <ModulePlaceholderPage
+              title="Trade Finance & Escrow"
+              description="Simulated Letter of Credit (LC), milestone escrow payments, and currency hedging."
+              simulated={true}
+            />
+          }
+        />
+        <Route
+          path="/documents"
+          element={
+            <ModulePlaceholderPage
+              title="Trade Documents Vault"
+              description="OCR processed proforma invoices, packing lists, and origin certificates."
+            />
+          }
+        />
+        <Route
+          path="/analytics"
+          element={
+            <ModulePlaceholderPage
+              title="Trade Analytics & Reporting"
+              description="Spend analytics, volume breakdown, and supplier fulfillment metrics."
+            />
+          }
+        />
+        <Route
+          path="/messages"
+          element={
+            <ModulePlaceholderPage
+              title="Trade Messages & Counter-Offers"
+              description="Direct supplier-buyer negotiation chat with AI suggested counter-offers."
+            />
+          }
+        />
+        <Route
+          path="/negotiations"
+          element={
+            <ModulePlaceholderPage
+              title="Trade Messages & Counter-Offers"
+              description="Direct supplier-buyer negotiation chat with AI suggested counter-offers."
+            />
+          }
+        />
+        <Route
+          path="/saved"
+          element={
+            <ModulePlaceholderPage
+              title="Saved Items & Suppliers"
+              description="Your bookmarked products, preferred suppliers, and saved search filters."
+            />
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ModulePlaceholderPage
+              title="Account & Platform Settings"
+              description="Preferences, notifications, API keys, and workspace customization."
+            />
+          }
+        />
+        <Route
+          path="/copilot"
+          element={
+            <ModulePlaceholderPage
+              title="AI Trade Copilot"
+              description="Interactive AI assistant for trade discovery, HS code lookup, and RFQ generation."
+            />
+          }
+        />
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/design-system" element={<DesignSystemPage />} />
+
+        {/* RBAC Protected Admin Route */}
+        <Route
+          path="/admin"
+          element={
+            <RoleGuard allowedRoles={["admin"]}>
+              <ModulePlaceholderPage
+                title="Admin Platform Governance"
+                description="Platform user directory, verification auditing, and system logs."
+              />
+            </RoleGuard>
+          }
+        />
+
+        <Route path="*" element={<NotFoundPage />} />
+      </Route>
     </Routes>
   );
 };
