@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, SoftDeleteMixin, TimestampMixin, UUIDPrimaryKeyMixin
@@ -59,12 +59,16 @@ class Company(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
 
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     country: Mapped[str] = mapped_column(String(100), nullable=False)
+    state: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     city: Mapped[str] = mapped_column(String(100), nullable=False)
     website: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     logo_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    banner_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     years_in_business: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     verified_status: Mapped[str] = mapped_column(String(50), default="unverified", nullable=False)
+    languages: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
+    factory_details: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     suppliers: Mapped[List["Supplier"]] = relationship("Supplier", back_populates="company")
     buyers: Mapped[List["Buyer"]] = relationship("Buyer", back_populates="company")
@@ -105,6 +109,8 @@ class Supplier(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     capacity_per_month: Mapped[str] = mapped_column(String(100), default="100 MT", nullable=False)
     export_countries: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
     response_time_hours: Mapped[float] = mapped_column(Float, default=24.0, nullable=False)
+    repeat_buyer_rate: Mapped[float] = mapped_column(Float, default=84.0, nullable=False)
+    total_buyers_count: Mapped[int] = mapped_column(Integer, default=320, nullable=False)
 
     company: Mapped["Company"] = relationship("Company", back_populates="suppliers")
     user: Mapped["User"] = relationship("User", back_populates="suppliers")

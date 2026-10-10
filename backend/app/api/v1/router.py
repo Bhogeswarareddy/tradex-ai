@@ -14,6 +14,7 @@ from app.api.v1.routes.rfqs import router as rfqs_router
 from app.api.v1.routes.saved import router as saved_router
 from app.api.v1.routes.shipments import router as shipments_router
 from app.api.v1.routes.suppliers import router as suppliers_router
+from app.api.v1.routes.supplier_portal import router as supplier_portal_router
 from app.api.v1.routes.users import router as users_router
 from app.core.config import settings
 from app.schemas.health import HealthResponse
@@ -39,6 +40,7 @@ api_router.include_router(users_router)
 api_router.include_router(products_router)
 api_router.include_router(saved_router)
 api_router.include_router(suppliers_router)
+api_router.include_router(supplier_portal_router)
 api_router.include_router(rfqs_router)
 api_router.include_router(quotes_router)
 api_router.include_router(orders_router)

@@ -16,7 +16,9 @@ import {
   Settings,
   Bot,
   Hexagon,
+  Store,
 } from "lucide-react";
+import { useAuth } from "../../features/auth";
 
 export interface NavItem {
   id: string;
@@ -51,6 +53,23 @@ export interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ onNavClick, className = "" }) => {
   const location = useLocation();
+  const { user } = useAuth();
+
+  const isSupplierOrAdmin = user?.role === "supplier" || user?.role === "admin";
+  const navItems: NavItem[] = isSupplierOrAdmin
+    ? [
+        ...NAV_ITEMS.slice(0, 4),
+        {
+          id: "supplier-portal",
+          name: "Supplier Portal",
+          href: "/supplier",
+          icon: Store,
+          badge: "Portal",
+          badgeColor: "bg-emerald-600",
+        },
+        ...NAV_ITEMS.slice(4),
+      ]
+    : NAV_ITEMS;
 
   return (
     <aside
@@ -79,7 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavClick, className = "" }) 
 
         {/* 13 Ordered Navigation Links */}
         <nav className="p-3 space-y-1 overflow-y-auto flex-1 scrollbar-thin scrollbar-thumb-white/10">
-          {NAV_ITEMS.map((item) => {
+          {navItems.map((item) => {
             const Icon = item.icon;
             const isActive =
               location.pathname === item.href ||

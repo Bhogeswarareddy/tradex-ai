@@ -11,6 +11,9 @@ import {
   DesignSystemPage,
   ProductsPage,
   ProductDetailPage,
+  SuppliersPage,
+  SupplierDetailPage,
+  SupplierPortalPage,
 } from "../pages";
 import { AppLayout } from "../components/layout";
 import { RoleGuard } from "../features/auth";
@@ -46,13 +49,14 @@ export const AppRoutes: React.FC = () => {
         <Route path="/products" element={<ProductsPage />} />
         <Route path="/products/:slug" element={<ProductDetailPage />} />
         <Route path="/ai-search" element={<ProductsPage />} />
+        <Route path="/suppliers" element={<SuppliersPage />} />
+        <Route path="/suppliers/:id" element={<SupplierDetailPage />} />
         <Route
-          path="/suppliers"
+          path="/supplier/*"
           element={
-            <ModulePlaceholderPage
-              title="Verified Supplier Directory"
-              description="Audited supplier profiles, compliance certifications, and track record metrics."
-            />
+            <RoleGuard allowedRoles={["supplier", "admin"]}>
+              <SupplierPortalPage />
+            </RoleGuard>
           }
         />
         <Route

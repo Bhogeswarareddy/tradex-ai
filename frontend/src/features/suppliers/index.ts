@@ -1,1 +1,9 @@
-export const SUPPLIERS_FEATURE = "suppliers";
+﻿export * from "./SupplierCard";
+export * from "./SupplierFilterSidebar";
+export * from "./SupplierProfileHeader";
+export * from "./SupplierOverviewTab";
+export * from "./SupplierProductsTab";
+export * from "./SupplierCertificationsTab";
+export * from "./SupplierFactoryTab";
+export * from "./SupplierPerformanceTab";
+export * from "./SupplierReviewsTab";

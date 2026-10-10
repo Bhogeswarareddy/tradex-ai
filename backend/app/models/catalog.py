@@ -2,7 +2,7 @@ import uuid
 from datetime import date
 from typing import List, Optional
 from sqlalchemy import Boolean, CheckConstraint, Date, Float, ForeignKey, Index, Integer, Numeric, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, SoftDeleteMixin, TimestampMixin, UUIDPrimaryKeyMixin
@@ -78,6 +78,9 @@ class Product(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     origin_country: Mapped[str] = mapped_column(String(100), nullable=False)
     lead_time_days: Mapped[int] = mapped_column(Integer, default=14, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    specifications: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    stock_available: Mapped[int] = mapped_column(Integer, default=1000, nullable=False)
+    next_available_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     supplier: Mapped["Supplier"] = relationship("Supplier", back_populates="products")
     category: Mapped["Category"] = relationship("Category", back_populates="products")

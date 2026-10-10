@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.core.db import SyncSessionLocal
 from app.models import (
     Base, Buyer, Category, Certification, Company, Order, OrderItem,
-    Payment, PriceTier, Product, ProductImage, Quotation, RFQ, RFQItem,
+    Payment, PriceTier, Product, ProductImage, Quotation, Review, RFQ, RFQItem,
     Role, Shipment, ShipmentEvent, Supplier, SupplierCertification, User
 )
 
@@ -116,15 +116,19 @@ def seed():
             {
                 "company_name": "Sri Bharat Spices Pvt Ltd",
                 "city": "Guntur",
+                "state": "Andhra Pradesh",
                 "years": 12,
                 "trust_score": 4.9,
                 "on_time": 95.0,
                 "capacity": "1,000+ MT/month",
                 "moq": 1000,
                 "email": "supplier@sribharat.com",
-                "certs": ["ORG-001", "ISO-22000"],
+                "certs": ["ORG-001", "ISO-22000", "HACCP-01", "APEDA-01"],
                 "exports": ["Germany", "USA", "UK", "Japan", "UAE"],
                 "response_hrs": 4.0,
+                "description": "Leading exporter of premium spices from India.",
+                "banner_url": "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=1600&q=80",
+                "logo_url": "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=200&q=80",
             },
             {
                 "company_name": "Madhav Agro Exports",
@@ -205,13 +209,52 @@ def seed():
                     name=sm["company_name"],
                     country="India",
                     city=sm["city"],
+                    state=sm.get("state", "Andhra Pradesh" if sm["city"] in ["Guntur", "Vijayawada"] else "Gujarat" if sm["city"] == "Ahmedabad" else "Kerala" if sm["city"] == "Kochi" else "Maharashtra"),
                     website=f"https://www.{sm['company_name'].lower().replace(' ', '')}.com",
-                    description=f"Premier manufacturer and exporter with {sm['years']} years of global supply track record.",
+                    description=sm.get("description", f"Premier manufacturer and exporter with {sm['years']} years of global supply track record."),
                     years_in_business=sm["years"],
                     verified_status="verified",
+                    banner_url=sm.get("banner_url", "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=1600&q=80"),
+                    logo_url=sm.get("logo_url", "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=200&q=80"),
+                    languages=["English", "Hindi", "Telugu", "German"],
+                    factory_details={
+                        "facility_size": "45,000 sq ft",
+                        "annual_capacity": "12,000 Metric Tons",
+                        "production_lines": 6,
+                        "cleanrooms": "ISO Class 8 Certified",
+                        "warehouse_capacity": "10,000 MT Climate Controlled",
+                        "testing_lab": "In-house NABL Accredited HPLC & GC-MS",
+                        "photos": [
+                            "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=800&q=80",
+                            "https://images.unsplash.com/photo-1587293852726-70cdb56c2866?auto=format&fit=crop&w=800&q=80",
+                            "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=800&q=80"
+                        ]
+                    }
                 )
                 session.add(comp)
                 session.flush()
+            else:
+                comp.state = sm.get("state", comp.state or "Andhra Pradesh")
+                comp.banner_url = sm.get("banner_url", comp.banner_url or "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=1600&q=80")
+                comp.logo_url = sm.get("logo_url", comp.logo_url or "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=200&q=80")
+                if "description" in sm:
+                    comp.description = sm["description"]
+                if not comp.factory_details:
+                    comp.factory_details = {
+                        "facility_size": "45,000 sq ft",
+                        "annual_capacity": "12,000 Metric Tons",
+                        "production_lines": 6,
+                        "cleanrooms": "ISO Class 8 Certified",
+                        "warehouse_capacity": "10,000 MT Climate Controlled",
+                        "testing_lab": "In-house NABL Accredited HPLC & GC-MS",
+                        "photos": [
+                            "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=800&q=80",
+                            "https://images.unsplash.com/photo-1587293852726-70cdb56c2866?auto=format&fit=crop&w=800&q=80",
+                            "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=800&q=80"
+                        ]
+                    }
+                if not comp.languages:
+                    comp.languages = ["English", "Hindi", "Telugu", "German"]
 
             supp = session.execute(select(Supplier).where(Supplier.company_id == comp.id)).scalar_one_or_none()
             if not supp:
@@ -223,21 +266,35 @@ def seed():
                     capacity_per_month=sm["capacity"],
                     export_countries=sm["exports"],
                     response_time_hours=sm["response_hrs"],
+                    repeat_buyer_rate=84.0,
+                    total_buyers_count=320,
                 )
                 session.add(supp)
                 session.flush()
+            else:
+                supp.repeat_buyer_rate = 84.0
+                supp.total_buyers_count = 320
 
-                # Attach certifications
-                for c_code in sm["certs"]:
-                    sc = SupplierCertification(
-                        supplier_id=supp.id,
-                        certification_id=certs_dict[c_code].id,
-                        certificate_no=f"CERT-{c_code}-{sm['years']}Y",
-                        issued_at=date(2023, 1, 15),
-                        expires_at=date(2028, 1, 15),
-                    )
-                    session.add(sc)
-                session.flush()
+            # Attach certifications if not present
+            for c_code in sm["certs"]:
+                c_entity = certs_dict.get(c_code)
+                if c_entity:
+                    existing_sc = session.execute(
+                        select(SupplierCertification).where(
+                            SupplierCertification.supplier_id == supp.id,
+                            SupplierCertification.certification_id == c_entity.id
+                        )
+                    ).scalar_one_or_none()
+                    if not existing_sc:
+                        sc = SupplierCertification(
+                            supplier_id=supp.id,
+                            certification_id=c_entity.id,
+                            certificate_no=f"CERT-{c_code}-{sm['years']}Y",
+                            issued_at=date(2023, 1, 15),
+                            expires_at=date(2028, 1, 15),
+                        )
+                        session.add(sc)
+            session.flush()
 
             suppliers_dict[sm["company_name"]] = supp
 
@@ -544,6 +601,31 @@ def seed():
                         ),
                     ]
                     session.add_all(events)
+
+        # 9. Seed realistic reviews for Sri Bharat Spices Pvt Ltd
+        sri_bharat_supp = session.execute(
+            select(Supplier).join(Company).where(Company.name == "Sri Bharat Spices Pvt Ltd")
+        ).scalar_one_or_none()
+        if sri_bharat_supp and buyer_profile:
+            existing_rev = session.execute(
+                select(Review).where(Review.supplier_id == sri_bharat_supp.id, Review.buyer_id == buyer_profile.id)
+            ).first()
+            if not existing_rev:
+                r1 = Review(
+                    supplier_id=sri_bharat_supp.id,
+                    buyer_id=buyer_profile.id,
+                    rating=5,
+                    title="Outstanding Curcumin Quality and Punctual Shipping",
+                    comment="The organic turmeric powder arrived at Port of Hamburg exactly to specification. Curcumin test confirmed 5.2%. Will re-order regularly.",
+                )
+                r2 = Review(
+                    supplier_id=sri_bharat_supp.id,
+                    buyer_id=buyer_profile.id,
+                    rating=5,
+                    title="Reliable EU Compliance Documents",
+                    comment="All phytosanitary, APEDA and organic transaction certificates were clean and cleared German customs without inspection delay.",
+                )
+                session.add_all([r1, r2])
 
         session.commit()
         print("=== Seed Completed Successfully! ===")
