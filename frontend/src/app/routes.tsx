@@ -15,6 +15,8 @@ import {
   SupplierDetailPage,
   SupplierPortalPage,
   AiSearchPage,
+  RfqsPage,
+  RfqDetailPage,
 } from "../pages";
 import { AppLayout } from "../components/layout";
 import { RoleGuard } from "../features/auth";
@@ -52,24 +54,10 @@ export const AppRoutes: React.FC = () => {
             </RoleGuard>
           }
         />
-        <Route
-          path="/rfq"
-          element={
-            <ModulePlaceholderPage
-              title="RFQ Marketplace"
-              description="Request for Quotations, automated broadcast, and AI quote comparison."
-            />
-          }
-        />
-        <Route
-          path="/rfqs"
-          element={
-            <ModulePlaceholderPage
-              title="RFQ Marketplace"
-              description="Request for Quotations, automated broadcast, and AI quote comparison."
-            />
-          }
-        />
+        <Route path="/rfq" element={<RfqsPage />} />
+        <Route path="/rfqs" element={<RfqsPage />} />
+        <Route path="/rfq/:id" element={<RfqDetailPage />} />
+        <Route path="/rfqs/:id" element={<RfqDetailPage />} />
         <Route
           path="/orders"
           element={

@@ -5,7 +5,6 @@ import {
   Building2,
   Star,
   MapPin,
-  TrendingUp,
   Package,
   ExternalLink,
 } from "lucide-react";
@@ -18,6 +17,7 @@ interface AiSearchResultsTabsProps {
   suppliers: AiMatchedSupplier[];
   products: AiMatchedProduct[];
   onRequestQuote: (supplierId: string, supplierName: string) => void;
+  onOpenBreakdown?: (supplier: any) => void;
 }
 
 export const AiSearchResultsTabs: React.FC<AiSearchResultsTabsProps> = ({
@@ -26,6 +26,7 @@ export const AiSearchResultsTabs: React.FC<AiSearchResultsTabsProps> = ({
   suppliers,
   products,
   onRequestQuote,
+  onOpenBreakdown,
 }) => {
   return (
     <div className="space-y-6">
@@ -162,13 +163,24 @@ export const AiSearchResultsTabs: React.FC<AiSearchResultsTabsProps> = ({
 
                       {/* AI Why it matched section (3 bullet points) */}
                       <div className="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200/80 space-y-1.5">
-                        <div className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
-                          <span>Why this supplier matched your requirements:</span>
+                        <div className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Why this supplier matched your requirements:</span>
+                          </div>
+                          {onOpenBreakdown && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenBreakdown(s)}
+                              className="text-[11px] text-blue-600 hover:text-blue-800 font-medium underline underline-offset-2"
+                            >
+                              Why this score?
+                            </button>
+                          )}
                         </div>
                         <ul className="text-xs text-slate-600 space-y-1 pl-1">
                           {s.match_reasons && s.match_reasons.length > 0 ? (
-                            s.match_reasons.map((reason, idx) => (
+                            s.match_reasons.slice(0, 3).map((reason, idx) => (
                               <li key={idx} className="flex items-start gap-1.5">
                                 <span className="text-blue-500 font-bold">&bull;</span>
                                 <span>{reason.replace(/^•\s*/, "")}</span>
@@ -191,21 +203,62 @@ export const AiSearchResultsTabs: React.FC<AiSearchResultsTabsProps> = ({
                             </>
                           )}
                         </ul>
+
+                        {/* Trade Risks as amber warning line */}
+                        {(s as any).risks && (s as any).risks.length > 0 && (
+                          <div className="mt-2 pt-2 border-t border-slate-200/60 flex items-center gap-1.5 text-xs text-amber-800 bg-amber-50/60 px-2.5 py-1 rounded-lg border border-amber-200/80">
+                            <span className="font-bold text-amber-600">⚠️ Risk:</span>
+                            <span>{(s as any).risks[0]}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    {/* Right: Match Score Badge & Actions */}
+                    {/* Right: Circular Match Score Ring & Actions */}
                     <div className="flex md:flex-col items-center md:items-end justify-between w-full md:w-auto gap-4 pt-3 md:pt-0 border-t md:border-t-0 border-slate-100 flex-shrink-0">
-                      {/* Match Score Badge */}
-                      <div className="text-right">
-                        <div
-                          className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full border text-xs sm:text-sm font-bold shadow-xs ${scoreColor}`}
-                        >
-                          <TrendingUp className="w-4 h-4" />
-                          <span>{matchScore}% Match</span>
+                      {/* Circular Match Score Ring */}
+                      <div className="flex items-center gap-3 md:flex-col md:items-end">
+                        <div className="relative w-14 h-14 flex items-center justify-center">
+                          <svg className="w-14 h-14 transform -rotate-90" viewBox="0 0 36 36">
+                            <path
+                              className="text-slate-100"
+                              strokeWidth="3.5"
+                              stroke="currentColor"
+                              fill="none"
+                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                            />
+                            <path
+                              className={`${
+                                matchScore >= 80
+                                  ? "text-emerald-500 stroke-emerald-500"
+                                  : matchScore >= 60
+                                  ? "text-amber-500 stroke-amber-500"
+                                  : "text-rose-500 stroke-rose-500"
+                              } transition-all duration-700 ease-out`}
+                              strokeDasharray="100, 100"
+                              strokeDashoffset={100 - matchScore}
+                              strokeWidth="3.5"
+                              strokeLinecap="round"
+                              stroke="currentColor"
+                              fill="none"
+                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                            />
+                          </svg>
+                          <div className="absolute flex flex-col items-center">
+                            <span className="text-xs font-black text-slate-800">{Math.round(matchScore)}</span>
+                            <span className="text-[9px] font-bold text-slate-400 -mt-1">%</span>
+                          </div>
                         </div>
-                        <div className="text-[11px] text-slate-400 mt-1 font-medium">
-                          Trust Score: {s.trust_score || 95}/100
+
+                        <div className="text-right">
+                          <span
+                            className={`inline-block text-[11px] font-bold px-2 py-0.5 rounded-full border ${scoreColor}`}
+                          >
+                            {matchScore >= 80 ? "High Match" : matchScore >= 60 ? "Moderate Match" : "Low Match"}
+                          </span>
+                          <div className="text-[11px] text-slate-400 mt-0.5 font-medium">
+                            Trust: {s.trust_score || 95}/100
+                          </div>
                         </div>
                       </div>
 

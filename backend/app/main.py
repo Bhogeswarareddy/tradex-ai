@@ -8,6 +8,9 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from contextlib import asynccontextmanager
+import logging
+
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.db import get_db
@@ -15,10 +18,30 @@ from app.core.errors import register_error_handlers
 from app.core.logging import setup_logging
 from app.core.middleware import RequestIDMiddleware
 
+logger = logging.getLogger(__name__)
+
 # Initialize structured logging
 setup_logging(level="INFO" if settings.ENV != "development" else "DEBUG")
 
 START_TIME = time.time()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Start Celery-free APScheduler background jobs
+    try:
+        from app.services.scheduler import start_scheduler
+        start_scheduler()
+    except Exception as e:
+        logger.warning(f"Could not start scheduler: {e}")
+    yield
+    # Shutdown: Cleanly stop background jobs
+    try:
+        from app.services.scheduler import shutdown_scheduler
+        shutdown_scheduler()
+    except Exception:
+        pass
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -27,6 +50,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    lifespan=lifespan,
 )
 
 # 1. Error Handling (Centralized Standard Error Envelope)

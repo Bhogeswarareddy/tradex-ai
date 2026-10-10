@@ -6,6 +6,7 @@ import {
   MarketInsightRow,
   SuggestedPromptItem,
 } from "../lib/api/dashboard";
+import { matchingApi } from "../lib/api/matching";
 import {
   HeroSearchSection,
   KpiBarSection,
@@ -60,8 +61,44 @@ export const HomePage: React.FC = () => {
     setSupplierTab(tab);
     setSuppliersLoading(true);
     try {
-      const res = await dashboardApi.getRecommendedSuppliers(tab);
-      setSuppliers(res);
+      if (tab === "top_match") {
+        let lastReq = {
+          product: "Organic Turmeric Powder",
+          quantity: 20000,
+          destination_country: "Germany",
+          certifications: ["EU Organic", "ISO 22000"],
+        };
+        try {
+          const stored = localStorage.getItem("tradex_last_requirement");
+          if (stored) lastReq = JSON.parse(stored);
+        } catch {
+          // ignore
+        }
+        const matchRes = await matchingApi.rankSuppliers(lastReq);
+        const mapped: RecommendedSupplierCard[] = matchRes.results.map((r) => ({
+          id: r.id,
+          name: r.name,
+          logo_url: r.logo_url,
+          cover_image_url: r.banner_url,
+          country: r.country,
+          city: r.city,
+          flag: r.country === "India" ? "🇮🇳" : "🌐",
+          years_in_business: r.years_in_business,
+          is_verified: r.verified_status === "verified",
+          trust_score: r.trust_score,
+          rating: r.rating,
+          review_count: r.total_reviews,
+          on_time_rate: r.on_time_rate,
+          capacity_per_month: r.capacity_per_month,
+          moq: `${r.min_moq || 1000} kg`,
+          certifications: r.certifications.slice(0, 3),
+          is_saved: false,
+        }));
+        setSuppliers(mapped);
+      } else {
+        const res = await dashboardApi.getRecommendedSuppliers(tab);
+        setSuppliers(res);
+      }
     } catch {
       // Keep previous on error
     } finally {

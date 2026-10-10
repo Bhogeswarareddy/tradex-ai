@@ -13,6 +13,7 @@ import {
   FilterRelaxationSuggestions,
   AiSearchResultsTabs,
   SearchHistoryDrawer,
+  ScoreBreakdownDrawer,
 } from "../features/ai-search";
 import { ErrorState } from "../components/ErrorState";
 
@@ -31,6 +32,7 @@ export const AiSearchPage: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<"suppliers" | "products">("suppliers");
   const [isSaved, setIsSaved] = useState(false);
+  const [breakdownSupplier, setBreakdownSupplier] = useState<any | null>(null);
 
   // History state
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -272,6 +274,7 @@ export const AiSearchPage: React.FC = () => {
             suppliers={filteredSuppliers}
             products={filteredProducts}
             onRequestQuote={handleRequestQuote}
+            onOpenBreakdown={setBreakdownSupplier}
           />
         </div>
       )}
@@ -286,6 +289,13 @@ export const AiSearchPage: React.FC = () => {
           executeSearch(q);
         }}
         isLoading={isHistoryLoading}
+      />
+
+      {/* Why This Score Breakdown Drawer */}
+      <ScoreBreakdownDrawer
+        isOpen={Boolean(breakdownSupplier)}
+        onClose={() => setBreakdownSupplier(null)}
+        supplier={breakdownSupplier}
       />
     </div>
   );

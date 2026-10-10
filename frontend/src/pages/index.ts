@@ -12,3 +12,5 @@ export * from "./SuppliersPage";
 export * from "./SupplierDetailPage";
 export * from "./SupplierPortalPage";
 export * from "./AiSearchPage";
+export * from "./RfqsPage";
+export * from "./RfqDetailPage";
