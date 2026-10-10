@@ -1,0 +1,139 @@
+[
+  {
+    "id": "query_1_turmeric_fixed",
+    "query": "I need 20 tons of organic turmeric from India delivered to Hamburg within 45 days",
+    "expected": {
+      "product": "turmeric",
+      "category": "Spices & Herbs",
+      "quantity": 20000,
+      "unit": "kg",
+      "origin_country": "India",
+      "destination_country": "Germany",
+      "destination_port": "Hamburg",
+      "certifications": ["Organic"],
+      "delivery_days": 45
+    }
+  },
+  {
+    "id": "query_2_basmati_rice",
+    "query": "Looking for 50 MT Basmati rice 1121 steam from India to Dubai Jebel Ali CIF",
+    "expected": {
+      "product": "Basmati rice",
+      "category": "Grains & Cereals",
+      "quantity": 50,
+      "unit": "MT",
+      "origin_country": "India",
+      "destination_country": "United Arab Emirates",
+      "destination_port": "Jebel Ali",
+      "incoterm": "CIF"
+    }
+  },
+  {
+    "id": "query_3_auto_components",
+    "query": "Need ISO 9001 certified CNC auto components from Germany to Detroit USA within 30 days",
+    "expected": {
+      "product": "CNC auto components",
+      "category": "Auto Components & Industrial",
+      "origin_country": "Germany",
+      "destination_country": "United States",
+      "destination_port": "Detroit",
+      "certifications": ["ISO 9001"],
+      "delivery_days": 30
+    }
+  },
+  {
+    "id": "query_4_black_pepper",
+    "query": "Procure 10 tons of Tellicherry garbled black pepper from Cochin India to New York FOB",
+    "expected": {
+      "product": "Tellicherry black pepper",
+      "category": "Spices & Herbs",
+      "quantity": 10000,
+      "unit": "kg",
+      "origin_country": "India",
+      "destination_country": "United States",
+      "destination_port": "New York",
+      "incoterm": "FOB"
+    }
+  },
+  {
+    "id": "query_5_cotton_yarn",
+    "query": "RFQ for 100 MT carded organic cotton yarn 30s count from India to Chittagong Bangladesh",
+    "expected": {
+      "product": "organic cotton yarn",
+      "category": "Textiles & Apparel",
+      "quantity": 100,
+      "unit": "MT",
+      "origin_country": "India",
+      "destination_country": "Bangladesh",
+      "destination_port": "Chittagong",
+      "certifications": ["Organic"]
+    }
+  },
+  {
+    "id": "query_6_saffron",
+    "query": "Need 50 kg Grade 1 ISO 3632 Super Negin saffron to London UK",
+    "expected": {
+      "product": "Super Negin saffron",
+      "category": "Spices & Herbs",
+      "quantity": 50,
+      "unit": "kg",
+      "destination_country": "United Kingdom",
+      "destination_port": "London",
+      "certifications": ["ISO 3632"]
+    }
+  },
+  {
+    "id": "query_7_green_coffee",
+    "query": "Seeking 20 MT Arabica green coffee beans from Vietnam to Rotterdam Netherlands",
+    "expected": {
+      "product": "Arabica green coffee beans",
+      "category": "Coffee & Tea",
+      "quantity": 20,
+      "unit": "MT",
+      "origin_country": "Vietnam",
+      "destination_country": "Netherlands",
+      "destination_port": "Rotterdam"
+    }
+  },
+  {
+    "id": "query_8_fresh_ginger",
+    "query": "Looking for 15 tons fresh ginger from India to Felixstowe UK with GlobalGAP",
+    "expected": {
+      "product": "fresh ginger",
+      "category": "Spices & Herbs",
+      "quantity": 15000,
+      "unit": "kg",
+      "origin_country": "India",
+      "destination_country": "United Kingdom",
+      "destination_port": "Felixstowe",
+      "certifications": ["GlobalGAP"]
+    }
+  },
+  {
+    "id": "query_9_solar_panels",
+    "query": "Procure 500 units Tier 1 monocrystalline solar panels with CE certification to California USA",
+    "expected": {
+      "product": "monocrystalline solar panels",
+      "category": "Renewable Energy & Solar",
+      "quantity": 500,
+      "unit": "units",
+      "destination_country": "United States",
+      "destination_port": "California",
+      "certifications": ["CE"]
+    }
+  },
+  {
+    "id": "query_10_cardamom",
+    "query": "Need 5 tons 8mm green cardamom from Kerala India to Dammam Saudi Arabia delivery in 20 days",
+    "expected": {
+      "product": "green cardamom",
+      "category": "Spices & Herbs",
+      "quantity": 5000,
+      "unit": "kg",
+      "origin_country": "India",
+      "destination_country": "Saudi Arabia",
+      "destination_port": "Dammam",
+      "delivery_days": 20
+    }
+  }
+]

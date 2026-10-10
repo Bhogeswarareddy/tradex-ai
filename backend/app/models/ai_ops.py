@@ -17,8 +17,30 @@ class AISearch(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     query: Mapped[str] = mapped_column(Text, nullable=False)
     filters: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    requirement: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     results_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     execution_time_ms: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+
+
+class AILog(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "ai_logs"
+    __table_args__ = (
+        Index("idx_ai_logs_feature", "feature_name"),
+        Index("idx_ai_logs_created_at", "created_at"),
+    )
+
+    feature_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    prompt_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    latency_ms: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    success: Mapped[bool] = mapped_column(Integer, default=1, nullable=False)
+    fallback: Mapped[bool] = mapped_column(Integer, default=0, nullable=False)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    metadata_: Mapped[Optional[dict]] = mapped_column("metadata", JSONB, nullable=True)
 
 
 class AIRecommendation(Base, UUIDPrimaryKeyMixin, TimestampMixin):

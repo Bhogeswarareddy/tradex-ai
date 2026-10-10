@@ -2,6 +2,8 @@ from fastapi import APIRouter
 
 from app.api.v1.routes.admin import router as admin_router
 from app.api.v1.routes.ai import router as ai_router
+from app.api.v1.routes.ai_search import router as ai_search_router
+from app.api.v1.routes.ai_admin import router as ai_admin_router
 from app.api.v1.routes.analytics import router as analytics_router
 from app.api.v1.routes.auth import router as auth_router
 from app.api.v1.routes.dashboard import router as dashboard_router
@@ -48,5 +50,7 @@ api_router.include_router(shipments_router)
 api_router.include_router(documents_router)
 api_router.include_router(messages_router)
 api_router.include_router(ai_router)
+api_router.include_router(ai_search_router)
+api_router.include_router(ai_admin_router)
 api_router.include_router(analytics_router)
 api_router.include_router(admin_router)

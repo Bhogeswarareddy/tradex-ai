@@ -14,6 +14,7 @@ import {
   SuppliersPage,
   SupplierDetailPage,
   SupplierPortalPage,
+  AiSearchPage,
 } from "../pages";
 import { AppLayout } from "../components/layout";
 import { RoleGuard } from "../features/auth";
@@ -37,18 +38,10 @@ export const AppRoutes: React.FC = () => {
       {/* Main Dashboard Pages (Inside AppLayout) */}
       <Route element={<LayoutWrapper />}>
         <Route path="/" element={<HomePage />} />
-        <Route
-          path="/search"
-          element={
-            <ModulePlaceholderPage
-              title="AI Semantic & Multimodal Search"
-              description="Hybrid dense vector + BM25 keyword search across products, specs, and verified suppliers."
-            />
-          }
-        />
+        <Route path="/search" element={<AiSearchPage />} />
+        <Route path="/ai-search" element={<AiSearchPage />} />
         <Route path="/products" element={<ProductsPage />} />
         <Route path="/products/:slug" element={<ProductDetailPage />} />
-        <Route path="/ai-search" element={<ProductsPage />} />
         <Route path="/suppliers" element={<SuppliersPage />} />
         <Route path="/suppliers/:id" element={<SupplierDetailPage />} />
         <Route
