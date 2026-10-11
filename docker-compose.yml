@@ -1,77 +1,146 @@
 services:
   db:
     image: pgvector/pgvector:pg16
-    container_name: tradex-db
+    container_name: pg_db
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-tradex}
       POSTGRES_USER: ${POSTGRES_USER:-tradex_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tradex_password}
-    ports:
-      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - backend_net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tradex_user} -d ${POSTGRES_DB:-tradex}"]
       interval: 5s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1024M
     restart: unless-stopped
+
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tradex_migrate
+    command: ["/bin/bash", "/app/scripts/migrate-and-seed.sh"]
+    environment:
+      ENV: ${ENV:-production}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://tradex_user:tradex_password@db:5432/tradex}
+      SYNC_DATABASE_URL: ${SYNC_DATABASE_URL:-postgresql+psycopg2://tradex_user:tradex_password@db:5432/tradex}
+      SECRET_KEY: ${SECRET_KEY:-production-secret-key-tradex-32bytes-secure}
+    volumes:
+      - ./scripts/migrate-and-seed.sh:/app/scripts/migrate-and-seed.sh:ro
+      - uploads:/app/storage
+    networks:
+      - backend_net
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: tradex-backend
+    container_name: fastapi_app
     environment:
-      ENV: ${ENV:-development}
+      ENV: ${ENV:-production}
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://tradex_user:tradex_password@db:5432/tradex}
       SYNC_DATABASE_URL: ${SYNC_DATABASE_URL:-postgresql+psycopg2://tradex_user:tradex_password@db:5432/tradex}
       AI_PROVIDER: ${AI_PROVIDER:-deterministic_fallback}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      SECRET_KEY: ${SECRET_KEY:-development-secret-key-tradex-32bytes-secure}
+      SECRET_KEY: ${SECRET_KEY:-production-secret-key-tradex-32bytes-secure}
       LOCAL_STORAGE_PATH: /app/storage
     volumes:
-      - ./backend:/app
-      - storage_data:/app/storage
-    ports:
-      - "8000:8000"
+      - uploads:/app/storage
+    networks:
+      - frontend_net
+      - backend_net
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1536M
     restart: unless-stopped
 
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile.dev
-    container_name: tradex-frontend
-    environment:
-      - VITE_API_BASE_URL=http://localhost:8000/api/v1
-    volumes:
-      - ./frontend:/app
-      - frontend_node_modules:/app/node_modules
-    ports:
-      - "5173:5173"
-    depends_on:
-      - backend
+      dockerfile: Dockerfile
+    container_name: react_app
+    networks:
+      - frontend_net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
     restart: unless-stopped
 
   nginx:
     build:
       context: ./nginx
       dockerfile: Dockerfile
-    container_name: tradex-nginx
+    container_name: nginx_proxy
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - certs:/etc/nginx/certs:ro
+      - nginx_logs:/var/log/nginx
+      - uploads:/app/storage:ro
+    networks:
+      - frontend_net
     depends_on:
-      - backend
-      - frontend
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -k -f https://localhost/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
     restart: unless-stopped
+
+networks:
+  frontend_net:
+    driver: bridge
+  backend_net:
+    driver: bridge
 
 volumes:
   pgdata:
     name: tradex_pgdata
-  storage_data:
-    name: tradex_storage
-  frontend_node_modules:
-    name: tradex_frontend_node_modules
+  uploads:
+    name: tradex_uploads
+  nginx_logs:
+    name: tradex_nginx_logs
+  certs:
+    name: tradex_certs
+
