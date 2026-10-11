@@ -93,15 +93,17 @@ async def list_products(
     # Full text & keyword search
     if q and q.strip():
         search_term = q.strip()
-        stmt = stmt.where(
-            or_(
-                Product.name.ilike(f"%{search_term}%"),
-                Product.description.ilike(f"%{search_term}%"),
-                Product.hs_code.ilike(f"%{search_term}%"),
-                Category.name.ilike(f"%{search_term}%"),
-                Company.name.ilike(f"%{search_term}%"),
+        words = [w for w in search_term.split() if w]
+        for word in words:
+            stmt = stmt.where(
+                or_(
+                    Product.name.ilike(f"%{word}%"),
+                    Product.description.ilike(f"%{word}%"),
+                    Product.hs_code.ilike(f"%{word}%"),
+                    Category.name.ilike(f"%{word}%"),
+                    Company.name.ilike(f"%{word}%"),
+                )
             )
-        )
 
     # Direct HS Code filter
     if hs_code and hs_code.strip():
@@ -171,15 +173,17 @@ async def list_products(
     )
     if q and q.strip():
         search_term = q.strip()
-        base_filter_stmt = base_filter_stmt.where(
-            or_(
-                Product.name.ilike(f"%{search_term}%"),
-                Product.description.ilike(f"%{search_term}%"),
-                Product.hs_code.ilike(f"%{search_term}%"),
-                Category.name.ilike(f"%{search_term}%"),
-                Company.name.ilike(f"%{search_term}%"),
+        words = [w for w in search_term.split() if w]
+        for word in words:
+            base_filter_stmt = base_filter_stmt.where(
+                or_(
+                    Product.name.ilike(f"%{word}%"),
+                    Product.description.ilike(f"%{word}%"),
+                    Product.hs_code.ilike(f"%{word}%"),
+                    Category.name.ilike(f"%{word}%"),
+                    Company.name.ilike(f"%{word}%"),
+                )
             )
-        )
     if hs_code and hs_code.strip():
         base_filter_stmt = base_filter_stmt.where(Product.hs_code.ilike(f"{hs_code.strip()}%"))
     if category and category.strip():

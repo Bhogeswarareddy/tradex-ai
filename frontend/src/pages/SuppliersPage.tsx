@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Search,
@@ -26,11 +26,19 @@ export const SuppliersPage: React.FC = () => {
   const initialCountry = searchParams.get("country") || undefined;
   const initialCategory = searchParams.get("product_category") || undefined;
   const initialSort = (searchParams.get("sort") as SupplierFilterParams["sort"]) || "trust";
+  const initialVerified = searchParams.get("verified_only") === "true";
+  const initialRating = searchParams.get("min_rating") ? Number(searchParams.get("min_rating")) : undefined;
+  const initialYears = searchParams.get("min_years") ? Number(searchParams.get("min_years")) : undefined;
+  const initialOnTime = searchParams.get("min_on_time") ? Number(searchParams.get("min_on_time")) : undefined;
+  const initialMaxMoq = searchParams.get("max_moq") ? Number(searchParams.get("max_moq")) : undefined;
+  const initialExport = searchParams.get("export_country") || undefined;
+  const initialCerts = searchParams.get("certifications") ? searchParams.get("certifications")!.split(",") : undefined;
+  const initialPage = searchParams.get("page") ? Number(searchParams.get("page")) : 1;
 
   const [suppliers, setSuppliers] = useState<SupplierListItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(initialPage);
   const [pageSize] = useState(12);
 
   const [searchInput, setSearchInput] = useState(initialQ);
@@ -39,7 +47,14 @@ export const SuppliersPage: React.FC = () => {
     country: initialCountry,
     product_category: initialCategory,
     sort: initialSort,
-    page: 1,
+    verified_only: initialVerified || undefined,
+    min_rating: initialRating,
+    min_years: initialYears,
+    min_on_time: initialOnTime,
+    max_moq: initialMaxMoq,
+    export_country: initialExport,
+    certifications: initialCerts,
+    page: initialPage,
     page_size: 12,
   });
 
@@ -53,7 +68,16 @@ export const SuppliersPage: React.FC = () => {
     if (filters.q) params.set("q", filters.q);
     if (filters.country) params.set("country", filters.country);
     if (filters.product_category) params.set("product_category", filters.product_category);
-    if (filters.sort) params.set("sort", filters.sort);
+    if (filters.sort && filters.sort !== "trust") params.set("sort", filters.sort);
+    if (filters.verified_only) params.set("verified_only", "true");
+    if (filters.min_rating) params.set("min_rating", String(filters.min_rating));
+    if (filters.min_years) params.set("min_years", String(filters.min_years));
+    if (filters.min_on_time) params.set("min_on_time", String(filters.min_on_time));
+    if (filters.max_moq) params.set("max_moq", String(filters.max_moq));
+    if (filters.export_country) params.set("export_country", filters.export_country);
+    if (filters.certifications && filters.certifications.length > 0) {
+      params.set("certifications", filters.certifications.join(","));
+    }
     if (currentPage > 1) params.set("page", String(currentPage));
     setSearchParams(params, { replace: true });
   }, [filters, currentPage, setSearchParams]);
@@ -226,6 +250,45 @@ export const SuppliersPage: React.FC = () => {
                   onClick={() => setFilters((prev) => ({ ...prev, verified_only: false, page: 1 }))}
                   className="hover:text-emerald-900"
                   aria-label="Remove verified filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {filters.max_moq && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-medium">
+                MOQ &le; {filters.max_moq} kg
+                <button
+                  type="button"
+                  onClick={() => setFilters((prev) => ({ ...prev, max_moq: undefined, page: 1 }))}
+                  className="hover:text-blue-900"
+                  aria-label="Remove MOQ filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {filters.export_country && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-medium">
+                Market: {filters.export_country}
+                <button
+                  type="button"
+                  onClick={() => setFilters((prev) => ({ ...prev, export_country: undefined, page: 1 }))}
+                  className="hover:text-blue-900"
+                  aria-label="Remove export market filter"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+            {filters.min_on_time && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-medium">
+                On-Time &ge; {filters.min_on_time}%
+                <button
+                  type="button"
+                  onClick={() => setFilters((prev) => ({ ...prev, min_on_time: undefined, page: 1 }))}
+                  className="hover:text-blue-900"
+                  aria-label="Remove on-time filter"
                 >
                   <X className="w-3 h-3" />
                 </button>

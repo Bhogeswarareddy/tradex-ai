@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { SupplierFilterParams } from "../../lib/api/suppliers";
 import { Filter, ShieldCheck, RotateCcw } from "lucide-react";
 
@@ -256,6 +256,53 @@ export const SupplierFilterSidebar: React.FC<SupplierFilterSidebarProps> = ({
             {filters.min_on_time ? `${filters.min_on_time}%` : "Any"}
           </span>
         </div>
+      </div>
+
+      {/* Max MOQ */}
+      <div className="space-y-2 pt-2 border-t border-slate-100">
+        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+          Max MOQ (kg)
+        </label>
+        <input
+          type="number"
+          min={0}
+          step={500}
+          placeholder="e.g. 1000"
+          value={filters.max_moq || ""}
+          onChange={(e) =>
+            onChange({
+              ...filters,
+              max_moq: e.target.value ? Number(e.target.value) : undefined,
+              page: 1,
+            })
+          }
+          className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:border-blue-500"
+        />
+      </div>
+
+      {/* Export Market Destination */}
+      <div className="space-y-2 pt-2 border-t border-slate-100">
+        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+          Export Market
+        </label>
+        <select
+          value={filters.export_country || ""}
+          onChange={(e) =>
+            onChange({
+              ...filters,
+              export_country: e.target.value || undefined,
+              page: 1,
+            })
+          }
+          className="w-full text-xs font-medium rounded-xl border border-slate-200 bg-white p-2.5 focus:border-blue-500 focus:outline-none"
+        >
+          <option value="">All Global Markets</option>
+          <option value="Germany">Germany (EU)</option>
+          <option value="USA">USA / North America</option>
+          <option value="UAE">UAE / Middle East</option>
+          <option value="Japan">Japan (APAC)</option>
+          <option value="UK">United Kingdom</option>
+        </select>
       </div>
     </aside>
   );

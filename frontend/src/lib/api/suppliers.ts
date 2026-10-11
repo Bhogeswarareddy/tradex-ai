@@ -230,4 +230,32 @@ export const suppliersApi = {
     if (!res.ok) throw new Error(`Failed to save supplier: ${res.statusText}`);
     return res.json();
   },
+
+  async sendInquiry(
+    id: string,
+    payload: {
+      subject: string;
+      message: string;
+      quantity?: number;
+      destination_port?: string;
+      incoterm?: string;
+      product_id?: string;
+    }
+  ): Promise<{ status: string; thread_id: string; message_id: string; message: string }> {
+    const token = localStorage.getItem("tradex_access_token");
+    const res = await fetch(`${BASE_URL}/suppliers/${encodeURIComponent(id)}/inquire`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || err.detail || `Failed to submit inquiry: ${res.statusText}`);
+    }
+    return res.json();
+  },
 };

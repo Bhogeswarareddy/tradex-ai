@@ -264,3 +264,249 @@ async def test_supplier_csv_import_validation():
         error_lines = [err["row"] for err in result["errors"]]
         assert 3 in error_lines  # Row 3 is Bad Row Missing Category
         assert 4 in error_lines  # Row 4 is Bad Row Invalid MOQ
+
+
+@pytest.mark.asyncio
+async def test_supplier_inquiry_flow_and_privacy():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # Get Sri Bharat Spices
+        res_list = await client.get("/api/v1/suppliers?q=Sri+Bharat")
+        supp_id = res_list.json()["items"][0]["id"]
+
+        # 1. Unauthenticated inquire -> 401
+        res_unauth = await client.post(
+            f"/api/v1/suppliers/{supp_id}/inquire",
+            json={"subject": "Inquiry test", "message": "Can you ship to Hamburg?"},
+        )
+        assert res_unauth.status_code == 401
+
+        # 2. Buyer login
+        login_buyer = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "bhogeswara@tradex.ai", "password": "buyer123"},
+        )
+        buyer_token = login_buyer.json()["access_token"]
+        buyer_headers = {"Authorization": f"Bearer {buyer_token}"}
+
+        # 3. Post inquiry
+        res_inq = await client.post(
+            f"/api/v1/suppliers/{supp_id}/inquire",
+            headers=buyer_headers,
+            json={
+                "subject": "FCL Contract Inquiry for Organic Turmeric 20MT",
+                "message": "We require CIF Hamburg terms with third-party SGS inspection prior to container loading.",
+                "quantity": 20000,
+                "destination_port": "Port of Hamburg",
+                "incoterm": "CIF",
+            },
+        )
+        assert res_inq.status_code == 201
+        data = res_inq.json()
+        assert data["status"] == "sent"
+        assert "thread_id" in data
+        assert "message_id" in data
+
+        # Verify supplier public profile NEVER leaks private email or phone numbers
+        res_prof = await client.get(f"/api/v1/suppliers/{supp_id}")
+        assert res_prof.status_code == 200
+        prof_data = res_prof.json()
+        assert "supplier@sribharat.com" not in str(prof_data)
+        assert "phone" not in prof_data or prof_data.get("phone") is None
+
+
+@pytest.mark.asyncio
+async def test_csv_import_twenty_rows_with_error_line_14():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        login_a = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "supplier@sribharat.com", "password": "supplier123"},
+        )
+        token_a = login_a.json()["access_token"]
+        headers_a = {"Authorization": f"Bearer {token_a}"}
+
+        # Construct 20 rows of CSV data (line 1 is header, line 2 to 21 are rows)
+        # Line 14 corresponds to row index 13 (line 14 in file) -> make it invalid
+        lines = [
+            "name,category_slug,description,hs_code,moq,unit,price,origin_country,lead_time_days"
+        ]
+        for i in range(1, 21):
+            line_num = i + 1  # header is line 1, i=1 -> line 2
+            if line_num == 14:
+                # Corrupt row at line 14: invalid missing name and negative price
+                lines.append(",spices,Corrupted spice entry at line 14,0910.30,-10,kg,-5.00,India,10")
+            else:
+                lines.append(f"Product Row Item {i},spices,High quality commercial spices {i},0910.30,500,kg,{5.0 + i},India,14")
+
+        csv_content = "\n".join(lines)
+        files = {"file": ("twenty_items.csv", csv_content.encode("utf-8"), "text/csv")}
+
+        res = await client.post(
+            "/api/v1/supplier/products/import-csv",
+            headers=headers_a,
+            files=files,
+        )
+        assert res.status_code == 200
+        result = res.json()
+        assert result["total_rows"] == 20
+        assert result["successful_rows"] == 19
+        assert len(result["errors"]) == 1
+        assert result["errors"][0]["row"] == 14
+        assert "Product name is required" in result["errors"][0]["error"] or "Price" in result["errors"][0]["error"]
+
+
+@pytest.mark.asyncio
+async def test_end_to_end_supplier_registration_and_marketplace_publishing():
+    import uuid
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1. Register a new supplier user
+        unique_suffix = uuid.uuid4().hex[:6]
+        supp_email = f"seller_{unique_suffix}@malabartrading.com"
+        reg_res = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": supp_email,
+                "password": "sellerpassword123",
+                "full_name": "Arjun Menon",
+                "role": "supplier",
+                "company_name": f"Malabar Spices & Co {unique_suffix}",
+                "country": "India",
+            },
+        )
+        assert reg_res.status_code == 201
+        token = reg_res.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # 2. Complete storefront profile
+        prof_res = await client.put(
+            "/api/v1/supplier/profile",
+            headers=headers,
+            json={
+                "description": "Premium Malabar Coast Spices Exporter with certified sustainable processing.",
+                "years_in_business": 10,
+                "export_countries": ["Germany", "United States", "UAE", "Japan"],
+                "website": "https://malabarspices.example.com",
+            },
+        )
+        assert prof_res.status_code == 200
+        prof_data = prof_res.json()
+        assert "Malabar Coast Spices" in prof_data["description"]
+
+        # 3. Add 3 products with price tiers, MOQ, capacity
+        prod_ids = []
+        for p_idx in range(1, 4):
+            create_p = await client.post(
+                "/api/v1/supplier/products",
+                headers=headers,
+                json={
+                    "name": f"Malabar Tellicherry Black Pepper TGSEB Grade {p_idx} - {unique_suffix}",
+                    "category_id": "spices",
+                    "description": f"Extra bold single-origin Malabar tellicherry black peppercorns grade {p_idx}",
+                    "hs_code": "0904.11",
+                    "moq": 500 * p_idx,
+                    "unit": "kg",
+                    "origin_country": "India",
+                    "lead_time_days": 10 + p_idx,
+                    "is_active": False,  # start as draft
+                    "price_tiers": [
+                        {"min_qty": 500, "unit_price": 8.50, "currency": "USD"},
+                        {"min_qty": 2000, "unit_price": 7.80, "currency": "USD"},
+                        {"min_qty": 10000, "unit_price": 7.10, "currency": "USD"},
+                    ],
+                },
+            )
+            assert create_p.status_code == 201
+            p_data = create_p.json()
+            prod_ids.append(p_data["id"])
+
+        assert len(prod_ids) == 3
+
+        # 4. Products are currently draft, verify not yet in public marketplace
+        mkt_draft = await client.get(f"/api/v1/products?q=Malabar+Tellicherry+{unique_suffix}")
+        assert mkt_draft.status_code == 200
+        assert mkt_draft.json()["total"] == 0
+
+        # 5. Publish them via bulk update
+        pub_res = await client.post(
+            "/api/v1/supplier/products/bulk-status",
+            headers=headers,
+            json={"product_ids": prod_ids, "is_active": True},
+        )
+        assert pub_res.status_code == 200
+        assert pub_res.json()["updated_count"] == 3
+
+        # 6. Verify they appear in public marketplace
+        mkt_pub = await client.get(f"/api/v1/products?q=Malabar+Tellicherry+{unique_suffix}")
+        assert mkt_pub.status_code == 200
+        assert mkt_pub.json()["total"] == 3
+
+        # 7. Verify new supplier appears in public supplier discovery
+        supp_discovery = await client.get(f"/api/v1/suppliers?q=Malabar+Spices+{unique_suffix}")
+        assert supp_discovery.status_code == 200
+        assert supp_discovery.json()["total"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_tenant_isolation_orders_and_rfq_quotes():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # Login Supplier A (Sri Bharat Spices)
+        login_a = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "supplier@sribharat.com", "password": "supplier123"},
+        )
+        token_a = login_a.json()["access_token"]
+        headers_a = {"Authorization": f"Bearer {token_a}"}
+
+        # Login Supplier B (Madhav Agro Exports)
+        login_b = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "contact@madhavagro.com", "password": "supplier123"},
+        )
+        token_b = login_b.json()["access_token"]
+        headers_b = {"Authorization": f"Bearer {token_b}"}
+
+        # 1. Supplier A checks orders
+        res_orders_a = await client.get("/api/v1/orders", headers=headers_a)
+        assert res_orders_a.status_code == 200
+        orders_a = res_orders_a.json()["items"]
+        if orders_a:
+            order_a_id = orders_a[0]["id"]
+
+            # Supplier B attempting to view Supplier A's order -> 403 Forbidden
+            res_b_view_order = await client.get(f"/api/v1/orders/{order_a_id}", headers=headers_b)
+            assert res_b_view_order.status_code == 403
+
+            # Supplier B attempting to transition Supplier A's order -> 403 Forbidden
+            res_b_trans = await client.post(
+                f"/api/v1/orders/{order_a_id}/transition",
+                headers=headers_b,
+                json={"status": "in_production"},
+            )
+            assert res_b_trans.status_code == 403
+
+        # 2. Quotation tenant isolation
+        # Get an RFQ to check quotes
+        res_rfqs = await client.get("/api/v1/rfqs", headers=headers_a)
+        assert res_rfqs.status_code == 200
+        rfqs_list = res_rfqs.json().get("rfqs", [])
+        if rfqs_list:
+            rfq_id = rfqs_list[0]["id"]
+            rfq_detail = await client.get(f"/api/v1/rfqs/{rfq_id}", headers=headers_a)
+            if rfq_detail.status_code == 200 and rfq_detail.json().get("quotations"):
+                quotes = rfq_detail.json()["quotations"]
+                # Find quote belonging to Supplier A
+                quote_a = next((q for q in quotes if q.get("supplier_name") == "Sri Bharat Spices Pvt Ltd"), None)
+                if quote_a:
+                    quote_a_id = quote_a["id"]
+                    # Supplier B attempting to edit Supplier A's quotation -> 403 Forbidden
+                    res_b_edit_quote = await client.patch(
+                        f"/api/v1/rfqs/{rfq_id}/quotes/{quote_a_id}",
+                        headers=headers_b,
+                        json={"unit_price": 1.00},
+                    )
+                    assert res_b_edit_quote.status_code == 403
+
+

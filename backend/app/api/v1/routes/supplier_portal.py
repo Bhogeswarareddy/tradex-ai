@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import PlainTextResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -404,8 +404,15 @@ async def create_supplier_product(
 ):
     try:
         cat_uuid = uuid.UUID(payload.category_id)
-    except ValueError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid category ID")
+        c_check = (await db.execute(select(Category).where(Category.id == cat_uuid))).scalar_one_or_none()
+        if not c_check:
+            raise ValueError()
+    except (ValueError, AttributeError):
+        c_slug_res = await db.execute(select(Category).where(or_(Category.slug == payload.category_id, Category.name.ilike(f"%{payload.category_id}%"))))
+        c_obj = c_slug_res.scalar_one_or_none()
+        if not c_obj:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Category '{payload.category_id}' not found")
+        cat_uuid = c_obj.id
 
     base_slug = payload.name.lower().replace(" ", "-").replace("/", "-")
     clean_slug = "".join(c for c in base_slug if c.isalnum() or c == "-")

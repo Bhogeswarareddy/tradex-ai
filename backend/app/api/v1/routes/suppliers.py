@@ -64,14 +64,17 @@ async def list_suppliers(
 
     # Search filter
     if q and q.strip():
-        term = f"%{q.strip().lower()}%"
-        query = query.where(
-            (func.lower(Company.name).ilike(term))
-            | (func.lower(Company.description).ilike(term))
-            | (func.lower(Company.city).ilike(term))
-            | (func.lower(Company.country).ilike(term))
-            | (Supplier.products.any(func.lower(Product.name).ilike(term)))
-        )
+        search_term = q.strip().lower()
+        words = [w for w in search_term.split() if w]
+        for word in words:
+            w_term = f"%{word}%"
+            query = query.where(
+                (func.lower(Company.name).ilike(w_term))
+                | (func.lower(Company.description).ilike(w_term))
+                | (func.lower(Company.city).ilike(w_term))
+                | (func.lower(Company.country).ilike(w_term))
+                | (Supplier.products.any(func.lower(Product.name).ilike(w_term)))
+            )
 
     # Country filter
     if country and country.strip() and country.lower() != "all":
@@ -615,3 +618,109 @@ async def save_supplier(
         db.add(new_save)
         await db.commit()
         return {"saved": True, "message": "Supplier saved to favorites"}
+
+
+from pydantic import BaseModel as PyBaseModel, Field as PyField
+
+
+class SupplierInquiryPayload(PyBaseModel):
+    subject: str = PyField(..., min_length=3)
+    message: str = PyField(..., min_length=5)
+    quantity: Optional[int] = None
+    destination_port: Optional[str] = None
+    incoterm: Optional[str] = None
+    product_id: Optional[str] = None
+
+
+@router.post("/{id}/inquire", status_code=status.HTTP_201_CREATED)
+async def inquire_supplier(
+    id: str,
+    payload: SupplierInquiryPayload,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Creates or retrieves a persistent thread with the supplier and sends an inquiry message.
+    Protects private supplier and buyer emails/phone numbers from public exposure.
+    """
+    try:
+        supp_uuid = uuid.UUID(id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invalid supplier ID")
+
+    res = await db.execute(
+        select(Supplier)
+        .where(Supplier.id == supp_uuid)
+        .options(selectinload(Supplier.company))
+    )
+    supplier = res.scalar_one_or_none()
+    if not supplier:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Supplier not found")
+
+    # Find or create buyer profile for current user
+    b_res = await db.execute(select(Buyer).where(Buyer.user_id == current_user.id))
+    buyer = b_res.scalar_one_or_none()
+    if not buyer:
+        buyer = Buyer(user_id=current_user.id)
+        db.add(buyer)
+        await db.flush()
+
+    # Look for existing thread between buyer and supplier
+    from app.models.content import Thread, Message, Notification
+    t_stmt = select(Thread).where(
+        Thread.buyer_id == buyer.id,
+        Thread.supplier_id == supplier.id,
+    )
+    thread = (await db.execute(t_stmt)).scalar_one_or_none()
+
+    if not thread:
+        thread = Thread(
+            title=f"Inquiry: {payload.subject}",
+            buyer_id=buyer.id,
+            supplier_id=supplier.id,
+        )
+        db.add(thread)
+        await db.flush()
+
+    # Create message with sanitized content
+    msg_body = f"Subject: {payload.subject}\n\n{payload.message}"
+    if payload.quantity or payload.destination_port or payload.incoterm:
+        details = []
+        if payload.quantity:
+            details.append(f"Target Quantity: {payload.quantity}")
+        if payload.destination_port:
+            details.append(f"Destination: {payload.destination_port}")
+        if payload.incoterm:
+            details.append(f"Incoterm: {payload.incoterm}")
+        msg_body += f"\n\n[Inquiry Parameters]\n" + "\n".join(details)
+
+    msg = Message(
+        thread_id=thread.id,
+        sender_id=current_user.id,
+        body=msg_body,
+        message_type="inquiry",
+        is_read=False,
+    )
+    db.add(msg)
+
+    # Notify supplier user if linked
+    if supplier.user_id:
+        notif = Notification(
+            user_id=supplier.user_id,
+            title=f"New Direct Inquiry: {payload.subject}",
+            message=f"{current_user.full_name or 'A verified buyer'} sent an inquiry: {payload.message[:120]}...",
+            event_type="inquiry",
+            link=f"/supplier?tab=inquiries",
+        )
+        db.add(notif)
+
+    await db.commit()
+    await db.refresh(msg)
+
+    return {
+        "status": "sent",
+        "thread_id": str(thread.id),
+        "message_id": str(msg.id),
+        "message": "Inquiry successfully delivered to supplier inbox",
+    }
+

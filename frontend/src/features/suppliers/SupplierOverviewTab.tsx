@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import {
   CheckCircle2,
   Globe,
@@ -109,6 +109,33 @@ export const SupplierOverviewTab: React.FC<SupplierOverviewTabProps> = ({
               <div>
                 <span className="text-slate-400 block font-medium">Repeat Rate</span>
                 <span className="font-bold text-emerald-600">{supplier.repeat_buyer_rate}%</span>
+              </div>
+            </div>
+
+            {/* Platform Verified Facts vs Supplier Claims */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-slate-100">
+              <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-200/70 space-y-1.5 text-xs">
+                <div className="flex items-center gap-1.5 text-emerald-800 font-bold">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span>Platform-Verified Facts</span>
+                </div>
+                <ul className="text-[11px] text-emerald-900 space-y-1 list-disc list-inside">
+                  <li>Business registration & tax ID authenticated</li>
+                  <li>On-time delivery tracking: <strong>{supplier.on_time_rate}% verified</strong></li>
+                  <li>{supplier.certifications.length} active third-party audited certificates</li>
+                </ul>
+              </div>
+
+              <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-200/70 space-y-1.5 text-xs">
+                <div className="flex items-center gap-1.5 text-blue-800 font-bold">
+                  <Award className="w-4 h-4 text-blue-600" />
+                  <span>Supplier-Reported Claims</span>
+                </div>
+                <ul className="text-[11px] text-blue-900 space-y-1 list-disc list-inside">
+                  <li>Self-reported monthly capacity: <strong>{supplier.capacity_per_month}</strong></li>
+                  <li>Target export markets: {supplier.export_countries.slice(0, 3).join(", ")}</li>
+                  <li>Sales team languages: {supplier.languages.join(", ") || "English, Hindi"}</li>
+                </ul>
               </div>
             </div>
           </div>

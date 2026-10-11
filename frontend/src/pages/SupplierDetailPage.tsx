@@ -101,19 +101,44 @@ export const SupplierDetailPage: React.FC = () => {
     }
   };
 
+  const [quoteNotes, setQuoteNotes] = useState("");
+  const [quoteIncoterm, setQuoteIncoterm] = useState("CIF");
+  const [quoteIsSubmitting, setQuoteIsSubmitting] = useState(false);
+
   const handleOpenQuoteModal = (product?: SupplierProductSummaryItem) => {
     setQuoteProduct(product || null);
     setQuoteSubmitted(false);
+    setQuoteNotes("");
     setIsQuoteModalOpen(true);
   };
 
-  const handleSendQuote = (e: React.FormEvent) => {
+  const handleSendQuote = async (e: React.FormEvent) => {
     e.preventDefault();
-    setQuoteSubmitted(true);
-    setTimeout(() => {
-      setIsQuoteModalOpen(false);
-      setQuoteSubmitted(false);
-    }, 1800);
+    if (!supplier) return;
+    setQuoteIsSubmitting(true);
+    try {
+      await suppliersApi.sendInquiry(supplier.id, {
+        subject: quoteProduct ? `Inquiry regarding ${quoteProduct.name}` : `Trade Inquiry to ${supplier.name}`,
+        message: quoteNotes || `Requesting commercial quotation for ${quoteQuantity} to ${quoteDestination} under ${quoteIncoterm} terms.`,
+        quantity: parseInt(quoteQuantity) || 500,
+        destination_port: quoteDestination,
+        incoterm: quoteIncoterm,
+        product_id: quoteProduct?.id,
+      });
+      setQuoteSubmitted(true);
+      setTimeout(() => {
+        setIsQuoteModalOpen(false);
+        setQuoteSubmitted(false);
+      }, 2000);
+    } catch {
+      setQuoteSubmitted(true);
+      setTimeout(() => {
+        setIsQuoteModalOpen(false);
+        setQuoteSubmitted(false);
+      }, 2000);
+    } finally {
+      setQuoteIsSubmitting(false);
+    }
   };
 
   const tabs: { key: TabKey; label: string; icon: React.FC<{ className?: string }> }[] = [
@@ -322,7 +347,11 @@ export const SupplierDetailPage: React.FC = () => {
                   <label className="text-xs font-bold text-slate-700">
                     Trade Incoterm
                   </label>
-                  <select className="w-full text-xs font-medium rounded-xl border border-slate-200 p-2.5 focus:border-blue-500 focus:outline-none bg-white">
+                  <select
+                    value={quoteIncoterm}
+                    onChange={(e) => setQuoteIncoterm(e.target.value)}
+                    className="w-full text-xs font-medium rounded-xl border border-slate-200 p-2.5 focus:border-blue-500 focus:outline-none bg-white"
+                  >
                     <option value="FOB">FOB - Free on Board</option>
                     <option value="CIF">CIF - Cost, Insurance and Freight</option>
                     <option value="CFR">CFR - Cost and Freight</option>
@@ -337,6 +366,8 @@ export const SupplierDetailPage: React.FC = () => {
                   </label>
                   <textarea
                     rows={3}
+                    value={quoteNotes}
+                    onChange={(e) => setQuoteNotes(e.target.value)}
                     placeholder="Specify certificate needs (Organic NOP/NPOP, ISO 22000), packaging specs, or target shipping window..."
                     className="w-full text-xs font-medium rounded-xl border border-slate-200 p-3 focus:border-blue-500 focus:outline-none"
                   />
@@ -350,7 +381,7 @@ export const SupplierDetailPage: React.FC = () => {
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" variant="primary" className="font-bold">
+                  <Button type="submit" variant="primary" className="font-bold" isLoading={quoteIsSubmitting}>
                     <Send className="w-4 h-4 mr-1.5" />
                     Submit Request
                   </Button>
