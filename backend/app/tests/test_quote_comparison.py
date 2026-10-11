@@ -3,7 +3,7 @@ from datetime import date
 from decimal import Decimal
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.db import AsyncSessionLocal
 from app.core.security import create_access_token
@@ -207,3 +207,88 @@ async def test_accept_quote_creates_order_and_closes_competitors():
             order = (await session.execute(select(Order).where(Order.order_number == data["order_number"]))).scalar_one_or_none()
             assert order is not None
             assert order.total_amount == pytest.approx(Decimal(str(2.90 * 5000)), rel=0.01)
+
+
+@pytest.mark.asyncio
+async def test_accept_quote_idempotency_and_audit_log():
+    """Asserts accepting the same quote twice returns the same existing order without creating duplicate orders."""
+    token = await get_test_token("bhogeswara@tradex.ai")
+
+    async with AsyncSessionLocal() as session:
+        from app.models.identity import Buyer, Supplier
+        from app.models.ai_ops import AuditLog
+        buyer = (await session.execute(select(Buyer))).scalars().first()
+        supplier = (await session.execute(select(Supplier))).scalars().first()
+        assert buyer is not None and supplier is not None
+
+        test_rfq = RFQ(
+            rfq_number=f"RFQ-IDEM-{uuid.uuid4().hex[:6]}",
+            buyer_id=buyer.id,
+            title="Idempotency Validation Tender",
+            status="active",
+            quantity=8000,
+            unit="kg",
+            target_price_min=Decimal("2.80"),
+            target_price_max=Decimal("3.20"),
+            currency="EUR",
+            destination_country="Germany",
+            destination_port="Hamburg",
+            deadline=date(2026, 12, 31),
+        )
+        session.add(test_rfq)
+        await session.flush()
+
+        q = Quotation(
+            quote_number=f"QT-IDEM-{uuid.uuid4().hex[:4]}",
+            rfq_id=test_rfq.id,
+            supplier_id=supplier.id,
+            unit_price=Decimal("3.00"),
+            landed_cost=Decimal("3.35"),
+            lead_time_days=22,
+            payment_terms="LC at sight",
+            valid_until=date(2026, 12, 31),
+            status="submitted",
+            ai_score=94.0,
+        )
+        session.add(q)
+        await session.commit()
+        await session.refresh(q)
+        quote_id = str(q.id)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # First call: creates order
+        res1 = await client.post(
+            f"/api/v1/quotes/{quote_id}/accept",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert res1.status_code == 200
+        data1 = res1.json()
+        order_id_1 = data1["order_id"]
+        order_num_1 = data1["order_number"]
+
+        # Second call: must return identical order without throwing duplicate errors or creating second order
+        res2 = await client.post(
+            f"/api/v1/quotes/{quote_id}/accept",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert res2.status_code == 200
+        data2 = res2.json()
+        assert data2["order_id"] == order_id_1
+        assert data2["order_number"] == order_num_1
+
+        # Check in DB that exactly one order exists for this quotation
+        async with AsyncSessionLocal() as session:
+            orders_count = (
+                await session.execute(select(func.count(Order.id)).where(Order.quotation_id == uuid.UUID(quote_id)))
+            ).scalar_one()
+            assert orders_count == 1, f"Expected exactly 1 order, found {orders_count}"
+
+            # Verify audit log was recorded
+            audit_log = (
+                await session.execute(
+                    select(AuditLog).where(AuditLog.entity_id == order_id_1, AuditLog.action == "quote.accepted")
+                )
+            ).scalar_one_or_none()
+            assert audit_log is not None
+            assert audit_log.details["order_number"] == order_num_1

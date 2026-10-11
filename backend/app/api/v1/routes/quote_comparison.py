@@ -13,11 +13,12 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.db import get_db
+from app.models.ai_ops import AuditLog
 from app.models.identity import Buyer, Company, Supplier, User
 from app.models.trade import Order, OrderItem, Quotation, RFQ, RFQItem
 from app.models.content import Notification
@@ -323,6 +324,25 @@ async def accept_supplier_quote(
         if not rfq.buyer or rfq.buyer.user_id != current_user.id:
             raise HTTPException(status_code=403, detail="Not authorized to award this tender")
 
+    # Idempotency check: if an order already exists for this quote or RFQ, return the existing order
+    existing_order_stmt = select(Order).where(
+        or_(
+            Order.quotation_id == quote.id,
+            and_(Order.rfq_id == rfq.id, Order.quotation_id == quote.id),
+        )
+    )
+    existing_order = (await db.execute(existing_order_stmt)).scalar_one_or_none()
+    if existing_order:
+        return AcceptQuoteResponse(
+            status="order_created",
+            order_id=str(existing_order.id),
+            order_number=existing_order.order_number,
+            accepted_quote_number=quote.quote_number,
+            total_amount=round(float(existing_order.total_amount), 2),
+            currency=existing_order.currency or "EUR",
+            rfq_status=rfq.status or "awarded",
+        )
+
     # Compute next Order number: ORD-2026-XXXX
     year = datetime.now().year
     prefix = f"ORD-{year}-"
@@ -363,6 +383,25 @@ async def accept_supplier_quote(
     )
     db.add(order_item)
 
+    # Write AuditLog record
+    audit_entry = AuditLog(
+        user_id=current_user.id,
+        action="quote.accepted",
+        entity_type="order",
+        entity_id=str(order.id),
+        details={
+            "order_number": order_number,
+            "rfq_id": str(rfq.id),
+            "rfq_number": rfq.rfq_number,
+            "quotation_id": str(quote.id),
+            "quote_number": quote.quote_number,
+            "supplier_id": str(quote.supplier_id),
+            "total_amount": round(total_amount, 2),
+            "currency": quote.currency or "EUR",
+        },
+    )
+    db.add(audit_entry)
+
     # Update Quote & RFQ statuses
     quote.status = "accepted"
     rfq.status = "awarded"
@@ -377,7 +416,7 @@ async def accept_supplier_quote(
     for cq in competing_quotes:
         cq.status = "rejected"
         # Notify competing supplier
-        if cq.supplier:
+        if cq.supplier and cq.supplier.user_id:
             notif = Notification(
                 user_id=cq.supplier.user_id,
                 title="RFQ Tender Concluded",
@@ -389,7 +428,7 @@ async def accept_supplier_quote(
             db.add(notif)
 
     # Notify winning supplier
-    if quote.supplier:
+    if quote.supplier and quote.supplier.user_id:
         winning_notif = Notification(
             user_id=quote.supplier.user_id,
             title="Contract Awarded! Purchase Order Issued",
@@ -399,6 +438,18 @@ async def accept_supplier_quote(
             link=f"/rfq/{rfq.id}",
         )
         db.add(winning_notif)
+
+    # Notify buyer confirming order placement
+    buyer_user_id = rfq.buyer.user_id if rfq.buyer and rfq.buyer.user_id else current_user.id
+    buyer_notif = Notification(
+        user_id=buyer_user_id,
+        title=f"Order Confirmed: {order_number}",
+        message=f"You accepted quotation {quote.quote_number} from {quote.supplier.company.name if quote.supplier and quote.supplier.company else 'supplier'}. Order {order_number} has been generated.",
+        event_type="order_created",
+        is_read=False,
+        link=f"/orders/{order.id}",
+    )
+    db.add(buyer_notif)
 
     await db.commit()
 

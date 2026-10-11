@@ -566,20 +566,43 @@ async def get_user_notifications(
     current_user: User = Depends(get_current_user),
     limit: int = Query(30, ge=1, le=100),
 ) -> Dict[str, Any]:
-    """Retrieves notifications for the current user with unread count."""
+    """Retrieves notifications for the current user respecting their notification preferences."""
+    # Check user settings
+    user_settings = getattr(current_user, "settings", None) or {}
+    notif_prefs = user_settings.get("notifications", {})
+
     stmt = (
         select(Notification)
         .where(Notification.user_id == current_user.id)
         .order_by(desc(Notification.created_at))
-        .limit(limit)
+        .limit(limit * 2)
     )
-    notifications = (await db.execute(stmt)).scalars().all()
+    raw_notifications = (await db.execute(stmt)).scalars().all()
 
-    unread_stmt = (
-        select(func.count(Notification.id))
-        .where(Notification.user_id == current_user.id, Notification.is_read.is_(False))
-    )
-    unread_count = (await db.execute(unread_stmt)).scalar() or 0
+    # Map event_types to notification preference keys
+    event_pref_map = {
+        "message": "messages",
+        "counter_offer": "messages",
+        "rfq_matched": "rfq_updates",
+        "rfq_update": "rfq_updates",
+        "quote_received": "new_quotes",
+        "quote_updated": "new_quotes",
+        "order_created": "orders",
+        "order_status_change": "orders",
+        "shipment_update": "shipments",
+        "document_verified": "document_verification",
+    }
+
+    filtered_notifications = []
+    for n in raw_notifications:
+        pref_key = event_pref_map.get(n.event_type)
+        if pref_key and notif_prefs.get(pref_key) is False:
+            continue
+        filtered_notifications.append(n)
+        if len(filtered_notifications) >= limit:
+            break
+
+    unread_count = sum(1 for n in filtered_notifications if not n.is_read)
 
     return {
         "total_unread": int(unread_count),
@@ -593,7 +616,7 @@ async def get_user_notifications(
                 "link": n.link,
                 "created_at": n.created_at.isoformat() if n.created_at else None,
             }
-            for n in notifications
+            for n in filtered_notifications
         ],
     }
 
