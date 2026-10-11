@@ -29,6 +29,7 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    settings: Mapped[Optional[dict]] = mapped_column(JSONB, default=dict, nullable=True)
 
     role_rel: Mapped[Optional["Role"]] = relationship("Role", back_populates="users")
     buyers: Mapped[List["Buyer"]] = relationship("Buyer", back_populates="user")

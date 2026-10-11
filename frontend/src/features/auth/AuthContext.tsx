@@ -75,6 +75,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await authApi.logout();
     } finally {
       setUser(null);
+      if (typeof window !== "undefined" && window.location) {
+        window.location.href = "/login";
+      }
     }
   };
 

@@ -1,3 +1,5 @@
+import { HealthStatus } from "./types";
+
 export interface ApiErrorPayload {
   code?: string;
   message: string;
@@ -253,8 +255,8 @@ export class ApiClient {
     return this.request<T>(endpoint, { method: 'DELETE' });
   }
 
-  async checkHealth(): Promise<{ status: string }> {
-    return this.get<{ status: string }>('/health');
+  async checkHealth(): Promise<HealthStatus> {
+    return this.get<HealthStatus>('/health');
   }
 }
 

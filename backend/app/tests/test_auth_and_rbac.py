@@ -162,3 +162,143 @@ async def test_rate_limiting_on_login():
         assert rate_limited_res.status_code == 429
         data = rate_limited_res.json()
         assert data["error"]["code"] == "RATE_LIMIT_EXCEEDED"
+
+
+@pytest.mark.asyncio
+async def test_profile_update_and_persistence():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1. Register a fresh user
+        unique_email = f"profile_test_{uuid.uuid4().hex[:8]}@example.com"
+        reg_payload = {
+            "email": unique_email,
+            "password": "SecurePassword123",
+            "full_name": "Initial Name",
+            "role": "buyer",
+            "company_name": "Initial Corp",
+            "country": "Germany",
+        }
+        reg_res = await client.post("/api/v1/auth/register", json=reg_payload)
+        token = reg_res.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # 2. Update profile
+        update_payload = {
+            "full_name": "Updated Importer",
+            "company_name": "Updated Enterprise GmbH",
+            "country": "Netherlands",
+            "city": "Rotterdam",
+        }
+        patch_res = await client.patch("/api/v1/users/me", json=update_payload, headers=headers)
+        assert patch_res.status_code == 200
+        patch_data = patch_res.json()
+        assert patch_data["full_name"] == "Updated Importer"
+        assert patch_data["company_name"] == "Updated Enterprise GmbH"
+        assert patch_data["company_country"] == "Netherlands"
+
+        # 3. Verify persistence on GET /users/me
+        get_res = await client.get("/api/v1/users/me", headers=headers)
+        assert get_res.status_code == 200
+        get_data = get_res.json()
+        assert get_data["full_name"] == "Updated Importer"
+        assert get_data["company_name"] == "Updated Enterprise GmbH"
+        assert get_data["company_country"] == "Netherlands"
+
+        # 4. Verify GET /users/company
+        comp_res = await client.get("/api/v1/users/company", headers=headers)
+        assert comp_res.status_code == 200
+        comp_data = comp_res.json()
+        assert comp_data["name"] == "Updated Enterprise GmbH"
+        assert comp_data["country"] == "Netherlands"
+
+
+@pytest.mark.asyncio
+async def test_password_change_flow_and_old_password_invalidation():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        unique_email = f"pwd_test_{uuid.uuid4().hex[:8]}@example.com"
+        reg_payload = {
+            "email": unique_email,
+            "password": "InitialPassword123",
+            "full_name": "Password Tester",
+            "role": "buyer",
+            "company_name": "Security Inc",
+            "country": "Germany",
+        }
+        reg_res = await client.post("/api/v1/auth/register", json=reg_payload)
+        token = reg_res.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # 1. Wrong old password fails
+        bad_change = await client.post(
+            "/api/v1/users/me/change-password",
+            json={"old_password": "WrongPassword999", "new_password": "NewSecurePassword456"},
+            headers=headers,
+        )
+        assert bad_change.status_code == 401
+        assert "Current password does not match" in bad_change.text
+
+        # 2. Correct old password succeeds
+        good_change = await client.post(
+            "/api/v1/users/me/change-password",
+            json={"old_password": "InitialPassword123", "new_password": "NewSecurePassword456"},
+            headers=headers,
+        )
+        assert good_change.status_code == 200
+
+        # 3. Old password fails on login
+        old_login = await client.post(
+            "/api/v1/auth/login",
+            json={"email": unique_email, "password": "InitialPassword123"},
+        )
+        assert old_login.status_code == 401
+
+        # 4. New password succeeds on login
+        new_login = await client.post(
+            "/api/v1/auth/login",
+            json={"email": unique_email, "password": "NewSecurePassword456"},
+        )
+        assert new_login.status_code == 200
+        assert "access_token" in new_login.json()
+
+
+@pytest.mark.asyncio
+async def test_user_settings_persistence():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        unique_email = f"settings_test_{uuid.uuid4().hex[:8]}@example.com"
+        reg_res = await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": unique_email,
+                "password": "Password12345",
+                "full_name": "Settings Tester",
+                "role": "buyer",
+                "company_name": "Config Co",
+                "country": "France",
+            },
+        )
+        token = reg_res.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Update settings
+        patch_res = await client.patch(
+            "/api/v1/users/me/settings",
+            json={
+                "notifications": {"orders": False, "messages": True},
+                "currency": "EUR",
+                "theme": "dark",
+            },
+            headers=headers,
+        )
+        assert patch_res.status_code == 200
+        settings_data = patch_res.json()
+        assert settings_data["currency"] == "EUR"
+        assert settings_data["theme"] == "dark"
+        assert settings_data["notifications"]["orders"] is False
+
+        # Verify on GET
+        get_res = await client.get("/api/v1/users/me/settings", headers=headers)
+        assert get_res.status_code == 200
+        assert get_res.json()["currency"] == "EUR"
+        assert get_res.json()["theme"] == "dark"

@@ -28,6 +28,15 @@ export const ProfilePage: React.FC = () => {
   const [country, setCountry] = useState(user?.company_country || "");
   const [profileSaving, setProfileSaving] = useState(false);
 
+  // Sync state when user updates
+  React.useEffect(() => {
+    if (user) {
+      setFullName(user.full_name || "");
+      setCompanyName(user.company_name || "");
+      setCountry(user.company_country || "");
+    }
+  }, [user]);
+
   // Password Change State
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -110,17 +119,31 @@ export const ProfilePage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          {user?.email_verified ? (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Verified Account</span>
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-              <Shield className="w-3.5 h-3.5 text-amber-500" />
-              <span>Pending Verification</span>
-            </span>
-          )}
+          {(() => {
+            const status = (user?.verified_status || "unverified").toLowerCase();
+            if (status === "verified") {
+              return (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>Company Verified</span>
+                </span>
+              );
+            }
+            if (status === "rejected") {
+              return (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                  <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
+                  <span>Verification Rejected</span>
+                </span>
+              );
+            }
+            return (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                <Shield className="w-3.5 h-3.5 text-amber-500" />
+                <span>Verification Pending</span>
+              </span>
+            );
+          })()}
         </div>
       </div>
 

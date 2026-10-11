@@ -43,6 +43,13 @@ class UserResponse(BaseModel):
     email_verified: bool
     company_name: Optional[str] = None
     company_id: Optional[uuid.UUID] = None
+    company_country: Optional[str] = None
+    company_city: Optional[str] = None
+    company_website: Optional[str] = None
+    company_description: Optional[str] = None
+    company_years_in_business: Optional[int] = None
+    verified_status: Optional[str] = "unverified"
+    settings: Optional[dict] = None
 
     model_config = {"from_attributes": True}
 
@@ -92,3 +99,14 @@ class UserUpdateRequest(BaseModel):
     full_name: Optional[str] = Field(None, min_length=2, max_length=100)
     company_name: Optional[str] = Field(None, min_length=2, max_length=150)
     country: Optional[str] = Field(None, min_length=2, max_length=100)
+    city: Optional[str] = Field(None, min_length=2, max_length=100)
+    website: Optional[str] = Field(None, max_length=255)
+    description: Optional[str] = Field(None, max_length=2000)
+    years_in_business: Optional[int] = Field(None, ge=0)
+
+
+class UserSettingsUpdateRequest(BaseModel):
+    notifications: Optional[dict] = None
+    currency: Optional[str] = Field(None, max_length=10)
+    language: Optional[str] = Field(None, max_length=10)
+    theme: Optional[str] = Field(None, max_length=10)

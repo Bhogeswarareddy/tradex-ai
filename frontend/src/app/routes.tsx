@@ -31,6 +31,8 @@ const AnalyticsPage = lazy(() => import("../pages/AnalyticsPage").then(m => ({ d
 const AdminPage = lazy(() => import("../pages/AdminPage").then(m => ({ default: m.AdminPage })));
 const NotFoundPage = lazy(() => import("../pages/NotFoundPage").then(m => ({ default: m.NotFoundPage })));
 const ModulePlaceholderPage = lazy(() => import("../pages/ModulePlaceholderPage").then(m => ({ default: m.ModulePlaceholderPage })));
+const CompanyPage = lazy(() => import("../pages/CompanyPage").then(m => ({ default: m.CompanyPage })));
+const SettingsPage = lazy(() => import("../pages/SettingsPage").then(m => ({ default: m.SettingsPage })));
 
 const RouteLoadingFallback: React.FC = () => (
   <div className="min-h-[50vh] flex flex-col items-center justify-center p-8 text-center" role="status" aria-label="Loading page">
@@ -86,24 +88,9 @@ export const AppRoutes: React.FC = () => {
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/messages" element={<MessagesPage />} />
           <Route path="/negotiations" element={<MessagesPage />} />
-          <Route
-            path="/saved"
-            element={
-              <ModulePlaceholderPage
-                title="Saved Items & Suppliers"
-                description="Your bookmarked products, preferred suppliers, and saved search filters."
-              />
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <ModulePlaceholderPage
-                title="Account & Platform Settings"
-                description="Preferences, notifications, API keys, and workspace customization."
-              />
-            }
-          />
+          <Route path="/saved" element={<ModulePlaceholderPage title="Saved Items & Suppliers" description="Your bookmarked products, preferred suppliers, and saved search filters." />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/company" element={<CompanyPage />} />
           <Route path="/copilot" element={<CopilotPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/design-system" element={<DesignSystemPage />} />

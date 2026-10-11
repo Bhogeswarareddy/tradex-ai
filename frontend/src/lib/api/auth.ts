@@ -1,6 +1,21 @@
-﻿import { api, ApiClient, ApiError } from "./client";
+import { api, ApiClient } from "./client";
 
 export type UserRole = "buyer" | "supplier" | "admin";
+
+export interface UserSettings {
+  notifications?: {
+    messages?: boolean;
+    rfq_updates?: boolean;
+    new_quotes?: boolean;
+    orders?: boolean;
+    shipments?: boolean;
+    document_verification?: boolean;
+    email_notifications?: boolean;
+  };
+  currency?: string;
+  language?: string;
+  theme?: string;
+}
 
 export interface User {
   id: string;
@@ -12,7 +27,36 @@ export interface User {
   company_id?: string;
   company_name?: string;
   company_country?: string;
+  company_city?: string;
+  company_website?: string;
+  company_description?: string;
+  company_years_in_business?: number;
+  verified_status?: string;
+  settings?: UserSettings;
   created_at?: string;
+}
+
+export interface CompanyAccount {
+  id: string | null;
+  name: string;
+  country: string;
+  city: string;
+  state?: string | null;
+  website?: string | null;
+  logo_url?: string | null;
+  banner_url?: string | null;
+  description?: string | null;
+  years_in_business: number;
+  verified_status: string;
+  created_at?: string | null;
+}
+
+export interface SessionItem {
+  id: string;
+  created_at?: string;
+  expires_at?: string;
+  is_current: boolean;
+  client_name: string;
 }
 
 export interface RegisterRequest {
@@ -115,6 +159,26 @@ class AuthService {
 
   async forgotPassword(email: string): Promise<{ message: string }> {
     return this.client.post<{ message: string }>("/auth/forgot-password", { email });
+  }
+
+  async getCompany(): Promise<CompanyAccount> {
+    return this.client.get<CompanyAccount>("/users/company");
+  }
+
+  async getSettings(): Promise<UserSettings> {
+    return this.client.get<UserSettings>("/users/me/settings");
+  }
+
+  async updateSettings(data: UserSettings): Promise<UserSettings> {
+    return this.client.patch<UserSettings>("/users/me/settings", data);
+  }
+
+  async listSessions(): Promise<SessionItem[]> {
+    return this.client.get<SessionItem[]>("/users/me/sessions");
+  }
+
+  async revokeSession(sessionId: string): Promise<{ message: string }> {
+    return this.client.delete<{ message: string }>(`/users/me/sessions/${sessionId}`);
   }
 
   async verifyEmail(token: string): Promise<{ message: string }> {
