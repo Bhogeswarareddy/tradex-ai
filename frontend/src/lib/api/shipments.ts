@@ -47,7 +47,7 @@ export const shipmentsApi = {
     if (!r.ok) throw new Error(await r.text());
     return r.json();
   },
-  events: async (id: string): Promise<{ events: ShipmentEvent[] }> => {
+  events: async (id: string): Promise<ShipmentEvent[] | { events: ShipmentEvent[] }> => {
     const r = await fetch(`/api/v1/shipments/${id}/events`, { headers: authHeaders() });
     if (!r.ok) throw new Error(await r.text());
     return r.json();

@@ -93,6 +93,7 @@ async def list_shipments(
                 Shipment.shipment_number.ilike(term),
                 Shipment.carrier.ilike(term),
                 Shipment.tracking_number.ilike(term),
+                Shipment.container_number.ilike(term),
                 Shipment.origin.ilike(term),
                 Shipment.destination.ilike(term),
             )
@@ -116,6 +117,8 @@ async def list_shipments(
             "order_number": ord_obj.order_number if ord_obj else None,
             "carrier": s.carrier,
             "vessel_or_flight": s.vessel_or_flight,
+            "container_number": s.container_number,
+            "freight_forwarder": s.freight_forwarder,
             "tracking_number": s.tracking_number,
             "origin": s.origin,
             "destination": s.destination,
