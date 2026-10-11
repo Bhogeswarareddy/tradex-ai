@@ -116,6 +116,8 @@ class MockProvider(LLMProvider):
             res_json = self._mock_shipment_summary(prompt_text)
         elif "doc_extract" in prompt_lower or "document_text" in prompt_lower or "certificate_number" in schema_str or "invoice_amount" in schema_str:
             res_json = self._mock_doc_extract(prompt_text)
+        elif "market_insight" in prompt_lower or "market context" in prompt_lower or "insights" in schema_str or "demand_index" in prompt_lower:
+            res_json = self._mock_market_insight(prompt_text)
         else:
             res_json = self._extract_search_requirement(prompt_text)
 
@@ -241,6 +243,20 @@ class MockProvider(LLMProvider):
                 "confidence_score": 0.96,
                 "status": "extracted",
             }
+
+    def _mock_market_insight(self, text: str) -> Dict[str, Any]:
+        """Deterministic 3 to 5 AI insight sentences strictly citing numbers present in the data."""
+        return {
+            "insights": [
+                "Organic Turmeric exhibits the fastest market growth with a +42.0% expansion in demand index and average spot price reaching €3.48/kg across European trade corridors.",
+                "Basmati Rice demonstrated sustained momentum with +35.0% demand growth over the 24-month horizon, stabilizing at €1.55/kg spot benchmark.",
+                "Cotton Fibre saw a +28.0% demand index surge accompanied by trade volume growth to 1,254 MT, driven by Southeast Asian textile mills.",
+                "Precision Auto Components expanded +24.0% with strong German manufacturing demand averaging €18.85/unit across Tier-1 supply chains.",
+                "White Sesame Seeds registered a +19.0% increase in buyer inquiries, supported by steady North American volume reaching 738 MT.",
+            ],
+            "summary": "Overall agricultural and industrial commodity demand shows robust double-digit upward trajectories across key destination corridors, led by organic spices (+42.0%) and grains (+35.0%).",
+            "source": "Simulated market data",
+        }
 
     def _mock_quote_compare(self, text: str) -> Dict[str, Any]:
         """Deterministic comparison output citing real numbers from Prompt 14 data."""

@@ -7,6 +7,7 @@ from app.models.trade import (
 )
 from app.models.content import Document, DocumentExtraction, Message, Notification, Review, SavedItem, Thread
 from app.models.ai_ops import AILog, AIRecommendation, AISearch, AuditLog, KnowledgeChunk, MarketInsight, SystemSetting
+from app.models.market import MarketSeries
 
 __all__ = [
     "Base",
@@ -51,4 +52,5 @@ __all__ = [
     "MarketInsight",
     "AuditLog",
     "SystemSetting",
+    "MarketSeries",
 ]

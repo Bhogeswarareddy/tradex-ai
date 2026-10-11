@@ -25,6 +25,7 @@ import {
   ShipmentDetailPage,
   DocumentsPage,
   CopilotPage,
+  AnalyticsPage,
 } from "../pages";
 import { AppLayout } from "../components/layout";
 import { RoleGuard } from "../features/auth";
@@ -72,15 +73,7 @@ export const AppRoutes: React.FC = () => {
         <Route path="/shipments/:id" element={<ShipmentDetailPage />} />
         <Route path="/trade-finance" element={<TradeFinancePage />} />
         <Route path="/documents" element={<DocumentsPage />} />
-        <Route
-          path="/analytics"
-          element={
-            <ModulePlaceholderPage
-              title="Trade Analytics & Reporting"
-              description="Spend analytics, volume breakdown, and supplier fulfillment metrics."
-            />
-          }
-        />
+        <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/messages" element={<MessagesPage />} />
         <Route path="/negotiations" element={<MessagesPage />} />
         <Route

@@ -45,6 +45,17 @@ class ValidationError(AppException):
         )
 
 
+class BadRequestError(AppException):
+    def __init__(self, message: str = "Bad request", details: Optional[Any] = None) -> None:
+        super().__init__(
+            message=message,
+            code="BAD_REQUEST",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            details=details,
+        )
+
+
+
 class AuthenticationError(AppException):
     def __init__(self, message: str = "Authentication required", details: Optional[Any] = None) -> None:
         super().__init__(

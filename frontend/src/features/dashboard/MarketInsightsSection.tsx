@@ -58,10 +58,10 @@ export const MarketInsightsSection: React.FC<MarketInsightsSectionProps> = ({
           <div className="flex items-center gap-2">
             <h3 className="font-bold text-slate-900 text-sm">Live Market Insights</h3>
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-              Live Feed
+              Simulated market data
             </span>
           </div>
-          <p className="text-xs text-slate-400">Export commodity price and demand momentum</p>
+          <p className="text-xs text-slate-400">Export commodity price and demand momentum (Simulated market data)</p>
         </div>
 
         <div className="flex gap-1.5 p-1 bg-slate-100 rounded-xl">

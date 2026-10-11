@@ -22,3 +22,4 @@ export * from "./ShipmentsPage";
 export * from "./ShipmentDetailPage";
 export * from "./DocumentsPage";
 export * from "./CopilotPage";
+export * from "./AnalyticsPage";
