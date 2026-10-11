@@ -86,7 +86,7 @@ services:
     networks:
       - frontend_net
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -106,7 +106,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - certs:/etc/nginx/certs:ro
+      - ./certs:/etc/nginx/certs:ro
       - nginx_logs:/var/log/nginx
       - uploads:/app/storage:ro
     networks:
