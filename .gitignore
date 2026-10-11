@@ -3,6 +3,7 @@
 .env.local
 .env.*.local
 *.pem
+!certs/*.pem
 *.key
 
 # Python

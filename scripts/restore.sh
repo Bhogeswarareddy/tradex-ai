@@ -23,6 +23,7 @@ if [[ -z "${TARGET_TIMESTAMP}" ]]; then
         DB_BACKUP="${BACKUP_DIR}/db_${TARGET_TIMESTAMP}.sql.gz"
         UPLOADS_BACKUP="${BACKUP_DIR}/uploads_${TARGET_TIMESTAMP}.tar.gz"
     else
+        # shellcheck disable=SC2012
         LATEST_DB=$(ls -t "${BACKUP_DIR}"/db_*.sql.gz 2>/dev/null | head -n 1 || true)
         if [[ -z "${LATEST_DB}" ]]; then
             echo "Error: No backup archives found in ${BACKUP_DIR}/" >&2

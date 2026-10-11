@@ -18,6 +18,7 @@ if [[ "${DRY_RUN:-0}" == "1" ]]; then
     echo "[DRY-RUN] Would install AWS CLI v2"
     echo "[DRY-RUN] Would configure UFW: allow 22/tcp, 80/tcp, 443/tcp, default deny incoming"
     echo "[DRY-RUN] Would create app directory: ${APP_DIR}"
+    echo "[DRY-RUN] Would install and configure Amazon CloudWatch Agent with aws/cloudwatch-agent.json"
     exit 0
 fi
 
@@ -39,9 +40,13 @@ sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg --yes
 sudo chmod a+r /etc/apt/keyrings/docker.gpg
 
+VERSION_CODENAME="$(
+    # shellcheck source=/dev/null
+    . /etc/os-release && echo "$VERSION_CODENAME"
+)"
 echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  ${VERSION_CODENAME} stable" | \
   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
 sudo apt-get update
@@ -73,5 +78,16 @@ sudo dpkg-reconfigure -f noninteractive unattended-upgrades
 echo "==> 7. Creating application directory: ${APP_DIR}..."
 sudo mkdir -p "${APP_DIR}"
 sudo chown -R "${CURRENT_USER}:${CURRENT_USER}" "${APP_DIR}"
+
+echo "==> 8. Installing and configuring Amazon CloudWatch Agent..."
+if ! command -v amazon-cloudwatch-agent-ctl >/dev/null 2>&1; then
+    curl -fsSL "https://amazoncloudwatch-agent.s3.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb" -o /tmp/amazon-cloudwatch-agent.deb
+    sudo dpkg -i -E /tmp/amazon-cloudwatch-agent.deb || true
+    rm -f /tmp/amazon-cloudwatch-agent.deb
+fi
+if [[ -f "${APP_DIR}/aws/cloudwatch-agent.json" ]]; then
+    sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+        -a fetch-config -m ec2 -s -c "file:${APP_DIR}/aws/cloudwatch-agent.json" || true
+fi
 
 echo "==> EC2 Bootstrap completed successfully. Please relogin to activate docker group membership."

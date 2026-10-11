@@ -58,8 +58,6 @@ services:
       LOCAL_STORAGE_PATH: /app/storage
     volumes:
       - uploads:/app/storage
-    ports:
-      - "8000:8000"
     networks:
       - frontend_net
       - backend_net
@@ -73,6 +71,7 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
+      start_period: 20s
     deploy:
       resources:
         limits:
@@ -92,6 +91,7 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
+      start_period: 10s
     deploy:
       resources:
         limits:
@@ -107,10 +107,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "8080:80"
-      - "8443:443"
     volumes:
-      - ./certs:/etc/nginx/certs:ro
+      - ./certs:/etc/nginx/certs
       - nginx_logs:/var/log/nginx
       - uploads:/app/storage:ro
     networks:
@@ -125,6 +123,7 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
+      start_period: 10s
     deploy:
       resources:
         limits:

@@ -38,7 +38,9 @@ docker run --rm \
     alpine tar czf "/backup/uploads_${TIMESTAMP}.tar.gz" -C /data .
 
 echo "==> 3. Pruning old backups (keeping newest 7)..."
+# shellcheck disable=SC2012
 ls -t "${BACKUP_DIR}"/db_*.sql.gz | tail -n +8 | xargs -r rm -f
+# shellcheck disable=SC2012
 ls -t "${BACKUP_DIR}"/uploads_*.tar.gz | tail -n +8 | xargs -r rm -f
 
 # Copy to S3 if bucket is configured
