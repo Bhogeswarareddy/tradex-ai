@@ -34,14 +34,31 @@ export const RfqsPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [wizardInitialPrompt, setWizardInitialPrompt] = useState("");
+  const [wizardInitialData, setWizardInitialData] = useState<Record<string, any> | undefined>(undefined);
 
-  // Check if query params contain draft intent
+  // Check if query params contain draft intent or prefilled requirements
   useEffect(() => {
     const title = searchParams.get("title");
     const product = searchParams.get("product");
     const q = searchParams.get("q");
     if (title || product || q) {
       setWizardInitialPrompt(title || product || q || "");
+      
+      const parsedData: Record<string, any> = {};
+      if (title) parsedData.title = title;
+      if (product) parsedData.product = product;
+      if (searchParams.get("quantity")) parsedData.quantity = Number(searchParams.get("quantity"));
+      if (searchParams.get("unit")) parsedData.unit = searchParams.get("unit");
+      if (searchParams.get("origin_country")) parsedData.origin_country = searchParams.get("origin_country");
+      if (searchParams.get("destination_country")) parsedData.destination_country = searchParams.get("destination_country");
+      if (searchParams.get("destination_port")) parsedData.destination_port = searchParams.get("destination_port");
+      if (searchParams.get("lead_time_days")) parsedData.lead_time_days = Number(searchParams.get("lead_time_days"));
+      if (searchParams.get("incoterm")) parsedData.incoterm = searchParams.get("incoterm");
+      if (searchParams.get("certifications")) {
+        parsedData.certifications = searchParams.get("certifications")?.split(",") || [];
+      }
+
+      setWizardInitialData(Object.keys(parsedData).length > 0 ? parsedData : undefined);
       setIsWizardOpen(true);
     }
   }, [searchParams]);
@@ -110,6 +127,7 @@ export const RfqsPage: React.FC = () => {
       {isWizardOpen && (
         <CreateRfqWizard
           initialPrompt={wizardInitialPrompt}
+          initialData={wizardInitialData}
           onSuccess={handleWizardSuccess}
           onCancel={() => setIsWizardOpen(false)}
         />

@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import {
   aiSearchApi,
   AiSearchResponse,
   AiSearchHistoryItem,
+  SavedSearchItem,
   ExtractedRequirement,
 } from "../lib/api/aiSearch";
 import {
@@ -32,54 +33,92 @@ export const AiSearchPage: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<"suppliers" | "products">("suppliers");
   const [isSaved, setIsSaved] = useState(false);
+  const [savedSearchId, setSavedSearchId] = useState<string | null>(null);
   const [breakdownSupplier, setBreakdownSupplier] = useState<any | null>(null);
 
-  // History state
+  // History & Saved Searches state
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyItems, setHistoryItems] = useState<AiSearchHistoryItem[]>([]);
+  const [savedSearches, setSavedSearches] = useState<SavedSearchItem[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
-  // Fetch search history
-  const loadHistory = useCallback(async () => {
+  // Stale Results Prevention: Track active AbortController and latest sequential requestId
+  const activeAbortRef = useRef<AbortController | null>(null);
+  const latestRequestIdRef = useRef<number>(0);
+
+  // Fetch search history and database-backed saved searches
+  const loadHistoryAndSaved = useCallback(async () => {
     try {
       setIsHistoryLoading(true);
-      const items = await aiSearchApi.getHistory();
-      setHistoryItems(items);
+      const [hist, saved] = await Promise.all([
+        aiSearchApi.getHistory().catch(() => []),
+        aiSearchApi.getSavedSearches().catch(() => []),
+      ]);
+      setHistoryItems(hist);
+      setSavedSearches(saved);
     } catch {
-      // Non-critical, ignore if user is unauthenticated
+      // Non-critical
     } finally {
       setIsHistoryLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadHistory();
-  }, [loadHistory]);
+    loadHistoryAndSaved();
+  }, [loadHistoryAndSaved]);
 
-  // Execute Search
+  // Execute Search with AbortController and requestId guards
   const executeSearch = useCallback(
-    async (queryText: string) => {
-      if (!queryText.trim()) return;
+    async (queryText: string, preservedRequirement?: ExtractedRequirement) => {
+      const trimmed = queryText.trim();
+      if (!trimmed) return;
+
+      // 1. Cancel previous in-flight request immediately
+      if (activeAbortRef.current) {
+        activeAbortRef.current.abort();
+      }
+      const controller = new AbortController();
+      activeAbortRef.current = controller;
+
+      // 2. Increment request ID to ensure out-of-order responses are rejected
+      const requestId = ++latestRequestIdRef.current;
 
       setIsLoading(true);
       setError(null);
       setIsSaved(false);
+      setSavedSearchId(null);
 
       // Update URL query string
-      setSearchParams({ q: queryText });
+      setSearchParams({ q: trimmed });
 
       try {
-        const response = await aiSearchApi.search(queryText);
+        const response = await aiSearchApi.search(trimmed, controller.signal);
+
+        // Check if this response matches the most recent request
+        if (requestId !== latestRequestIdRef.current) {
+          return;
+        }
+
         setSearchResponse(response);
-        setEditedRequirement(response.requirement);
-        loadHistory();
+        setEditedRequirement(preservedRequirement || response.requirement);
+
+        // Check if this search was already saved in user's savedSearches
+        loadHistoryAndSaved();
       } catch (err: any) {
-        setError(err.message || "Failed to parse search query. Please try again.");
+        if (err.name === "AbortError") {
+          // Request was aborted by newer search, do not set error state
+          return;
+        }
+        if (requestId === latestRequestIdRef.current) {
+          setError(err.message || "Failed to parse trade search query. Please try again.");
+        }
       } finally {
-        setIsLoading(false);
+        if (requestId === latestRequestIdRef.current) {
+          setIsLoading(false);
+        }
       }
     },
-    [setSearchParams, loadHistory]
+    [setSearchParams, loadHistoryAndSaved]
   );
 
   // Auto-search if q is present in URL on initial mount
@@ -91,13 +130,12 @@ export const AiSearchPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryParam]);
 
-  // Client-side filtering when editedRequirement is changed without re-calling AI
+  // Filtered suppliers: use response suppliers with fallback
   const filteredSuppliers = useMemo(() => {
     if (!searchResponse) return [];
     if (!editedRequirement) return searchResponse.suppliers;
 
     return searchResponse.suppliers.filter((s) => {
-      // If user modified origin country, match supplier country
       if (
         editedRequirement.origin_country &&
         !s.country.toLowerCase().includes(editedRequirement.origin_country.toLowerCase())
@@ -113,37 +151,48 @@ export const AiSearchPage: React.FC = () => {
     if (!editedRequirement) return searchResponse.products;
 
     return searchResponse.products.filter((p) => {
-      // Match product name or category
       if (editedRequirement.product) {
         const needle = editedRequirement.product.toLowerCase();
         const inName = p.name.toLowerCase().includes(needle);
         const inCat = p.category_name.toLowerCase().includes(needle);
         if (!inName && !inCat) return false;
       }
-
-      // Match origin country
       if (
         editedRequirement.origin_country &&
         !p.origin_country.toLowerCase().includes(editedRequirement.origin_country.toLowerCase())
       ) {
         return false;
       }
-
-      // Match delivery days
       if (
         editedRequirement.delivery_days !== undefined &&
         p.lead_time_days > editedRequirement.delivery_days
       ) {
         return false;
       }
-
       return true;
     });
   }, [searchResponse, editedRequirement]);
 
-  // Handle client-side requirement modification
-  const handleRequirementChange = (updated: ExtractedRequirement) => {
+  // Handle client-side requirement chip modification: immediately re-query structured filter endpoint
+  const handleRequirementChange = async (updated: ExtractedRequirement) => {
     setEditedRequirement(updated);
+
+    // Call fast marketplace re-filter endpoint without re-calling the LLM
+    try {
+      const filteredRes = await aiSearchApi.filter(updated);
+      setSearchResponse((prev) =>
+        prev
+          ? {
+              ...prev,
+              products: filteredRes.products,
+              suppliers: filteredRes.suppliers,
+              relaxation_suggestions: filteredRes.relaxation_suggestions,
+            }
+          : filteredRes
+      );
+    } catch {
+      // Local useMemo filtering handles UI smoothly if backend filter fails
+    }
   };
 
   // Handle relaxation suggestion apply
@@ -165,10 +214,10 @@ export const AiSearchPage: React.FC = () => {
       updated.quantity = undefined;
     }
 
-    setEditedRequirement(updated);
+    handleRequirementChange(updated);
   };
 
-  // Convert understood requirement into an RFQ
+  // Convert understood requirement into an RFQ with all trade parameters
   const handleCreateRfq = () => {
     if (!editedRequirement) return;
 
@@ -187,17 +236,45 @@ export const AiSearchPage: React.FC = () => {
     navigate(`/rfq?${params.toString()}`);
   };
 
-  // Save search
-  const handleSaveSearch = () => {
+  // Database-backed Save & Unsave Search
+  const handleSaveSearch = async () => {
+    if (isSaved && savedSearchId) {
+      try {
+        await aiSearchApi.unsaveSearch(savedSearchId);
+        setIsSaved(false);
+        setSavedSearchId(null);
+        loadHistoryAndSaved();
+      } catch {
+        // Fallback
+      }
+      return;
+    }
+
     setIsSaved(true);
     try {
-      const saved = JSON.parse(localStorage.getItem("tradex_saved_searches") || "[]");
-      if (searchResponse && !saved.includes(searchResponse.query)) {
-        saved.unshift(searchResponse.query);
-        localStorage.setItem("tradex_saved_searches", JSON.stringify(saved.slice(0, 50)));
-      }
+      const res = await aiSearchApi.saveSearch(
+        undefined,
+        searchResponse?.query || currentQuery,
+        editedRequirement,
+        searchResponse?.filters
+      );
+      setSavedSearchId(res.search_id);
+      loadHistoryAndSaved();
     } catch {
-      // Ignore storage errors
+      // Local fallback
+    }
+  };
+
+  const handleUnsaveSearchItem = async (searchId: string) => {
+    try {
+      await aiSearchApi.unsaveSearch(searchId);
+      if (savedSearchId === searchId) {
+        setIsSaved(false);
+        setSavedSearchId(null);
+      }
+      loadHistoryAndSaved();
+    } catch {
+      // Ignore
     }
   };
 
@@ -209,6 +286,7 @@ export const AiSearchPage: React.FC = () => {
     if (editedRequirement?.product) params.set("product", editedRequirement.product);
     if (editedRequirement?.quantity) params.set("quantity", String(editedRequirement.quantity));
     if (editedRequirement?.unit) params.set("unit", editedRequirement.unit);
+    if (editedRequirement?.destination_country) params.set("destination_country", editedRequirement.destination_country);
 
     navigate(`/rfq?${params.toString()}`);
   };
@@ -284,10 +362,12 @@ export const AiSearchPage: React.FC = () => {
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
         historyItems={historyItems}
-        onSelectQuery={(q) => {
+        savedSearches={savedSearches}
+        onSelectQuery={(q, req) => {
           setCurrentQuery(q);
-          executeSearch(q);
+          executeSearch(q, req);
         }}
+        onUnsaveSearch={handleUnsaveSearchItem}
         isLoading={isHistoryLoading}
       />
 

@@ -135,4 +135,46 @@ describe("AI Search API Contracts (Prompt 11)", () => {
     expect(within45Days).toHaveLength(1);
     expect(within45Days[0].id).toBe("prod-1");
   });
+
+  it("should expose saved search and filter API methods", () => {
+    expect(typeof aiSearchApi.filter).toBe("function");
+    expect(typeof aiSearchApi.getSavedSearches).toBe("function");
+    expect(typeof aiSearchApi.saveSearch).toBe("function");
+    expect(typeof aiSearchApi.unsaveSearch).toBe("function");
+  });
+
+  it("should include 7-factor breakdown and risks in ranked supplier structure", () => {
+    const scoredSupplier: AiMatchedSupplier = {
+      id: "sup-test",
+      company_id: "comp-test",
+      name: "Spice World Exports",
+      country: "India",
+      city: "Cochin",
+      verified_status: "verified",
+      trust_score: 95,
+      on_time_rate: 96,
+      rating: 4.8,
+      total_reviews: 42,
+      capacity_per_month: "100 MT/month",
+      match_score: 92.5,
+      score: 92.5,
+      match_reasons: ["Catalog match", "Export experience to destination"],
+      reasons: ["Catalog match", "Export experience to destination"],
+      risks: ["Target price tight"],
+      breakdown: {
+        product_relevance: 25,
+        certifications: 15,
+        moq_fit: 10,
+        capacity: 10,
+        delivery: 10,
+        price: 12.5,
+        reliability: 10,
+      },
+    };
+
+    expect(scoredSupplier.breakdown?.product_relevance).toBe(25);
+    expect(scoredSupplier.breakdown?.certifications).toBe(15);
+    expect(scoredSupplier.risks).toContain("Target price tight");
+    expect(scoredSupplier.score).toBe(92.5);
+  });
 });

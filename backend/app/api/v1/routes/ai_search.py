@@ -14,12 +14,17 @@ from app.core.database import get_db
 from app.models.ai_ops import AISearch
 from app.models.catalog import Category, Certification, Product, SupplierCertification
 from app.models.identity import Company, Supplier, User
+from app.services.matching import get_matching_weights, rank_suppliers_for_requirement
 
 router = APIRouter(prefix="/ai", tags=["AI Search"])
 
 
 class AISearchRequest(BaseModel):
     query: str = Field(min_length=2, max_length=1000, description="Natural language trade inquiry sentence")
+
+
+class AISearchFilterRequest(BaseModel):
+    requirement: SearchRequirement
 
 
 class AISearchHistoryItem(BaseModel):
@@ -45,34 +50,19 @@ class AISearchResponse(BaseModel):
     is_mock: bool = False
 
 
-@router.post("/search", response_model=AISearchResponse)
-async def perform_ai_search(
-    req: AISearchRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user_optional),
+async def _execute_search_and_matching(
+    db: AsyncSession,
+    clean_query: str,
+    requirement: SearchRequirement,
+    t0: float,
+    current_user: Optional[User] = None,
+    persist_history: bool = True,
 ) -> AISearchResponse:
-    """
-    Natural language search turning an unstructured commercial sentence
-    into structured trade requirements, missing fields, clarifying questions,
-    and marketplace matches.
-    """
-    t0 = time.time()
-    clean_query = req.query.strip()
-
-    # 1. Structured Requirement Extraction via AI Service Layer
-    requirement: SearchRequirement = await generate_structured(
-        prompt_name="search_extract.v1",
-        variables={"query": clean_query},
-        pydantic_model=SearchRequirement,
-        session=db,
-        feature_name="ai_search",
-    )
-
     filters = requirement.to_filters()
     missing_fields = requirement.get_missing_fields()
     clarifying_questions = requirement.get_clarifying_questions()
 
-    # 2. Query Products Matching Requirement
+    # 1. Query Products Matching Requirement
     prod_stmt = (
         select(Product)
         .options(
@@ -97,11 +87,10 @@ async def perform_ai_search(
     if requirement.origin_country:
         prod_stmt = prod_stmt.where(Product.origin_country.ilike(f"%{requirement.origin_country}%"))
 
-    # Execute products query
     prod_res = await db.execute(prod_stmt.limit(12))
     matched_products = prod_res.scalars().all()
 
-    # Fallback to broader category or catalog if 0 products found on strict ILIKE
+    # Fallback to broader catalog if 0 products found on strict ILIKE
     if not matched_products:
         broad_stmt = (
             select(Product)
@@ -117,77 +106,92 @@ async def perform_ai_search(
         broad_res = await db.execute(broad_stmt)
         matched_products = broad_res.scalars().all()
 
-    # 3. Query Suppliers & Calculate AI Match Scores
+    # 2. Query Suppliers & Rank using the Pure-Python 7-Factor Matching Engine
     supp_stmt = (
         select(Supplier)
         .options(
             selectinload(Supplier.company),
             selectinload(Supplier.certifications).selectinload(SupplierCertification.certification),
+            selectinload(Supplier.products).selectinload(Product.price_tiers),
         )
     )
-
-    supp_res = await db.execute(supp_stmt.limit(15))
+    supp_res = await db.execute(supp_stmt.limit(20))
     all_suppliers = supp_res.scalars().all()
 
-    scored_suppliers: List[Dict[str, Any]] = []
+    supplier_payloads: List[Dict[str, Any]] = []
     for s in all_suppliers:
-        score = 65.0
-        match_reasons: List[str] = []
+        comp = s.company
+        certs: List[str] = []
+        if s.certifications:
+            for sc in s.certifications:
+                if sc.certification and sc.certification.name:
+                    certs.append(sc.certification.name)
+                elif sc.certificate_no:
+                    certs.append(sc.certificate_no)
 
-        # Check origin country alignment
-        if requirement.origin_country:
-            if s.company.country.lower() == requirement.origin_country.lower():
-                score += 15.0
-                match_reasons.append(f"Origin: Direct manufacturer based in {s.company.country}")
+        prods_data: List[Dict[str, Any]] = []
+        for p in (s.products or []):
+            p_price = None
+            if p.price_tiers:
+                p_price = min(float(pt.unit_price) for pt in p.price_tiers)
+            prods_data.append({
+                "id": str(p.id),
+                "name": p.name,
+                "category_name": p.origin_country or "",
+                "hs_code": p.hs_code or "",
+                "price_min": p_price,
+            })
 
-        # Check export destination alignment
-        if requirement.destination_country:
-            dest_lower = requirement.destination_country.lower()
-            if any(dest_lower in str(ec).lower() for ec in (s.export_countries or [])):
-                score += 10.0
-                match_reasons.append(f"Export Track Record: Active shipping lines to {requirement.destination_country}")
-
-        # Check certifications alignment
-        if requirement.certifications:
-            supplier_certs = [
-                sc.certification.name.lower()
-                for sc in s.certifications
-                if sc.certification
-            ]
-            for c in requirement.certifications:
-                if any(c.lower() in sc_name for sc_name in supplier_certs):
-                    score += 10.0
-                    match_reasons.append(f"Compliance: Verified {c} certification on file")
-
-        # SLA reliability bonus
-        if s.on_time_rate and s.on_time_rate >= 90.0:
-            score += 5.0
-            match_reasons.append(f"Fulfillment: {s.on_time_rate}% on-time SLA reliability")
-
-        score = min(99.0, max(50.0, score))
-
-        # Check if supplier matches product keywords or Sri Bharat Spices Pvt Ltd
-        scored_suppliers.append({
+        supplier_payloads.append({
             "id": str(s.id),
             "company_id": str(s.company_id),
-            "name": s.company.name,
-            "logo_url": s.company.logo_url,
-            "banner_url": s.company.banner_url,
-            "country": s.company.country,
-            "city": s.company.city,
-            "verified_status": s.company.verified_status,
-            "trust_score": s.trust_score,
-            "on_time_rate": s.on_time_rate,
-            "rating": getattr(s, "rating", round(s.trust_score, 1)),
-            "total_reviews": getattr(s, "total_reviews", getattr(s, "total_buyers_count", 320)),
-            "capacity_per_month": s.capacity_per_month,
-            "match_score": round(score, 1),
-            "match_reasons": match_reasons or ["Verified exporter meeting platform compliance baseline"],
+            "name": comp.name if comp else "Supplier",
+            "country": comp.country if comp else "",
+            "city": comp.city if comp else "",
+            "logo_url": comp.logo_url if comp else None,
+            "banner_url": getattr(comp, "banner_url", None),
+            "verified_status": comp.verified_status if comp else "verified",
+            "trust_score": float(s.trust_score or 90.0),
+            "on_time_rate": float(s.on_time_rate or 92.0),
+            "rating": getattr(s, "rating", 4.9),
+            "total_reviews": getattr(s, "total_reviews", 32),
+            "capacity_per_month": s.capacity_per_month or "50 MT/month",
+            "export_countries": s.export_countries or [],
+            "certifications": certs,
+            "products": prods_data,
+            "main_products": [p["name"] for p in prods_data],
+            "min_moq": getattr(s, "min_moq", 1000),
+            "lead_time_days": getattr(s, "lead_time_days", 25),
+            "years_in_business": getattr(comp, "years_in_business", 8) if comp else 8,
         })
 
-    # Sort suppliers by match score descending
-    scored_suppliers.sort(key=lambda x: x["match_score"], reverse=True)
-    top_suppliers = scored_suppliers[:8]
+    weights = await get_matching_weights(db)
+    ranked = rank_suppliers_for_requirement(supplier_payloads, requirement.model_dump(), weights=weights)
+
+    top_suppliers: List[Dict[str, Any]] = []
+    for item in ranked[:8]:
+        top_suppliers.append({
+            "id": item["id"],
+            "company_id": item["company_id"],
+            "name": item["name"],
+            "logo_url": item["logo_url"],
+            "banner_url": item["banner_url"],
+            "country": item["country"],
+            "city": item["city"],
+            "verified_status": item["verified_status"],
+            "trust_score": item["trust_score"],
+            "on_time_rate": item["on_time_rate"],
+            "rating": item["rating"],
+            "total_reviews": item["total_reviews"],
+            "capacity_per_month": item["capacity_per_month"],
+            "match_score": item["score"],
+            "score": item["score"],
+            "match_reasons": item["reasons"],
+            "reasons": item["reasons"],
+            "risks": item.get("risks", []),
+            "breakdown": item.get("breakdown", {}),
+            "explanation": f"{item['name']} achieved a {item['score']}% match score under platform deterministic weighting.",
+        })
 
     # Format products list
     formatted_products: List[Dict[str, Any]] = []
@@ -226,7 +230,7 @@ async def perform_ai_search(
             "stock_available": p.stock_available,
         })
 
-    # 4. Generate Filter Relaxation Suggestions if matches are limited
+    # Suggestions if results are sparse
     relaxation_suggestions: List[str] = []
     if len(formatted_products) < 3 or len(top_suppliers) < 3:
         if requirement.delivery_days and requirement.delivery_days <= 30:
@@ -240,22 +244,21 @@ async def perform_ai_search(
 
     elapsed_ms = round((time.time() - t0) * 1000, 2)
 
-    # 5. Persist Search History in Database
-    try:
-        user_uuid = current_user.id if current_user else None
-        search_log = AISearch(
-            user_id=user_uuid,
-            query=clean_query,
-            filters=filters,
-            requirement=requirement.model_dump(),
-            results_count=len(formatted_products) + len(top_suppliers),
-            execution_time_ms=elapsed_ms,
-        )
-        db.add(search_log)
-        await db.commit()
-    except Exception as e:
-        # Non-critical error
-        pass
+    if persist_history:
+        try:
+            user_uuid = current_user.id if current_user else None
+            search_log = AISearch(
+                user_id=user_uuid,
+                query=clean_query,
+                filters=filters,
+                requirement=requirement.model_dump(),
+                results_count=len(formatted_products) + len(top_suppliers),
+                execution_time_ms=elapsed_ms,
+            )
+            db.add(search_log)
+            await db.commit()
+        except Exception:
+            pass
 
     return AISearchResponse(
         query=clean_query,
@@ -268,6 +271,62 @@ async def perform_ai_search(
         relaxation_suggestions=relaxation_suggestions,
         execution_time_ms=elapsed_ms,
         is_mock=True,
+    )
+
+
+@router.post("/search", response_model=AISearchResponse)
+async def perform_ai_search(
+    req: AISearchRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+) -> AISearchResponse:
+    """
+    Natural language search turning an unstructured commercial sentence
+    into structured trade requirements, missing fields, clarifying questions,
+    and marketplace matches with 7-factor deterministic scoring.
+    """
+    t0 = time.time()
+    clean_query = req.query.strip()
+
+    # 1. Structured Requirement Extraction via AI Service Layer
+    requirement: SearchRequirement = await generate_structured(
+        prompt_name="search_extract.v1",
+        variables={"query": clean_query},
+        pydantic_model=SearchRequirement,
+        session=db,
+        feature_name="ai_search",
+    )
+
+    return await _execute_search_and_matching(
+        db=db,
+        clean_query=clean_query,
+        requirement=requirement,
+        t0=t0,
+        current_user=current_user,
+        persist_history=True,
+    )
+
+
+@router.post("/search/filter", response_model=AISearchResponse)
+async def filter_ai_search(
+    req: AISearchFilterRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+) -> AISearchResponse:
+    """
+    Re-filter marketplace results given user-modified requirement chips
+    without calling the AI LLM extraction prompt.
+    """
+    t0 = time.time()
+    query_str = f"Filtered requirement: {req.requirement.product}"
+
+    return await _execute_search_and_matching(
+        db=db,
+        clean_query=query_str,
+        requirement=req.requirement,
+        t0=t0,
+        current_user=current_user,
+        persist_history=False,
     )
 
 

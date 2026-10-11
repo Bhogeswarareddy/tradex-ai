@@ -44,12 +44,17 @@ class MockProvider(LLMProvider):
     """
 
     def __init__(self) -> None:
-        self.fixtures_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)),
-            "tests",
-            "fixtures",
-            "search_queries.json",
-        )
+        candidates = [
+            os.path.join(os.path.dirname(__file__), "..", "tests", "fixtures", "search_queries.json"),
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), "tests", "fixtures", "search_queries.json"),
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), "app", "tests", "fixtures", "search_queries.json"),
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "tests", "fixtures", "search_queries.json")),
+        ]
+        self.fixtures_path = candidates[0]
+        for p in candidates:
+            if os.path.exists(p):
+                self.fixtures_path = os.path.abspath(p)
+                break
         self._fixtures: List[Dict[str, Any]] = []
         self._load_fixtures()
         # For testing retries and failure injection
@@ -287,115 +292,154 @@ class MockProvider(LLMProvider):
         """Match against 10 fixtures or apply heuristic trade entity extractor."""
         # Clean text: extract content inside the last <untrusted_input> block if present
         clean_text = text.lower()
-        matches = re.findall(r"<untrusted_input>\s*(.*?)\s*</untrusted_input>", text, re.DOTALL)
-        if matches:
-            clean_text = matches[-1].strip().lower()
+        if "Input Query:" in text:
+            query_part = text.split("Input Query:")[-1]
+            matches = re.findall(r"<untrusted_input>\s*(.*?)\s*</untrusted_input>", query_part, re.DOTALL | re.IGNORECASE)
+            if matches:
+                clean_text = matches[-1].strip().lower()
+            else:
+                clean_text = query_part.strip().lower()
+        else:
+            matches = re.findall(r"<untrusted_input>\s*(.*?)\s*</untrusted_input>", text, re.DOTALL | re.IGNORECASE)
+            if matches:
+                clean_text = matches[-1].strip().lower()
 
-        # 1. Exact or partial match in fixtures
+        # 1. Exact match in fixtures
         for fix in self._fixtures:
             q_expected = fix["query"].lower().strip()
-            if q_expected in clean_text or clean_text in q_expected or q_expected in text.lower():
+            if q_expected == clean_text:
                 exp = fix["expected"].copy()
                 exp["confidence"] = {k: 0.98 for k in exp.keys()}
                 exp["other_constraints"] = ["Standard verified export specification", "Demo AI Extracted"]
                 return exp
 
-        # 2. Fixed turmeric reference check
-        if "turmeric" in clean_text or "turmeric" in text.lower():
-            return {
-                "product": "turmeric",
-                "category": "Spices & Herbs",
-                "quantity": 20000.0,
-                "unit": "kg",
-                "origin_country": "India",
-                "destination_country": "Germany",
-                "destination_port": "Hamburg",
-                "certifications": ["Organic"],
-                "currency": "USD",
-                "delivery_days": 45,
-                "incoterm": "CIF",
-                "other_constraints": ["Demo AI"],
-                "confidence": {
-                    "product": 0.99,
-                    "quantity": 0.98,
-                    "origin_country": 0.98,
-                    "destination_port": 0.95,
-                    "certifications": 0.95,
-                    "delivery_days": 0.95,
-                },
-            }
+        # 1b. Check high-token overlap fixture match (at least 80% tokens identical)
+        clean_words = set(re.findall(r"\w+", clean_text))
+        for fix in self._fixtures:
+            fix_words = set(re.findall(r"\w+", fix["query"].lower().strip()))
+            if fix_words and clean_words:
+                overlap = len(clean_words.intersection(fix_words)) / len(fix_words)
+                if overlap >= 0.85:
+                    exp = fix["expected"].copy()
+                    exp["confidence"] = {k: 0.98 for k in exp.keys()}
+                    exp["other_constraints"] = ["Standard verified export specification", "Demo AI Extracted"]
+                    return exp
 
-        # 3. Rule-based heuristic extraction for any other query
-        # Product
+        # 2. Rule-based heuristic extraction for arbitrary inquiries
         product = "General Commodities"
         category = "General Trade"
-        if "rice" in clean_text:
+        
+        # Priority matches for common commodities
+        if "turmeric" in clean_text:
+            product = "turmeric"
+            category = "Spices & Herbs"
+        elif "chilli" in clean_text or "chili" in clean_text or "pepper" in clean_text:
+            if "black pepper" in clean_text:
+                product = "Black Pepper"
+            elif "red chilli" in clean_text or "red chili" in clean_text:
+                product = "Red Chilli"
+            elif "chilli" in clean_text or "chili" in clean_text:
+                product = "Chilli"
+            else:
+                product = "Black Pepper"
+            category = "Spices & Herbs"
+        elif "rice" in clean_text:
             product = "Basmati Rice"
             category = "Grains & Cereals"
-        elif "pepper" in clean_text:
-            product = "Black Pepper"
-            category = "Spices & Herbs"
         elif "ginger" in clean_text:
             product = "Fresh Ginger"
             category = "Spices & Herbs"
         elif "cardamom" in clean_text:
             product = "Green Cardamom"
             category = "Spices & Herbs"
-        elif "cotton" in clean_text or "yarn" in clean_text:
-            product = "Cotton Yarn"
+        elif "saffron" in clean_text:
+            product = "Saffron"
+            category = "Spices & Herbs"
+        elif "garlic" in clean_text:
+            product = "Garlic"
+            category = "Spices & Herbs"
+        elif "coffee" in clean_text:
+            product = "Arabica Coffee"
+            category = "Coffee & Tea"
+        elif "tea" in clean_text:
+            product = "Assam Tea"
+            category = "Coffee & Tea"
+        elif "textile" in clean_text or "fabric" in clean_text or "cotton" in clean_text or "yarn" in clean_text or "denim" in clean_text:
+            if "denim" in clean_text:
+                product = "Denim Fabric"
+            elif "yarn" in clean_text or "cotton yarn" in clean_text:
+                product = "Cotton Yarn"
+            else:
+                product = "Textiles & Fabrics"
             category = "Textiles & Apparel"
-        elif "auto" in clean_text or "cnc" in clean_text:
+        elif "auto" in clean_text or "cnc" in clean_text or "component" in clean_text:
             product = "CNC Auto Components"
             category = "Auto Components & Industrial"
         elif "solar" in clean_text or "panel" in clean_text:
             product = "Solar Panels"
             category = "Renewable Energy & Solar"
-        elif "coffee" in clean_text:
-            product = "Arabica Coffee"
-            category = "Coffee & Tea"
+        else:
+            # Extract first meaningful noun phrase if possible
+            for stop_term in ["i need", "looking for", "rfq for", "procure", "seeking", "buy", "import", "quote for", "please quote", "tons of", "tonnes of", "kg of", "mt of"]:
+                clean_text_mod = clean_text.replace(stop_term, "")
+            words = [w for w in re.findall(r"[a-zA-Z]+", clean_text) if w not in {"i", "need", "looking", "for", "tons", "ton", "tonnes", "kg", "mt", "from", "to", "within", "days", "of", "and", "in", "with", "cif", "fob", "cfr", "ddp", "the", "a", "an"}]
+            if words:
+                product = " ".join(words[:2]).title()
 
-        # Quantity
+        # Quantity & Unit Normalization
         qty: Optional[float] = None
         unit = "kg"
-        qty_match = re.search(r"(\d+(?:,\d+)*(?:\.\d+)?)\s*(tons?|tonnes?|mt|kg|units?|lbs)", clean_text)
+        qty_match = re.search(r"(\d+(?:,\d+)*(?:\.\d+)?)\s*(tons?|tonnes?|metric\s*tons?|mt|kg|kilograms?|units?|lbs|meters?|m)", clean_text)
         if qty_match:
             val = float(qty_match.group(1).replace(",", ""))
             u_str = qty_match.group(2).lower()
             if "ton" in u_str:
                 qty = val * 1000.0
                 unit = "kg"
-            elif u_str == "mt":
+            elif u_str in ("mt", "metric tons", "metric ton"):
                 qty = val
                 unit = "MT"
+            elif "unit" in u_str:
+                qty = val
+                unit = "units"
+            elif "meter" in u_str or u_str == "m":
+                qty = val
+                unit = "meters"
             else:
                 qty = val
-                unit = u_str
+                unit = "kg"
 
         # Countries
         origin: Optional[str] = None
         destination: Optional[str] = None
-        if "from india" in clean_text or "in india" in clean_text:
+        if "from india" in clean_text or "in india" in clean_text or "kerala" in clean_text or "cochin" in clean_text:
             origin = "India"
-        elif "from germany" in clean_text:
+        elif "from germany" in clean_text or "in germany" in clean_text:
             origin = "Germany"
         elif "from vietnam" in clean_text:
             origin = "Vietnam"
+        elif "from china" in clean_text:
+            origin = "China"
+        elif "from iran" in clean_text:
+            origin = "Iran"
 
         if "to germany" in clean_text or "hamburg" in clean_text:
             destination = "Germany"
-        elif "to usa" in clean_text or "detroit" in clean_text or "california" in clean_text:
+        elif "to usa" in clean_text or "united states" in clean_text or "detroit" in clean_text or "california" in clean_text or "new york" in clean_text:
             destination = "United States"
-        elif "to uae" in clean_text or "dubai" in clean_text:
+        elif "to uae" in clean_text or "dubai" in clean_text or "jebel ali" in clean_text:
             destination = "United Arab Emirates"
-        elif "to uk" in clean_text or "london" in clean_text:
+        elif "to uk" in clean_text or "united kingdom" in clean_text or "london" in clean_text or "felixstowe" in clean_text:
             destination = "United Kingdom"
         elif "to netherlands" in clean_text or "rotterdam" in clean_text:
             destination = "Netherlands"
         elif "to saudi" in clean_text or "dammam" in clean_text:
             destination = "Saudi Arabia"
+        elif "to bangladesh" in clean_text or "chittagong" in clean_text:
+            destination = "Bangladesh"
 
         port: Optional[str] = None
-        for p in ["Hamburg", "Rotterdam", "Dubai", "Jebel Ali", "Detroit", "New York", "London", "Dammam", "Felixstowe"]:
+        for p in ["Hamburg", "Rotterdam", "Dubai", "Jebel Ali", "Detroit", "New York", "London", "Dammam", "Felixstowe", "Chittagong", "California"]:
             if p.lower() in clean_text:
                 port = p
                 break
@@ -404,7 +448,13 @@ class MockProvider(LLMProvider):
         certs: List[str] = []
         if "organic" in clean_text:
             certs.append("Organic")
-        if "iso" in clean_text:
+        if "iso 9001" in clean_text:
+            certs.append("ISO 9001")
+        elif "iso 22000" in clean_text:
+            certs.append("ISO 22000")
+        elif "iso 3632" in clean_text:
+            certs.append("ISO 3632")
+        elif "iso" in clean_text:
             certs.append("ISO 9001")
         if "haccp" in clean_text:
             certs.append("HACCP")
@@ -415,16 +465,30 @@ class MockProvider(LLMProvider):
 
         # Delivery days
         delivery: Optional[int] = None
-        days_match = re.search(r"(\d+)\s*days", clean_text)
+        days_match = re.search(r"(\d+)\s*(?:days?|day)", clean_text)
         if days_match:
             delivery = int(days_match.group(1))
 
         # Incoterms
         incoterm: Optional[str] = None
         for it in ["CIF", "FOB", "CFR", "DDP", "EXW"]:
-            if it.lower() in clean_text:
+            if re.search(rf"\b{it.lower()}\b", clean_text):
                 incoterm = it
                 break
+
+        # Confidence scores
+        conf: Dict[str, float] = {
+            "product": 0.98 if product != "General Commodities" else 0.70,
+            "category": 0.95,
+            "quantity": 0.95 if qty is not None else 0.0,
+            "unit": 0.95 if qty is not None else 0.0,
+            "origin_country": 0.95 if origin else 0.0,
+            "destination_country": 0.95 if destination else 0.0,
+            "destination_port": 0.95 if port else 0.0,
+            "certifications": 0.95 if certs else 0.0,
+            "delivery_days": 0.95 if delivery else 0.0,
+            "incoterm": 0.95 if incoterm else 0.0,
+        }
 
         return {
             "product": product,
@@ -438,13 +502,8 @@ class MockProvider(LLMProvider):
             "currency": "USD",
             "delivery_days": delivery,
             "incoterm": incoterm,
-            "other_constraints": ["Demo AI Extracted"],
-            "confidence": {
-                "product": 0.95,
-                "quantity": 0.90 if qty else 0.0,
-                "origin_country": 0.90 if origin else 0.0,
-                "destination_country": 0.90 if destination else 0.0,
-            },
+            "other_constraints": ["Standard verified export specification", "Demo AI Extracted"],
+            "confidence": conf,
         }
 
     async def embed(self, texts: List[str]) -> List[List[float]]:

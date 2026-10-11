@@ -58,6 +58,8 @@ services:
       LOCAL_STORAGE_PATH: /app/storage
     volumes:
       - uploads:/app/storage
+    ports:
+      - "8000:8000"
     networks:
       - frontend_net
       - backend_net
@@ -105,6 +107,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "8080:80"
+      - "8443:443"
     volumes:
       - ./certs:/etc/nginx/certs:ro
       - nginx_logs:/var/log/nginx

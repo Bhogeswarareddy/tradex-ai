@@ -15,37 +15,41 @@ interface CreateRfqWizardProps {
   onSuccess: (rfqId: string, rfqNumber: string) => void;
   onCancel: () => void;
   initialPrompt?: string;
+  initialData?: Record<string, any>;
 }
 
 export const CreateRfqWizard: React.FC<CreateRfqWizardProps> = ({
   onSuccess,
   onCancel,
   initialPrompt = "",
+  initialData,
 }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [aiPrompt, setAiPrompt] = useState(initialPrompt);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isAiGenerated, setIsAiGenerated] = useState(false);
+  const [isAiGenerated, setIsAiGenerated] = useState(Boolean(initialData));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Form Fields
   const [formData, setFormData] = useState({
-    title: "",
-    product: "",
-    category: "Agricultural Commodities",
-    quantity: 20000,
-    unit: "kg",
-    target_price_min: 2.80,
-    target_price_max: 3.20,
-    currency: "EUR",
-    destination_country: "Germany",
-    destination_port: "Hamburg",
-    deadline: "2026-11-15",
-    incoterm: "CIF",
-    payment_terms: "LC at sight, 30% advance",
-    quality_requirements: "Eurofins pesticide residue test report, Euro-1 certificate, and valid COA.",
-    certifications: ["EU Organic", "ISO 22000"],
+    title: initialData?.title || "",
+    product: initialData?.product || "",
+    category: initialData?.category || "Agricultural Commodities",
+    quantity: initialData?.quantity ? Number(initialData.quantity) : 20000,
+    unit: initialData?.unit || "kg",
+    target_price_min: initialData?.target_price_min ? Number(initialData.target_price_min) : 2.80,
+    target_price_max: initialData?.target_price_max ? Number(initialData.target_price_max) : 3.20,
+    currency: initialData?.currency || "USD",
+    destination_country: initialData?.destination_country || "Germany",
+    destination_port: initialData?.destination_port || "Hamburg",
+    deadline: initialData?.deadline || "2026-11-15",
+    incoterm: initialData?.incoterm || "CIF",
+    payment_terms: initialData?.payment_terms || "LC at sight, 30% advance",
+    quality_requirements: initialData?.quality_requirements || "Eurofins pesticide residue test report, Euro-1 certificate, and valid COA.",
+    certifications: initialData?.certifications
+      ? (Array.isArray(initialData.certifications) ? initialData.certifications : String(initialData.certifications).split(","))
+      : ["EU Organic", "ISO 22000"],
     specifications: [
       { key: "curcumin", value: ">=5.0%" },
       { key: "moisture", value: "<=9%" },

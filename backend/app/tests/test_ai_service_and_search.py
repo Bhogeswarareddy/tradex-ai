@@ -217,3 +217,106 @@ async def test_ai_search_history_and_admin_usage(async_client: AsyncClient):
     assert "summary" in usage
     assert "features" in usage
     assert usage["summary"]["total_calls"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_non_turmeric_chilli_and_textiles_extraction(async_client: AsyncClient):
+    """Test that queries for 'chilli' and 'textiles' extract the exact commodity and do NOT fall back to turmeric."""
+    # 1. Chilli query
+    res_chilli = await async_client.post(
+        "/api/v1/ai/search",
+        json={"query": "Looking for 15 tons of red chilli from India to London UK within 30 days CIF"},
+    )
+    assert res_chilli.status_code == 200
+    data_chilli = res_chilli.json()
+    req_chilli = data_chilli["requirement"]
+    assert "chilli" in req_chilli["product"].lower() or "chili" in req_chilli["product"].lower()
+    assert "turmeric" not in req_chilli["product"].lower()
+    assert req_chilli["origin_country"] == "India"
+    assert req_chilli["destination_country"] == "United Kingdom"
+    assert req_chilli["destination_port"] == "London"
+    assert req_chilli["incoterm"] == "CIF"
+    assert req_chilli["delivery_days"] == 30
+
+    # Verify suppliers have 7-factor breakdown
+    assert len(data_chilli["suppliers"]) > 0
+    top_sup = data_chilli["suppliers"][0]
+    assert "breakdown" in top_sup
+    assert "product_relevance" in top_sup["breakdown"]
+    assert "certifications" in top_sup["breakdown"]
+    assert "moq_fit" in top_sup["breakdown"]
+    assert "capacity" in top_sup["breakdown"]
+    assert "delivery" in top_sup["breakdown"]
+    assert "price" in top_sup["breakdown"]
+    assert "reliability" in top_sup["breakdown"]
+
+    # 2. Textile query
+    res_textile = await async_client.post(
+        "/api/v1/ai/search",
+        json={"query": "Need 5000 meters of organic cotton denim fabric from India to Hamburg"},
+    )
+    assert res_textile.status_code == 200
+    data_textile = res_textile.json()
+    req_textile = data_textile["requirement"]
+    assert any(term in req_textile["product"].lower() for term in ["denim", "cotton", "textile", "fabric"])
+    assert "turmeric" not in req_textile["product"].lower()
+
+
+@pytest.mark.asyncio
+async def test_structured_filter_endpoint_without_ai_llm(async_client: AsyncClient):
+    """Test POST /api/v1/ai/search/filter allows re-ranking marketplace matches from structured requirement chips without invoking AI LLM."""
+    structured_req = {
+        "product": "Basmati Rice",
+        "category": "Grains & Cereals",
+        "quantity": 25000.0,
+        "unit": "kg",
+        "origin_country": "India",
+        "destination_country": "United Arab Emirates",
+        "destination_port": "Dubai",
+        "certifications": ["ISO 22000"],
+        "currency": "USD",
+        "delivery_days": 25,
+        "incoterm": "CIF",
+        "confidence": {"product": 0.99},
+    }
+
+    res = await async_client.post(
+        "/api/v1/ai/search/filter",
+        json={"requirement": structured_req},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["requirement"]["product"] == "Basmati Rice"
+    assert len(data["suppliers"]) > 0
+    assert "score" in data["suppliers"][0]
+    assert "breakdown" in data["suppliers"][0]
+
+
+@pytest.mark.asyncio
+async def test_saved_searches_database_persistence(async_client: AsyncClient):
+    """Test saving, retrieving, and unsaving search requirements in the database."""
+    # 1. Save search
+    res_save = await async_client.post(
+        "/api/v1/saved/searches",
+        json={
+            "query": "50 MT organic turmeric from India to Hamburg",
+            "requirement": {"product": "turmeric", "quantity": 50000, "unit": "kg"},
+        },
+    )
+    assert res_save.status_code == 200
+    saved_data = res_save.json()
+    assert saved_data["status"] == "saved"
+    search_id = saved_data["search_id"]
+
+    # 2. List saved searches
+    res_list = await async_client.get("/api/v1/saved/searches")
+    assert res_list.status_code == 200
+    items = res_list.json()
+    assert len(items) >= 1
+    assert any(it["search_id"] == search_id for it in items)
+
+    # 3. Unsave search
+    res_del = await async_client.delete(f"/api/v1/saved/searches/{search_id}")
+    assert res_del.status_code == 200
+    assert res_del.json()["status"] == "unsaved"
+
