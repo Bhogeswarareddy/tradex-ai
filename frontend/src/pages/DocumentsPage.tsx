@@ -61,6 +61,7 @@ export const DocumentsPage: React.FC = () => {
   const [activeDocDetail, setActiveDocDetail] = useState<DocumentDetail | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerLoading, setDrawerLoading] = useState(false);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
   const [reviewFields, setReviewFields] = useState<Record<string, any>>({});
   const [applyToSupplier, setApplyToSupplier] = useState(true);
   const [applyToOrder, setApplyToOrder] = useState(true);
@@ -150,6 +151,14 @@ export const DocumentsPage: React.FC = () => {
     }
   };
 
+  const closeDrawer = () => {
+    if (previewBlobUrl) {
+      URL.revokeObjectURL(previewBlobUrl);
+      setPreviewBlobUrl(null);
+    }
+    setDrawerOpen(false);
+  };
+
   // Open review drawer
   const openReviewDrawer = async (id: string) => {
     setDrawerLoading(true);
@@ -165,6 +174,23 @@ export const DocumentsPage: React.FC = () => {
         setReviewFields({ ...latestExt.extracted_json });
       } else {
         setReviewFields({});
+      }
+
+      // Fetch preview blob for live left-side preview
+      try {
+        const token = localStorage.getItem("tradex_access_token") || "";
+        const r = await fetch(`/api/v1/documents/${id}/download`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (r.ok) {
+          const blob = await r.blob();
+          const url = URL.createObjectURL(blob);
+          setPreviewBlobUrl(url);
+        } else {
+          setPreviewBlobUrl(null);
+        }
+      } catch {
+        setPreviewBlobUrl(null);
       }
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to open document review");
@@ -638,7 +664,7 @@ export const DocumentsPage: React.FC = () => {
                 </div>
               </div>
               <button
-                onClick={() => setDrawerOpen(false)}
+                onClick={closeDrawer}
                 className="text-slate-400 hover:text-slate-600 p-2 rounded-lg"
               >
                 &times;
@@ -651,8 +677,53 @@ export const DocumentsPage: React.FC = () => {
               </div>
             ) : (
               <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Left Pane: Document Overview */}
+                {/* Left Pane: Live Document Preview & Overview */}
                 <div className="space-y-4 border-r border-slate-100 pr-0 md:pr-6">
+                  {/* Document Preview Box */}
+                  <div className="bg-slate-900/5 rounded-xl border border-slate-200 p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Eye className="w-3.5 h-3.5 text-indigo-600" />
+                        Document Live Preview
+                      </span>
+                      <span className="text-[11px] font-mono text-slate-500 truncate max-w-[180px]">
+                        {activeDocDetail.original_filename}
+                      </span>
+                    </div>
+
+                    {previewBlobUrl ? (
+                      activeDocDetail.mime_type.startsWith("image/") ? (
+                        <div className="w-full h-72 sm:h-80 bg-white rounded-lg border border-slate-200 p-2 flex items-center justify-center overflow-hidden">
+                          <img
+                            src={previewBlobUrl}
+                            alt={activeDocDetail.title}
+                            className="max-h-full max-w-full object-contain rounded"
+                          />
+                        </div>
+                      ) : (
+                        <iframe
+                          src={previewBlobUrl}
+                          title={activeDocDetail.title}
+                          className="w-full h-72 sm:h-80 rounded-lg border border-slate-200 bg-white"
+                        />
+                      )
+                    ) : (
+                      <div className="w-full h-72 sm:h-80 bg-white rounded-lg border border-dashed border-slate-300 flex flex-col items-center justify-center p-6 text-center space-y-2">
+                        <FileText className="w-10 h-10 text-slate-300" />
+                        <p className="text-xs font-medium text-slate-600">
+                          Secure preview stream loading or ready for download.
+                        </p>
+                        <button
+                          onClick={(e) => handleDownload(activeDocDetail, e)}
+                          className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-lg flex items-center gap-1 transition"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Download Document
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
                     <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
                       <FileText className="w-4 h-4 text-indigo-600" />
@@ -704,148 +775,131 @@ export const DocumentsPage: React.FC = () => {
                   <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl p-4">
                     <h4 className="text-xs font-semibold text-indigo-900 flex items-center gap-1.5 mb-1">
                       <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                      doc_extract.v1 Engine
+                      doc_extract.v1 Intelligence Engine
                     </h4>
                     <p className="text-xs text-indigo-800/80">
-                      OCR model extracts verified trade entities with confidence scores. Review or modify values before committing to the registry.
+                      OCR model extracts trade entities with confidence scores. Fields below 70% confidence are highlighted in red for mandatory human inspection.
                     </p>
                   </div>
                 </div>
 
-                {/* Right Pane: Extracted Entities Review */}
+                {/* Right Pane: Extracted Entities Review with <70% Red Highlighting */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
                       <Award className="w-4 h-4 text-emerald-600" />
-                      Extracted Fields
+                      Extracted Trade Entities
                     </h3>
                     {reviewFields.confidence_score && getConfidenceBadge(reviewFields.confidence_score)}
                   </div>
 
                   <div className="space-y-3">
-                    {/* Company Name */}
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <label className="text-xs font-medium text-slate-700">Company Name</label>
-                        {reviewFields.field_confidences?.company_name &&
-                          getConfidenceBadge(reviewFields.field_confidences.company_name)}
-                      </div>
-                      <input
-                        type="text"
-                        value={reviewFields.company_name || ""}
-                        onChange={(e) => setReviewFields({ ...reviewFields, company_name: e.target.value })}
-                        className="w-full text-xs border border-slate-200 rounded-lg p-2 focus:ring-1 focus:ring-indigo-500"
-                      />
-                    </div>
+                    {/* Helper to render editable field with red styling when confidence < 70% */}
+                    {[
+                      { label: "Company Name", key: "company_name", type: "text", placeholder: "e.g. Sri Bharat Spices Pvt Ltd" },
+                      { label: "Product / Commodity", key: "product", type: "text", placeholder: "e.g. Organic Turmeric Powder" },
+                      { label: "Certification Type", key: "certification_type", type: "text", placeholder: "e.g. EU Organic / ISO 22000" },
+                      { label: "Certificate Number", key: "certificate_number", type: "text", placeholder: "e.g. IN-BIO-149-CU-892110" },
+                      { label: "Issue Date", key: "issue_date", type: "date" },
+                      { label: "Expiry Date", key: "expiry_date", type: "date" },
+                      { label: "Quantity", key: "quantity", type: "number", placeholder: "e.g. 20000" },
+                      { label: "Unit", key: "unit", type: "text", placeholder: "e.g. kg, MT" },
+                      { label: "Capacity", key: "capacity", type: "text", placeholder: "e.g. 15,000 MT/year" },
+                      { label: "Invoice Amount", key: "invoice_amount", type: "number", placeholder: "e.g. 57000.00" },
+                      { label: "Currency", key: "currency", type: "text", placeholder: "e.g. EUR, USD" },
+                    ].map((f) => {
+                      const conf = reviewFields.field_confidences?.[f.key];
+                      const isLowConf = conf !== undefined && conf !== null && conf < 0.70;
+                      const pct = conf !== undefined && conf !== null ? Math.round(conf * 100) : null;
 
-                    {/* Product */}
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <label className="text-xs font-medium text-slate-700">Product / Commodity</label>
-                        {reviewFields.field_confidences?.product &&
-                          getConfidenceBadge(reviewFields.field_confidences.product)}
-                      </div>
-                      <input
-                        type="text"
-                        value={reviewFields.product || ""}
-                        onChange={(e) => setReviewFields({ ...reviewFields, product: e.target.value })}
-                        className="w-full text-xs border border-slate-200 rounded-lg p-2 focus:ring-1 focus:ring-indigo-500"
-                      />
-                    </div>
-
-                    {/* Certification Type & Certificate No */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <div className="flex justify-between items-center mb-1">
-                          <label className="text-xs font-medium text-slate-700">Certification</label>
-                          {reviewFields.field_confidences?.certification_type &&
-                            getConfidenceBadge(reviewFields.field_confidences.certification_type)}
+                      return (
+                        <div key={f.key}>
+                          <div className="flex justify-between items-center mb-1">
+                            <label className={`text-xs font-medium ${isLowConf ? "text-red-700 font-bold" : "text-slate-700"}`}>
+                              {f.label}
+                            </label>
+                            {pct !== null && (
+                              <span
+                                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono font-bold ${
+                                  isLowConf
+                                    ? "bg-red-100 text-red-800 border border-red-300 animate-pulse"
+                                    : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                }`}
+                              >
+                                <Sparkles className="w-3 h-3" />
+                                {pct}% conf {isLowConf && "(Review Required)"}
+                              </span>
+                            )}
+                          </div>
+                          <input
+                            type={f.type}
+                            placeholder={f.placeholder}
+                            value={reviewFields[f.key] ?? ""}
+                            onChange={(e) =>
+                              setReviewFields({
+                                ...reviewFields,
+                                [f.key]: f.type === "number" ? (e.target.value ? parseFloat(e.target.value) : "") : e.target.value,
+                              })
+                            }
+                            className={`w-full text-xs rounded-lg p-2 transition-all ${
+                              isLowConf
+                                ? "border-2 border-red-400 bg-red-50/60 text-red-950 font-medium focus:ring-2 focus:ring-red-500 focus:outline-none"
+                                : "border border-slate-200 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                            }`}
+                          />
+                          {isLowConf && (
+                            <p className="text-[11px] text-red-600 mt-0.5 flex items-center gap-1 font-semibold">
+                              <AlertTriangle className="w-3 h-3 text-red-500 flex-shrink-0" />
+                              Confidence below 70%. Untrusted input must be reviewed prior to confirmation.
+                            </p>
+                          )}
                         </div>
-                        <input
-                          type="text"
-                          value={reviewFields.certification_type || ""}
-                          onChange={(e) => setReviewFields({ ...reviewFields, certification_type: e.target.value })}
-                          className="w-full text-xs border border-slate-200 rounded-lg p-2 focus:ring-1 focus:ring-indigo-500"
-                        />
-                      </div>
-                      <div>
-                        <div className="flex justify-between items-center mb-1">
-                          <label className="text-xs font-medium text-slate-700">Certificate #</label>
-                          {reviewFields.field_confidences?.certificate_number &&
-                            getConfidenceBadge(reviewFields.field_confidences.certificate_number)}
-                        </div>
-                        <input
-                          type="text"
-                          value={reviewFields.certificate_number || ""}
-                          onChange={(e) => setReviewFields({ ...reviewFields, certificate_number: e.target.value })}
-                          className="w-full text-xs border border-slate-200 rounded-lg p-2 focus:ring-1 focus:ring-indigo-500"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Expiry Date */}
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <label className="text-xs font-medium text-slate-700">Expiry Date</label>
-                        {reviewFields.field_confidences?.expiry_date &&
-                          getConfidenceBadge(reviewFields.field_confidences.expiry_date)}
-                      </div>
-                      <input
-                        type="date"
-                        value={reviewFields.expiry_date || ""}
-                        onChange={(e) => setReviewFields({ ...reviewFields, expiry_date: e.target.value })}
-                        className="w-full text-xs border border-slate-200 rounded-lg p-2 focus:ring-1 focus:ring-indigo-500"
-                      />
-                    </div>
-
-                    {/* Invoice Amount & Currency */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <div className="flex justify-between items-center mb-1">
-                          <label className="text-xs font-medium text-slate-700">Invoice Amount</label>
-                          {reviewFields.field_confidences?.invoice_amount &&
-                            getConfidenceBadge(reviewFields.field_confidences.invoice_amount)}
-                        </div>
-                        <input
-                          type="number"
-                          value={reviewFields.invoice_amount || ""}
-                          onChange={(e) => setReviewFields({ ...reviewFields, invoice_amount: parseFloat(e.target.value) })}
-                          className="w-full text-xs border border-slate-200 rounded-lg p-2 focus:ring-1 focus:ring-indigo-500"
-                        />
-                      </div>
-                      <div>
-                        <div className="flex justify-between items-center mb-1">
-                          <label className="text-xs font-medium text-slate-700">Currency</label>
-                          {reviewFields.field_confidences?.currency &&
-                            getConfidenceBadge(reviewFields.field_confidences.currency)}
-                        </div>
-                        <input
-                          type="text"
-                          value={reviewFields.currency || "EUR"}
-                          onChange={(e) => setReviewFields({ ...reviewFields, currency: e.target.value })}
-                          className="w-full text-xs border border-slate-200 rounded-lg p-2 focus:ring-1 focus:ring-indigo-500"
-                        />
-                      </div>
-                    </div>
+                      );
+                    })}
 
                     {/* HS Codes */}
                     <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <label className="text-xs font-medium text-slate-700">HS Codes</label>
-                        {reviewFields.field_confidences?.hs_codes &&
-                          getConfidenceBadge(reviewFields.field_confidences.hs_codes)}
-                      </div>
-                      <input
-                        type="text"
-                        value={Array.isArray(reviewFields.hs_codes) ? reviewFields.hs_codes.join(", ") : reviewFields.hs_codes || ""}
-                        onChange={(e) =>
-                          setReviewFields({
-                            ...reviewFields,
-                            hs_codes: e.target.value.split(",").map((s) => s.trim()),
-                          })
-                        }
-                        className="w-full text-xs border border-slate-200 rounded-lg p-2 focus:ring-1 focus:ring-indigo-500"
-                      />
+                      {(() => {
+                        const conf = reviewFields.field_confidences?.hs_codes;
+                        const isLowConf = conf !== undefined && conf !== null && conf < 0.70;
+                        const pct = conf !== undefined && conf !== null ? Math.round(conf * 100) : null;
+                        return (
+                          <>
+                            <div className="flex justify-between items-center mb-1">
+                              <label className={`text-xs font-medium ${isLowConf ? "text-red-700 font-bold" : "text-slate-700"}`}>
+                                HS Codes
+                              </label>
+                              {pct !== null && (
+                                <span
+                                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono font-bold ${
+                                    isLowConf
+                                      ? "bg-red-100 text-red-800 border border-red-300"
+                                      : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  }`}
+                                >
+                                  <Sparkles className="w-3 h-3" />
+                                  {pct}% conf
+                                </span>
+                              )}
+                            </div>
+                            <input
+                              type="text"
+                              value={Array.isArray(reviewFields.hs_codes) ? reviewFields.hs_codes.join(", ") : reviewFields.hs_codes || ""}
+                              onChange={(e) =>
+                                setReviewFields({
+                                  ...reviewFields,
+                                  hs_codes: e.target.value.split(",").map((s) => s.trim()),
+                                })
+                              }
+                              className={`w-full text-xs rounded-lg p-2 transition-all ${
+                                isLowConf
+                                  ? "border-2 border-red-400 bg-red-50/60 text-red-950 focus:ring-2 focus:ring-red-500"
+                                  : "border border-slate-200 focus:ring-1 focus:ring-indigo-500"
+                              }`}
+                            />
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -887,7 +941,7 @@ export const DocumentsPage: React.FC = () => {
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setDrawerOpen(false)}
+                  onClick={closeDrawer}
                   className="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg transition-colors"
                 >
                   Close

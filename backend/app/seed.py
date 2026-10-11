@@ -3,6 +3,7 @@ TradeX AI Database Seed Script
 Idempotent data generation for realistic B2B trade simulation.
 Usage: python -m app.seed
 """
+import os
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -18,6 +19,7 @@ from app.models import (
     SimulatedFreightRate, SimulatedTariffDuty, SimulatedPortHandlingFee, SimulatedExchangeRate,
     Thread, Message, Notification
 )
+from app.models.content import Document, DocumentExtraction
 
 import bcrypt
 
@@ -991,6 +993,225 @@ def seed():
                     link="/rfq/rfq-2026-1042",
                 )
                 session.add(notif)
+
+        # 11. Documents and AI Document Intelligence Seed
+        existing_doc = session.execute(select(Document).limit(1)).scalar_one_or_none()
+        sri_supp = session.execute(
+            select(Supplier).join(Company).where(Company.name == "Sri Bharat Spices Pvt Ltd")
+        ).scalar_one_or_none()
+        supp_user_obj = session.execute(
+            select(User).where(User.email == "supplier@sribharat.com")
+        ).scalar_one_or_none()
+        demo_order = session.execute(
+            select(Order).where(Order.order_number == "ORD-2026-0891")
+        ).scalar_one_or_none()
+
+        if not existing_doc and sri_supp and supp_user_obj:
+            storage_dir = os.path.abspath(
+                os.getenv("LOCAL_STORAGE_PATH") or os.getenv("STORAGE_DIR") or "storage/documents"
+            )
+            os.makedirs(storage_dir, exist_ok=True)
+            dummy_pdf = (
+                b"%PDF-1.4\n"
+                b"1 0 obj\n<< /Title (TradeX Verified Trade Document) /Author (TradeX AI) >>\nendobj\n"
+                b"2 0 obj\n<< /Length 44 >>\nstream\nBT /F1 12 Tf 72 712 Td (Trade Document Authenticated) Tj ET\nendstream\nendobj\n"
+                b"trailer\n<< /Root 1 0 R >>\n%%EOF\n"
+            )
+
+            # 1. Certificate: EU Organic
+            f1 = f"{uuid.uuid4().hex}.pdf"
+            p1 = os.path.join(storage_dir, f1)
+            with open(p1, "wb") as f:
+                f.write(dummy_pdf)
+            d1 = Document(
+                user_id=supp_user_obj.id,
+                title="EU Organic Accreditation Certificate (APEDA / Control Union)",
+                original_filename="EU_Organic_Certificate_IN-BIO-149.pdf",
+                file_path=p1,
+                file_size=len(dummy_pdf),
+                mime_type="application/pdf",
+                doc_type="certificate",
+                status="verified",
+                supplier_id=sri_supp.id,
+                expiry_date=date(2027, 10, 31),
+            )
+            session.add(d1)
+            session.flush()
+
+            ext1 = DocumentExtraction(
+                document_id=d1.id,
+                extracted_json={
+                    "company_name": "Sri Bharat Spices Pvt Ltd",
+                    "product": "Spices & Botanicals (Organic Turmeric, Ginger, Black Pepper)",
+                    "certification_type": "EU Organic / ISO 22000:2018",
+                    "certificate_number": "IN-BIO-149-CU-892110",
+                    "issue_date": "2025-11-01",
+                    "expiry_date": "2027-10-31",
+                    "capacity": "15,000 MT/year",
+                    "hs_codes": ["0910.30"],
+                    "field_confidences": {
+                        "company_name": 0.99,
+                        "certification_type": 0.98,
+                        "certificate_number": 0.99,
+                        "issue_date": 0.95,
+                        "expiry_date": 0.96,
+                        "capacity": 0.85,
+                        "hs_codes": 0.90,
+                    },
+                    "confidence_score": 0.96,
+                    "status": "extracted",
+                },
+                confidence_score=0.96,
+                status="confirmed",
+                reviewed_by=supp_user_obj.id,
+                reviewed_at=datetime.now(timezone.utc),
+            )
+            session.add(ext1)
+
+            # 2. Commercial Invoice
+            f2 = f"{uuid.uuid4().hex}.pdf"
+            p2 = os.path.join(storage_dir, f2)
+            with open(p2, "wb") as f:
+                f.write(dummy_pdf)
+            d2 = Document(
+                user_id=supp_user_obj.id,
+                title="Commercial Invoice ORD-2026-0891",
+                original_filename="Commercial_Invoice_INV-2026-0891.pdf",
+                file_path=p2,
+                file_size=len(dummy_pdf),
+                mime_type="application/pdf",
+                doc_type="invoice",
+                status="verified",
+                supplier_id=sri_supp.id,
+                order_id=demo_order.id if demo_order else None,
+            )
+            session.add(d2)
+            session.flush()
+
+            ext2 = DocumentExtraction(
+                document_id=d2.id,
+                extracted_json={
+                    "company_name": "Sri Bharat Spices Pvt Ltd",
+                    "product": "Organic Turmeric Powder (Alleppey Curcumin 5.2%)",
+                    "invoice_amount": 57000.0,
+                    "currency": "EUR",
+                    "quantity": 20000.0,
+                    "unit": "kg",
+                    "issue_date": "2026-09-15",
+                    "hs_codes": ["0910.30.00"],
+                    "field_confidences": {
+                        "company_name": 0.98,
+                        "invoice_amount": 0.99,
+                        "currency": 0.99,
+                        "quantity": 0.97,
+                        "unit": 0.99,
+                        "issue_date": 0.95,
+                        "hs_codes": 0.92,
+                    },
+                    "confidence_score": 0.97,
+                    "status": "extracted",
+                },
+                confidence_score=0.97,
+                status="confirmed",
+                reviewed_by=supp_user_obj.id,
+                reviewed_at=datetime.now(timezone.utc),
+            )
+            session.add(ext2)
+
+            # 3. Bill of Lading
+            f3 = f"{uuid.uuid4().hex}.pdf"
+            p3 = os.path.join(storage_dir, f3)
+            with open(p3, "wb") as f:
+                f.write(dummy_pdf)
+            d3 = Document(
+                user_id=supp_user_obj.id,
+                title="Ocean Bill of Lading (MAEU-98218721)",
+                original_filename="Ocean_Bill_of_Lading_MAEU-98218721.pdf",
+                file_path=p3,
+                file_size=len(dummy_pdf),
+                mime_type="application/pdf",
+                doc_type="bill_of_lading",
+                status="verified",
+                supplier_id=sri_supp.id,
+                order_id=demo_order.id if demo_order else None,
+            )
+            session.add(d3)
+            session.flush()
+
+            ext3 = DocumentExtraction(
+                document_id=d3.id,
+                extracted_json={
+                    "company_name": "Sri Bharat Spices Pvt Ltd",
+                    "product": "Organic Turmeric Powder, 20,000 kg",
+                    "quantity": 20000.0,
+                    "unit": "kg",
+                    "capacity": "800 multi-wall kraft paper bags (25kg net)",
+                    "issue_date": "2026-09-22",
+                    "hs_codes": ["0910.30.00"],
+                    "field_confidences": {
+                        "company_name": 0.99,
+                        "product": 0.96,
+                        "quantity": 0.99,
+                        "unit": 0.99,
+                        "capacity": 0.90,
+                        "issue_date": 0.94,
+                        "hs_codes": 0.93,
+                    },
+                    "confidence_score": 0.96,
+                    "status": "extracted",
+                },
+                confidence_score=0.96,
+                status="confirmed",
+                reviewed_by=supp_user_obj.id,
+                reviewed_at=datetime.now(timezone.utc),
+            )
+            session.add(ext3)
+
+            # 4. Packing List (Needs review, capacity has 65% confidence to test low confidence highlight)
+            f4 = f"{uuid.uuid4().hex}.pdf"
+            p4 = os.path.join(storage_dir, f4)
+            with open(p4, "wb") as f:
+                f.write(dummy_pdf)
+            d4 = Document(
+                user_id=supp_user_obj.id,
+                title="Commercial Packing List & Container Plan",
+                original_filename="Packing_List_ORD-2026-0891.pdf",
+                file_path=p4,
+                file_size=len(dummy_pdf),
+                mime_type="application/pdf",
+                doc_type="packing_list",
+                status="needs_review",
+                supplier_id=sri_supp.id,
+                order_id=demo_order.id if demo_order else None,
+            )
+            session.add(d4)
+            session.flush()
+
+            ext4 = DocumentExtraction(
+                document_id=d4.id,
+                extracted_json={
+                    "company_name": "Sri Bharat Spices Pvt Ltd",
+                    "product": "Organic Turmeric Powder 5% Curcumin",
+                    "quantity": 20000.0,
+                    "unit": "kg",
+                    "capacity": "800 multi-wall kraft paper bags",
+                    "issue_date": "2026-09-18",
+                    "hs_codes": ["0910.30.00"],
+                    "field_confidences": {
+                        "company_name": 0.95,
+                        "product": 0.92,
+                        "quantity": 0.98,
+                        "unit": 0.99,
+                        "capacity": 0.65,
+                        "issue_date": 0.89,
+                    },
+                    "confidence_score": 0.88,
+                    "status": "needs_review",
+                },
+                confidence_score=0.88,
+                status="needs_review",
+            )
+            session.add(ext4)
 
         session.commit()
         print("=== Seed Completed Successfully! ===")

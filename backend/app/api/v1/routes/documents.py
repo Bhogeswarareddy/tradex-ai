@@ -48,18 +48,27 @@ async def user_has_doc_access(db: AsyncSession, doc: Document, user: User) -> bo
     if user.role == "admin":
         return True
 
-    # Owner of the document
+    # 1. Direct owner of the document
     if doc.user_id == user.id:
         return True
 
     # Check if user is associated supplier or buyer
     buyer = (await db.execute(select(Buyer).where(Buyer.user_id == user.id))).scalar_one_or_none()
     supplier = (await db.execute(select(Supplier).where(Supplier.user_id == user.id))).scalar_one_or_none()
+    user_company_id = buyer.company_id if buyer else (supplier.company_id if supplier else None)
+
+    # 2. Owner company: User belongs to the same company as the document creator
+    if user_company_id:
+        doc_uploader_buyer = (await db.execute(select(Buyer).where(Buyer.user_id == doc.user_id))).scalar_one_or_none()
+        doc_uploader_supplier = (await db.execute(select(Supplier).where(Supplier.user_id == doc.user_id))).scalar_one_or_none()
+        doc_uploader_company_id = doc_uploader_buyer.company_id if doc_uploader_buyer else (doc_uploader_supplier.company_id if doc_uploader_supplier else None)
+        if doc_uploader_company_id and doc_uploader_company_id == user_company_id:
+            return True
 
     if doc.supplier_id and supplier and doc.supplier_id == supplier.id:
         return True
 
-    # Check linked order counterparty
+    # 3. Counterparty on linked order
     if doc.order_id:
         order = (await db.execute(select(Order).where(Order.id == doc.order_id))).scalar_one_or_none()
         if order:
@@ -68,12 +77,23 @@ async def user_has_doc_access(db: AsyncSession, doc: Document, user: User) -> bo
             if supplier and order.supplier_id == supplier.id:
                 return True
 
-    # Check linked RFQ counterparty
+    # 4. Counterparty on linked RFQ
     if doc.rfq_id:
         rfq = (await db.execute(select(RFQ).where(RFQ.id == doc.rfq_id))).scalar_one_or_none()
         if rfq:
             if buyer and rfq.buyer_id == buyer.id:
                 return True
+            if supplier:
+                quote_exists = (
+                    await db.execute(
+                        select(Quotation.id).where(
+                            Quotation.rfq_id == rfq.id,
+                            Quotation.supplier_id == supplier.id,
+                        )
+                    )
+                ).scalar_one_or_none()
+                if quote_exists:
+                    return True
 
     return False
 
@@ -83,10 +103,10 @@ async def upload_document(
     file: UploadFile = File(...),
     doc_type: str = Form("other"),
     title: Optional[str] = Form(None),
-    order_id: Optional[uuid.UUID] = Form(None),
-    rfq_id: Optional[uuid.UUID] = Form(None),
-    supplier_id: Optional[uuid.UUID] = Form(None),
-    expiry_date: Optional[date] = Form(None),
+    order_id: Optional[str] = Form(None),
+    rfq_id: Optional[str] = Form(None),
+    supplier_id: Optional[str] = Form(None),
+    expiry_date: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
@@ -107,25 +127,56 @@ async def upload_document(
     storage = get_storage_backend()
     target_path, unique_name = await storage.save(content, orig_name)
 
+    # Parse optional form UUIDs and date strings safely
+    parsed_order_id: Optional[uuid.UUID] = None
+    if order_id and order_id.strip():
+        try:
+            parsed_order_id = uuid.UUID(order_id.strip())
+        except ValueError:
+            pass
+
+    parsed_rfq_id: Optional[uuid.UUID] = None
+    if rfq_id and rfq_id.strip():
+        try:
+            parsed_rfq_id = uuid.UUID(rfq_id.strip())
+        except ValueError:
+            pass
+
+    parsed_supplier_id: Optional[uuid.UUID] = None
+    if supplier_id and supplier_id.strip():
+        try:
+            parsed_supplier_id = uuid.UUID(supplier_id.strip())
+        except ValueError:
+            pass
+
+    parsed_expiry_date: Optional[date] = None
+    if expiry_date and expiry_date.strip():
+        try:
+            parsed_expiry_date = date.fromisoformat(expiry_date.strip()[:10])
+        except ValueError:
+            pass
+
     # Resolve supplier profile if current user is supplier
-    if not supplier_id and current_user.role == "supplier":
+    if not parsed_supplier_id and current_user.role == "supplier":
         supp = (await db.execute(select(Supplier).where(Supplier.user_id == current_user.id))).scalar_one_or_none()
         if supp:
-            supplier_id = supp.id
+            parsed_supplier_id = supp.id
+
+    clean_doc_type = doc_type.strip().lower().replace(" ", "_")
 
     doc = Document(
         user_id=current_user.id,
-        title=title or orig_name,
+        title=title.strip() if title and title.strip() else orig_name,
         original_filename=orig_name,
         file_path=target_path,
         file_size=len(content),
         mime_type=content_type,
-        doc_type=doc_type.lower(),
+        doc_type=clean_doc_type,
         status="uploaded",
-        order_id=order_id,
-        rfq_id=rfq_id,
-        supplier_id=supplier_id,
-        expiry_date=expiry_date,
+        order_id=parsed_order_id,
+        rfq_id=parsed_rfq_id,
+        supplier_id=parsed_supplier_id,
+        expiry_date=parsed_expiry_date,
     )
     db.add(doc)
     await db.commit()
@@ -160,16 +211,25 @@ async def list_documents(
         selectinload(Document.user),
     )
 
-    # Multi-tenant scoping: Admins see all, others see their own or counterparty linked
+    # Multi-tenant scoping: Admins see all, others see their own company or counterparty linked
     if current_user.role != "admin":
         buyer = (await db.execute(select(Buyer).where(Buyer.user_id == current_user.id))).scalar_one_or_none()
         supplier = (await db.execute(select(Supplier).where(Supplier.user_id == current_user.id))).scalar_one_or_none()
 
+        user_company_id = buyer.company_id if buyer else (supplier.company_id if supplier else None)
         filters = [Document.user_id == current_user.id]
+        if user_company_id:
+            comp_buyer_users = select(Buyer.user_id).where(Buyer.company_id == user_company_id)
+            comp_supp_users = select(Supplier.user_id).where(Supplier.company_id == user_company_id)
+            filters.append(Document.user_id.in_(comp_buyer_users))
+            filters.append(Document.user_id.in_(comp_supp_users))
         if supplier:
             filters.append(Document.supplier_id == supplier.id)
+            order_supp_sub = select(Order.id).where(Order.supplier_id == supplier.id)
+            filters.append(Document.order_id.in_(order_supp_sub))
+            rfq_supp_sub = select(Quotation.rfq_id).where(Quotation.supplier_id == supplier.id)
+            filters.append(Document.rfq_id.in_(rfq_supp_sub))
         if buyer:
-            # Documents linked to buyer orders or RFQs
             order_sub = select(Order.id).where(Order.buyer_id == buyer.id)
             rfq_sub = select(RFQ.id).where(RFQ.buyer_id == buyer.id)
             filters.append(Document.order_id.in_(order_sub))
@@ -484,11 +544,18 @@ async def confirm_document_extraction(
             db.add(cert_def)
             await db.flush()
 
+        issued_at_val = None
+        if data.get("issue_date"):
+            try:
+                issued_at_val = date.fromisoformat(data["issue_date"][:10])
+            except ValueError:
+                pass
+
         cert = SupplierCertification(
-            supplier_id=doc.supplier_id,
+            supplier_id=target_supplier_id,
             certification_id=cert_def.id,
             certificate_no=cert_num,
-            issued_at=date(2025, 11, 1),
+            issued_at=issued_at_val or date(2025, 11, 1),
             expires_at=exp_date_val or date(2027, 10, 31),
             document_id=doc.id,
         )
