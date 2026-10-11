@@ -20,4 +20,9 @@ export default defineConfig({
       },
     },
   },
+  // @ts-expect-error - Vitest config in Vite defineConfig
+  test: {
+    include: ["src/tests/**/*.{test,spec}.ts"],
+    exclude: ["e2e/**", "node_modules/**"],
+  },
 });
