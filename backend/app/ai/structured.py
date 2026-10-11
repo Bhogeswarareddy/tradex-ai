@@ -142,14 +142,11 @@ async def generate_structured(
         logger.warning("Circuit breaker is OPEN. Falling back immediately to MockProvider.")
         provider = MockProvider()
         is_fallback = True
-    elif settings.ANTHROPIC_API_KEY and settings.AI_PROVIDER != "mock":
-        provider = ClaudeProvider(
-            api_key=settings.ANTHROPIC_API_KEY,
-            model_name=settings.ANTHROPIC_MODEL,
-        )
     else:
-        provider = MockProvider()
-        is_fallback = True
+        from app.ai.provider import get_ai_provider
+        provider = get_ai_provider()
+        if isinstance(provider, MockProvider):
+            is_fallback = True
 
     messages: list[dict[str, str]] = [{"role": "user", "content": user_prompt}]
     max_retries = 2
@@ -166,7 +163,7 @@ async def generate_structured(
                 temperature=0.0,
             )
             last_response = resp
-            circuit_breaker.record_success()
+            circuit_breaker.record_success(latency_ms=resp.latency_ms)
 
             # Attempt validation
             parsed_model: T
@@ -236,7 +233,8 @@ async def generate_structured(
 
         except Exception as prov_err:
             last_error = prov_err
-            circuit_breaker.record_failure()
+            is_rate_limit = "429" in str(prov_err) or "rate limit" in str(prov_err).lower()
+            circuit_breaker.record_failure(error=str(prov_err), is_rate_limit=is_rate_limit)
             logger.error(f"Provider call failed: {prov_err}. Falling back to MockProvider.")
             is_fallback = True
             mock = MockProvider()

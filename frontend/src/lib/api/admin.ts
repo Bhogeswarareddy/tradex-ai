@@ -130,4 +130,19 @@ export const adminApi = {
     if (!r.ok) throw new Error(await r.text());
     return r.json();
   },
+
+  getAiDiagnostics: async (): Promise<any> => {
+    const r = await fetch("/api/v1/ai/admin/diagnostics", { headers: authHeaders() });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+
+  testAiConnection: async (): Promise<any> => {
+    const r = await fetch("/api/v1/ai/admin/test-connection", {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
 };

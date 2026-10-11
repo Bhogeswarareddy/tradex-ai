@@ -135,7 +135,8 @@ async def retrieve_knowledge_chunks(
             if any(syn in q_lower for syn in syns) and c_slug in target_slugs:
                 score += 3.0
 
-        if score > 0:
+        # Require a minimum score threshold to consider evidence authentic
+        if score >= 1.0:
             scored_candidates.append((score, c))
 
     # Sort candidates by score descending

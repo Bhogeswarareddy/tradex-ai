@@ -26,7 +26,7 @@ export const CopilotDrawer: React.FC = () => {
     {
       sender: "bot",
       text: "Hi! I'm TradeX Copilot with RAG access to 15 international trade compliance guides. Ask me anything about Incoterms, HS codes, or cross-border rules.",
-      actions: ["What is CIF Hamburg?", "Check HS code 0910.30"],
+      actions: ["Compare suppliers", "Analyse this RFQ", "Estimate landed cost", "Check HS code"],
     },
   ]);
   const [inputVal, setInputVal] = useState("");

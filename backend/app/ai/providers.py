@@ -626,3 +626,420 @@ class ClaudeProvider(LLMProvider):
     async def embed(self, texts: List[str]) -> List[List[float]]:
         # Anthropic provides completions; use normalized mock embeddings for pgvector compatibility
         return await self.mock_fallback.embed(texts)
+
+
+class OllamaProvider(LLMProvider):
+    """
+    Local Ollama Inference Provider.
+    Runs entirely offline on consumer hardware with Qwen 2B/4B or Llama models.
+    Zero paid API keys needed.
+    """
+
+    def __init__(
+        self,
+        base_url: str = "http://localhost:11434",
+        model_name: str = "qwen2.5:3b",
+        timeout_seconds: float = 30.0,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.model_name = model_name
+        self.timeout_seconds = timeout_seconds
+        self.mock_fallback = MockProvider()
+
+    async def complete(
+        self,
+        system: str,
+        messages: List[Dict[str, str]],
+        json_schema: Optional[Dict[str, Any]] = None,
+        max_tokens: int = 2048,
+        temperature: float = 0.0,
+    ) -> LLMResponse:
+        t0 = time.time()
+        final_system = system
+        if json_schema:
+            schema_str = json.dumps(json_schema, indent=2)
+            final_system += (
+                f"\n\nCRITICAL INSTRUCTION: You MUST return strictly valid JSON matching this schema.\n"
+                f"Do not include markdown backticks (```json), commentary, or extra text.\n"
+                f"JSON Schema:\n{schema_str}"
+            )
+
+        ollama_messages = [{"role": "system", "content": final_system}]
+        for m in messages:
+            ollama_messages.append({"role": m.get("role", "user"), "content": m.get("content", "")})
+
+        payload = {
+            "model": self.model_name,
+            "messages": ollama_messages,
+            "stream": False,
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+            },
+        }
+        if json_schema:
+            payload["format"] = "json"
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                resp = await client.post(f"{self.base_url}/api/chat", json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as e:
+            logger.warning(f"Ollama local provider call failed ({e}). Falling back to Demo AI.")
+            fb_resp = await self.mock_fallback.complete(system, messages, json_schema, max_tokens, temperature)
+            fb_resp.fallback = True
+            return fb_resp
+
+        latency = (time.time() - t0) * 1000
+        content = data.get("message", {}).get("content", "").strip()
+
+        parsed_json: Optional[Dict[str, Any]] = None
+        try:
+            clean = content
+            if clean.startswith("```"):
+                clean = re.sub(r"^```(?:json)?\s*", "", clean)
+                clean = re.sub(r"\s*```$", "", clean)
+            parsed_json = json.loads(clean)
+        except Exception:
+            pass
+
+        prompt_tokens = data.get("prompt_eval_count", 0)
+        completion_tokens = data.get("eval_count", 0)
+
+        return LLMResponse(
+            content=content,
+            raw_json=parsed_json,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
+            latency_ms=latency,
+            model=f"Ollama ({self.model_name})",
+            provider="ollama",
+            fallback=False,
+            is_mock=False,
+        )
+
+    async def embed(self, texts: List[str]) -> List[List[float]]:
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                res: List[List[float]] = []
+                for t in texts:
+                    resp = await client.post(
+                        f"{self.base_url}/api/embeddings",
+                        json={"model": self.model_name, "prompt": t},
+                    )
+                    resp.raise_for_status()
+                    emb = resp.json().get("embedding", [])
+                    # Match 1536 dimension for pgvector
+                    if len(emb) != 1536:
+                        padded = emb if len(emb) == 1536 else (emb * (1536 // len(emb) + 1))[:1536]
+                        res.append(padded)
+                    else:
+                        res.append(emb)
+                return res
+        except Exception as e:
+            logger.warning(f"Ollama embedding failed ({e}). Using normalized deterministic fallback.")
+            return await self.mock_fallback.embed(texts)
+
+
+class OpenRouterProvider(LLMProvider):
+    """
+    OpenRouter Free-tier Provider.
+    Routes queries to free open-source models (e.g. meta-llama/llama-3.1-8b-instruct:free, qwen/qwen-2.5-7b-instruct:free).
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        model_name: str = "meta-llama/llama-3.1-8b-instruct:free",
+        timeout_seconds: float = 30.0,
+    ) -> None:
+        self.api_key = api_key
+        self.model_name = model_name
+        self.timeout_seconds = timeout_seconds
+        self.mock_fallback = MockProvider()
+
+    async def complete(
+        self,
+        system: str,
+        messages: List[Dict[str, str]],
+        json_schema: Optional[Dict[str, Any]] = None,
+        max_tokens: int = 2048,
+        temperature: float = 0.0,
+    ) -> LLMResponse:
+        if not self.api_key:
+            logger.info("No OPENROUTER_API_KEY configured; utilizing MockProvider with 'Demo AI' label.")
+            resp = await self.mock_fallback.complete(system, messages, json_schema, max_tokens, temperature)
+            resp.fallback = True
+            return resp
+
+        t0 = time.time()
+        final_system = system
+        if json_schema:
+            schema_str = json.dumps(json_schema, indent=2)
+            final_system += (
+                f"\n\nCRITICAL INSTRUCTION: You MUST return strictly valid JSON matching this schema.\n"
+                f"Do not include markdown code block backticks (```json), commentary, or extra text.\n"
+                f"JSON Schema:\n{schema_str}"
+            )
+
+        payload_msgs = [{"role": "system", "content": final_system}]
+        for m in messages:
+            payload_msgs.append({"role": m.get("role", "user"), "content": m.get("content", "")})
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "HTTP-Referer": "https://tradex.ai",
+            "X-Title": "TradeX AI Copilot",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self.model_name,
+            "messages": payload_msgs,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if json_schema:
+            payload["response_format"] = {"type": "json_object"}
+
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            resp = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+            if resp.status_code in [402, 429]:
+                raise RuntimeError(f"OpenRouter rate limit / credit exhaustion: HTTP {resp.status_code}")
+            resp.raise_for_status()
+            data = resp.json()
+
+        latency = (time.time() - t0) * 1000
+        content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+
+        parsed_json = None
+        try:
+            clean = content
+            if clean.startswith("```"):
+                clean = re.sub(r"^```(?:json)?\s*", "", clean)
+                clean = re.sub(r"\s*```$", "", clean)
+            parsed_json = json.loads(clean)
+        except Exception:
+            pass
+
+        usage = data.get("usage", {})
+        prompt_tokens = usage.get("prompt_tokens", 0)
+        completion_tokens = usage.get("completion_tokens", 0)
+
+        return LLMResponse(
+            content=content,
+            raw_json=parsed_json,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
+            latency_ms=latency,
+            model=f"OpenRouter ({self.model_name})",
+            provider="openrouter",
+            fallback=False,
+            is_mock=False,
+        )
+
+    async def embed(self, texts: List[str]) -> List[List[float]]:
+        return await self.mock_fallback.embed(texts)
+
+
+class GroqProvider(LLMProvider):
+    """
+    Groq Fast Inference Provider.
+    High-speed inference with rate-limit tracking headers.
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        model_name: str = "llama-3.1-8b-instant",
+        timeout_seconds: float = 20.0,
+    ) -> None:
+        self.api_key = api_key
+        self.model_name = model_name
+        self.timeout_seconds = timeout_seconds
+        self.mock_fallback = MockProvider()
+
+    async def complete(
+        self,
+        system: str,
+        messages: List[Dict[str, str]],
+        json_schema: Optional[Dict[str, Any]] = None,
+        max_tokens: int = 2048,
+        temperature: float = 0.0,
+    ) -> LLMResponse:
+        if not self.api_key:
+            logger.info("No GROQ_API_KEY configured; utilizing MockProvider with 'Demo AI' label.")
+            resp = await self.mock_fallback.complete(system, messages, json_schema, max_tokens, temperature)
+            resp.fallback = True
+            return resp
+
+        t0 = time.time()
+        final_system = system
+        if json_schema:
+            schema_str = json.dumps(json_schema, indent=2)
+            final_system += (
+                f"\n\nCRITICAL INSTRUCTION: You MUST return strictly valid JSON matching this schema.\n"
+                f"Do not include markdown code block backticks (```json), commentary, or extra text.\n"
+                f"JSON Schema:\n{schema_str}"
+            )
+
+        payload_msgs = [{"role": "system", "content": final_system}]
+        for m in messages:
+            payload_msgs.append({"role": m.get("role", "user"), "content": m.get("content", "")})
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self.model_name,
+            "messages": payload_msgs,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if json_schema:
+            payload["response_format"] = {"type": "json_object"}
+
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            resp = await client.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload)
+            if resp.status_code == 429:
+                raise RuntimeError("Groq Rate Limit exceeded (HTTP 429)")
+            resp.raise_for_status()
+            data = resp.json()
+
+        latency = (time.time() - t0) * 1000
+        content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+
+        parsed_json = None
+        try:
+            clean = content
+            if clean.startswith("```"):
+                clean = re.sub(r"^```(?:json)?\s*", "", clean)
+                clean = re.sub(r"\s*```$", "", clean)
+            parsed_json = json.loads(clean)
+        except Exception:
+            pass
+
+        usage = data.get("usage", {})
+        prompt_tokens = usage.get("prompt_tokens", 0)
+        completion_tokens = usage.get("completion_tokens", 0)
+
+        return LLMResponse(
+            content=content,
+            raw_json=parsed_json,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
+            latency_ms=latency,
+            model=f"Groq ({self.model_name})",
+            provider="groq",
+            fallback=False,
+            is_mock=False,
+        )
+
+    async def embed(self, texts: List[str]) -> List[List[float]]:
+        return await self.mock_fallback.embed(texts)
+
+
+class GeminiProvider(LLMProvider):
+    """
+    Google Gemini Provider (Optional).
+    Calls Gemini REST API when a valid API key is present.
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        model_name: str = "gemini-1.5-flash",
+        timeout_seconds: float = 25.0,
+    ) -> None:
+        self.api_key = api_key
+        self.model_name = model_name
+        self.timeout_seconds = timeout_seconds
+        self.mock_fallback = MockProvider()
+
+    async def complete(
+        self,
+        system: str,
+        messages: List[Dict[str, str]],
+        json_schema: Optional[Dict[str, Any]] = None,
+        max_tokens: int = 2048,
+        temperature: float = 0.0,
+    ) -> LLMResponse:
+        if not self.api_key:
+            logger.info("No GEMINI_API_KEY configured; utilizing MockProvider with 'Demo AI' label.")
+            resp = await self.mock_fallback.complete(system, messages, json_schema, max_tokens, temperature)
+            resp.fallback = True
+            return resp
+
+        t0 = time.time()
+        final_system = system
+        if json_schema:
+            schema_str = json.dumps(json_schema, indent=2)
+            final_system += (
+                f"\n\nCRITICAL INSTRUCTION: You MUST return strictly valid JSON matching this schema.\n"
+                f"JSON Schema:\n{schema_str}"
+            )
+
+        contents = []
+        for m in messages:
+            contents.append({
+                "role": "user" if m.get("role") == "user" else "model",
+                "parts": [{"text": m.get("content", "")}],
+            })
+
+        payload: Dict[str, Any] = {
+            "system_instruction": {"parts": [{"text": final_system}]},
+            "contents": contents,
+            "generationConfig": {
+                "temperature": temperature,
+                "maxOutputTokens": max_tokens,
+            },
+        }
+        if json_schema:
+            payload["generationConfig"]["responseMimeType"] = "application/json"
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            resp = await client.post(url, json=payload)
+            if resp.status_code == 429:
+                raise RuntimeError("Gemini quota / rate limit exceeded (HTTP 429)")
+            resp.raise_for_status()
+            data = resp.json()
+
+        latency = (time.time() - t0) * 1000
+        candidates = data.get("candidates", [])
+        content = ""
+        if candidates:
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if parts:
+                content = parts[0].get("text", "").strip()
+
+        parsed_json = None
+        try:
+            clean = content
+            if clean.startswith("```"):
+                clean = re.sub(r"^```(?:json)?\s*", "", clean)
+                clean = re.sub(r"\s*```$", "", clean)
+            parsed_json = json.loads(clean)
+        except Exception:
+            pass
+
+        return LLMResponse(
+            content=content,
+            raw_json=parsed_json,
+            prompt_tokens=100,
+            completion_tokens=len(content) // 4,
+            total_tokens=100 + len(content) // 4,
+            latency_ms=latency,
+            model=f"Gemini ({self.model_name})",
+            provider="gemini",
+            fallback=False,
+            is_mock=False,
+        )
+
+    async def embed(self, texts: List[str]) -> List[List[float]]:
+        return await self.mock_fallback.embed(texts)
+

@@ -71,9 +71,11 @@ export const CopilotPage: React.FC = () => {
             content:
               "👋 **Welcome to TradeX Copilot!**\n\nI am your AI assistant for global B2B cross-border commerce, grounded in **15 verified trade knowledge guides**.\n\nI can help you with:\n- **Incoterms® 2020** cost and risk allocations (FOB vs CIF vs DAP)\n- **HS Code Classification & Tariffs** (e.g. Organic Turmeric `0910.30`)\n- **EU Organic TRACES NT & US FDA FSMA** compliance protocols\n- **Letters of Credit (UCP 600)** documentary requirements\n- **German Customs (ATLAS)** and container demurrage prevention\n\nWhat cross-border transaction or trade route can I assist you with today?",
             suggested_actions: [
-              "What are the seller responsibilities under CIF Hamburg?",
+              "Compare suppliers",
+              "Analyse this RFQ",
+              "Estimate landed cost",
+              "Summarise shipment",
               "Check HS code for turmeric powder",
-              "Explain Letter of Credit UCP 600 payment terms",
             ],
           },
         ]);

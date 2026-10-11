@@ -62,19 +62,62 @@ class DeterministicFallbackProvider(MockProvider):
         }
 
 
+from app.ai.providers import (
+    ClaudeProvider,
+    GeminiProvider,
+    GroqProvider,
+    LLMProvider,
+    MockProvider,
+    OllamaProvider,
+    OpenRouterProvider,
+)
+
+
 def get_ai_provider() -> LLMProvider:
-    """Factory returns configured AI provider, falling back to MockProvider when unconfigured."""
-    if settings.AI_PROVIDER == "anthropic" and settings.ANTHROPIC_API_KEY:
+    """Factory returns configured AI provider, falling back safely to MockProvider (Demo AI)."""
+    prov = (settings.AI_PROVIDER or "mock").lower()
+
+    if prov == "ollama":
+        return OllamaProvider(
+            base_url=settings.OLLAMA_BASE_URL,
+            model_name=settings.OLLAMA_MODEL or settings.AI_MODEL,
+            timeout_seconds=settings.AI_TIMEOUT_SECONDS,
+        )
+    elif prov == "openrouter" and settings.OPENROUTER_API_KEY:
+        return OpenRouterProvider(
+            api_key=settings.OPENROUTER_API_KEY,
+            model_name=settings.OPENROUTER_MODEL or settings.AI_MODEL,
+            timeout_seconds=settings.AI_TIMEOUT_SECONDS,
+        )
+    elif prov == "groq" and settings.GROQ_API_KEY:
+        return GroqProvider(
+            api_key=settings.GROQ_API_KEY,
+            model_name=settings.GROQ_MODEL or settings.AI_MODEL,
+            timeout_seconds=settings.AI_TIMEOUT_SECONDS,
+        )
+    elif prov == "gemini" and settings.GEMINI_API_KEY:
+        return GeminiProvider(
+            api_key=settings.GEMINI_API_KEY,
+            model_name=settings.GEMINI_MODEL or settings.AI_MODEL,
+            timeout_seconds=settings.AI_TIMEOUT_SECONDS,
+        )
+    elif prov == "anthropic" and settings.ANTHROPIC_API_KEY:
         return ClaudeProvider(
             api_key=settings.ANTHROPIC_API_KEY,
             model_name=settings.ANTHROPIC_MODEL,
+            timeout_seconds=settings.AI_TIMEOUT_SECONDS,
         )
+
     return MockProvider()
 
 
 __all__ = [
     "LLMProvider",
     "ClaudeProvider",
+    "OllamaProvider",
+    "OpenRouterProvider",
+    "GroqProvider",
+    "GeminiProvider",
     "MockProvider",
     "DeterministicFallbackProvider",
     "get_ai_provider",

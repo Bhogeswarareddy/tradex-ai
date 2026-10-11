@@ -27,11 +27,23 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://tradex_user:tradex_password@db:5432/tradex"
     SYNC_DATABASE_URL: str = "postgresql+psycopg2://tradex_user:tradex_password@db:5432/tradex"
 
-    # AI Provider
-    AI_PROVIDER: str = "deterministic_fallback"
+    # AI Provider & Models
+    AI_PROVIDER: str = "mock"  # mock, ollama, openrouter, groq, gemini, anthropic
+    AI_MODEL: str = "qwen2.5:3b"
     ANTHROPIC_API_KEY: str = ""
     ANTHROPIC_MODEL: str = "claude-3-5-sonnet-20241022"
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_MODEL: str = "meta-llama/llama-3.1-8b-instruct:free"
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "llama-3.1-8b-instant"
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-1.5-flash"
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "qwen2.5:3b"
+    EMBEDDING_PROVIDER: str = "mock"  # mock, ollama, openai
     EMBEDDING_MODEL: str = "text-embedding-3-small"
+    EMBEDDING_DIM: int = 1536
+    AI_TIMEOUT_SECONDS: float = 30.0
 
     # Storage
     STORAGE_BACKEND: str = "local"

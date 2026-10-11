@@ -11,6 +11,9 @@ import {
   Search,
   ExternalLink,
   Lock,
+  Cpu,
+  Activity,
+  RefreshCw,
 } from "lucide-react";
 import {
   adminApi,
@@ -22,7 +25,7 @@ import {
 } from "../lib/api/admin";
 
 export const AdminPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<"overview" | "users" | "verification" | "audit" | "settings">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "users" | "verification" | "audit" | "settings" | "ai_diagnostics">("overview");
 
   // State
   const [overview, setOverview] = useState<AdminOverview | null>(null);
@@ -31,6 +34,9 @@ export const AdminPage: React.FC = () => {
   const [verificationQueue, setVerificationQueue] = useState<VerificationQueueItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [settings, setSettings] = useState<SystemSettingItem[]>([]);
+  const [aiDiagnostics, setAiDiagnostics] = useState<any>(null);
+  const [testResult, setTestResult] = useState<any>(null);
+  const [testingAi, setTestingAi] = useState<boolean>(false);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -53,6 +59,9 @@ export const AdminPage: React.FC = () => {
       } else if (activeTab === "settings") {
         const s = await adminApi.getSettings();
         setSettings(s);
+      } else if (activeTab === "ai_diagnostics") {
+        const diag = await adminApi.getAiDiagnostics();
+        setAiDiagnostics(diag);
       }
     } catch (err: any) {
       console.error(err);
@@ -123,6 +132,7 @@ export const AdminPage: React.FC = () => {
           { id: "verification", label: "Supplier Verification Queue", icon: CheckCircle },
           { id: "audit", label: "Audit Logs", icon: FileText },
           { id: "settings", label: "Platform Settings", icon: Settings },
+          { id: "ai_diagnostics", label: "AI Diagnostics", icon: Cpu },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -460,6 +470,160 @@ export const AdminPage: React.FC = () => {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Tab: AI Diagnostics */}
+      {activeTab === "ai_diagnostics" && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm p-5 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Cpu className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                AI Service Layer Diagnostics & Provider Telemetry
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Monitor local/cloud LLM providers, circuit breaker state, embedding dimensions, and live connection health.
+              </p>
+            </div>
+            <button
+              onClick={async () => {
+                setTestingAi(true);
+                try {
+                  const res = await adminApi.testAiConnection();
+                  setTestResult(res);
+                  const diag = await adminApi.getAiDiagnostics();
+                  setAiDiagnostics(diag);
+                } catch (e: any) {
+                  setTestResult({ status: "failed", error: e.message });
+                } finally {
+                  setTestingAi(false);
+                }
+              }}
+              disabled={testingAi}
+              className="inline-flex items-center gap-2 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow transition disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${testingAi ? "animate-spin" : ""}`} />
+              {testingAi ? "Testing..." : "Test AI Connection"}
+            </button>
+          </div>
+
+          {testResult && (
+            <div
+              className={`p-3.5 rounded-lg text-xs border flex items-center justify-between ${
+                testResult.status === "connected"
+                  ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300"
+                  : "bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300"
+              }`}
+            >
+              <div>
+                <p className="font-bold">
+                  {testResult.status === "connected" ? "✓ Connection Successful" : "⚠️ Connection Failed / Fallback Active"}
+                </p>
+                <p className="text-[11px] mt-0.5">
+                  {testResult.message || testResult.error} ({testResult.latency_ms ? `${testResult.latency_ms} ms` : "timeout"})
+                </p>
+              </div>
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-white/70 dark:bg-black/30">
+                {testResult.model || testResult.provider}
+              </span>
+            </div>
+          )}
+
+          {aiDiagnostics && (
+            <div className="space-y-6">
+              {/* Provider Config Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-800">
+                  <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Active Provider</span>
+                  <p className="text-base font-bold text-slate-900 dark:text-white mt-1 capitalize">
+                    {aiDiagnostics.provider}
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    {aiDiagnostics.is_fallback_active ? "Fallback / Demo AI" : "Live API"}
+                  </p>
+                </div>
+
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-800">
+                  <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Inference Model</span>
+                  <p className="text-sm font-bold font-mono text-slate-900 dark:text-white mt-1 truncate" title={aiDiagnostics.model}>
+                    {aiDiagnostics.model}
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Timeout: {aiDiagnostics.timeout_seconds}s
+                  </p>
+                </div>
+
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-800">
+                  <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">pgvector Embedding</span>
+                  <p className="text-sm font-bold font-mono text-slate-900 dark:text-white mt-1 truncate">
+                    {aiDiagnostics.embedding_model}
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Dim: {aiDiagnostics.embedding_dim} floats
+                  </p>
+                </div>
+
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-800">
+                  <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Circuit Breaker</span>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span
+                      className={`inline-block w-2.5 h-2.5 rounded-full ${
+                        aiDiagnostics.circuit_breaker?.state === "CLOSED" ? "bg-emerald-500" : "bg-red-500 animate-ping"
+                      }`}
+                    />
+                    <p className="text-base font-bold text-slate-900 dark:text-white">
+                      {aiDiagnostics.circuit_breaker?.state || "CLOSED"}
+                    </p>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Threshold: {aiDiagnostics.circuit_breaker?.failure_threshold} failures
+                  </p>
+                </div>
+              </div>
+
+              {/* Telemetry Stats */}
+              <div className="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-4 border border-slate-200 dark:border-slate-800 space-y-3">
+                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Activity className="w-4 h-4 text-emerald-600" />
+                  Live Circuit Breaker & Fallback Telemetry
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                  <div className="p-3 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
+                    <span className="text-[11px] text-slate-500">Total Calls</span>
+                    <p className="text-lg font-bold text-slate-900 dark:text-white">
+                      {aiDiagnostics.circuit_breaker?.total_calls || 0}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
+                    <span className="text-[11px] text-slate-500">Successes</span>
+                    <p className="text-lg font-bold text-emerald-600">
+                      {aiDiagnostics.circuit_breaker?.total_successes || 0}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
+                    <span className="text-[11px] text-slate-500">Failures / Tripped</span>
+                    <p className="text-lg font-bold text-red-600">
+                      {aiDiagnostics.circuit_breaker?.total_failures || 0}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
+                    <span className="text-[11px] text-slate-500">Rate Limit Hits (429)</span>
+                    <p className="text-lg font-bold text-amber-600">
+                      {aiDiagnostics.circuit_breaker?.rate_limit_errors || 0}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-2 text-[11px] text-slate-500 flex flex-wrap gap-x-6 gap-y-1">
+                  <span>API Key Configured: <strong>{aiDiagnostics.api_key_configured ? "Yes (Protected)" : "None (Demo AI default)"}</strong></span>
+                  <span>Ollama Base URL: <strong>{aiDiagnostics.ollama_base_url || "Not applicable"}</strong></span>
+                  <span>Last Error: <strong>{aiDiagnostics.circuit_breaker?.last_error || "None"}</strong></span>
+                  <span>Last Latency: <strong>{aiDiagnostics.circuit_breaker?.last_latency_ms || 0} ms</strong></span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
