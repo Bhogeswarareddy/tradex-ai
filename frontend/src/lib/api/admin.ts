@@ -145,4 +145,71 @@ export const adminApi = {
     if (!r.ok) throw new Error(await r.text());
     return r.json();
   },
+
+  // Product & RFQ Moderation
+  listProductsForModeration: async (): Promise<any[]> => {
+    const r = await fetch("/api/v1/admin/moderation/products", { headers: authHeaders() });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+
+  moderateProduct: async (productId: string, action: string, reason?: string): Promise<any> => {
+    const r = await fetch(`/api/v1/admin/moderation/products/${productId}/action`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ action, reason }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+
+  listRfqsForModeration: async (): Promise<any[]> => {
+    const r = await fetch("/api/v1/admin/moderation/rfqs", { headers: authHeaders() });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+
+  moderateRfq: async (rfqId: string, action: string, reason?: string): Promise<any> => {
+    const r = await fetch(`/api/v1/admin/moderation/rfqs/${rfqId}/action`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ action, reason }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+
+  // Document Review Queue
+  getDocumentReviewQueue: async (): Promise<any[]> => {
+    const r = await fetch("/api/v1/admin/documents/review-queue", { headers: authHeaders() });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+
+  decideDocumentReview: async (docId: string, action: "verify" | "reject", notes?: string): Promise<any> => {
+    const r = await fetch(`/api/v1/admin/documents/${docId}/decision`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ action, notes }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+
+  // Matching Weights
+  getMatchingWeights: async (): Promise<Record<string, number>> => {
+    const r = await fetch("/api/v1/admin/matching/weights", { headers: authHeaders() });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+
+  updateMatchingWeights: async (weights: Record<string, number>): Promise<any> => {
+    const r = await fetch("/api/v1/admin/matching/weights", {
+      method: "PUT",
+      headers: authHeaders(),
+      body: JSON.stringify(weights),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
 };

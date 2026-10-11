@@ -15,8 +15,9 @@ from app.api.deps import require_role
 from app.core.db import get_db
 from app.core.errors import BadRequestError, NotFoundError
 from app.models.ai_ops import AuditLog, SystemSetting
+from app.models.catalog import Product
 from app.models.content import Document
-from app.models.identity import Company, Supplier, User
+from app.models.identity import Buyer, Company, Supplier, User
 from app.models.trade import Order, RFQ
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ class UserUpdateRoleStatusRequest(BaseModel):
 
 
 class VerificationActionRequest(BaseModel):
-    action: str  # approve, reject
+    action: str  # approve, reject, request_info
     notes: Optional[str] = None
 
 
@@ -227,10 +228,15 @@ async def decide_verification(
     if not company:
         raise NotFoundError("Company not found")
 
-    if payload.action not in ["approve", "reject"]:
-        raise BadRequestError("Action must be 'approve' or 'reject'")
+    if payload.action not in ["approve", "reject", "request_info"]:
+        raise BadRequestError("Action must be 'approve', 'reject', or 'request_info'")
 
-    company.verified_status = "verified" if payload.action == "approve" else "rejected"
+    if payload.action == "approve":
+        company.verified_status = "verified"
+    elif payload.action == "reject":
+        company.verified_status = "rejected"
+    else:
+        company.verified_status = "pending_info"
 
     # Also update any linked documents to verified if approved
     supp_res = await db.execute(select(Supplier).where(Supplier.company_id == company.id))
@@ -238,10 +244,11 @@ async def decide_verification(
     for s in suppliers:
         if payload.action == "approve":
             s.trust_score = 4.8
+        doc_status = "verified" if payload.action == "approve" else ("rejected" if payload.action == "reject" else "needs_review")
         await db.execute(
             update(Document)
             .where(Document.supplier_id == s.id)
-            .values(status="verified" if payload.action == "approve" else "rejected")
+            .values(status=doc_status)
         )
 
     # Append audit trail
@@ -258,7 +265,7 @@ async def decide_verification(
     return {
         "company_id": str(company.id),
         "status": company.verified_status,
-        "message": f"Supplier verification {payload.action}d successfully",
+        "message": f"Supplier verification action '{payload.action}' completed successfully",
     }
 
 
@@ -378,4 +385,367 @@ async def update_system_setting(
     await db.commit()
 
     return {"key": setting.key, "value": setting.value, "status": "saved"}
+
+
+# ---------------------------------------------------------------------------
+# 6. Product & RFQ Moderation
+# ---------------------------------------------------------------------------
+
+class ModerationActionRequest(BaseModel):
+    action: str  # approve, flag, suspend, close
+    reason: Optional[str] = None
+
+
+@router.get("/moderation/products")
+async def list_products_for_moderation(
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    stmt = (
+        select(Product)
+        .options(selectinload(Product.supplier).selectinload(Supplier.company))
+        .order_by(desc(Product.created_at))
+        .limit(limit)
+        .offset(offset)
+    )
+    res = await db.execute(stmt)
+    products = res.scalars().all()
+    return [
+        {
+            "id": str(p.id),
+            "name": p.name,
+            "origin_country": p.origin_country,
+            "is_active": p.is_active,
+            "supplier_name": p.supplier.company.name if p.supplier and p.supplier.company else "Unknown",
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        }
+        for p in products
+    ]
+
+
+@router.post("/moderation/products/{product_id}/action")
+async def moderate_product(
+    product_id: uuid.UUID,
+    payload: ModerationActionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    stmt = select(Product).where(Product.id == product_id)
+    res = await db.execute(stmt)
+    product = res.scalar_one_or_none()
+    if not product:
+        raise NotFoundError("Product not found")
+
+    if payload.action not in ["approve", "flag", "suspend"]:
+        raise BadRequestError("Action must be 'approve', 'flag', or 'suspend'")
+
+    if payload.action == "suspend":
+        product.is_active = False
+    elif payload.action == "approve":
+        product.is_active = True
+
+    audit = AuditLog(
+        user_id=current_user.id,
+        action=f"MODERATE_PRODUCT_{payload.action.upper()}",
+        entity_type="product",
+        entity_id=str(product.id),
+        details={"action": payload.action, "reason": payload.reason, "is_active": product.is_active},
+    )
+    db.add(audit)
+    await db.commit()
+
+    return {"product_id": str(product.id), "status": payload.action, "is_active": product.is_active}
+
+
+@router.get("/moderation/rfqs")
+async def list_rfqs_for_moderation(
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    stmt = (
+        select(RFQ)
+        .options(selectinload(RFQ.buyer).selectinload(Buyer.company))
+        .order_by(desc(RFQ.created_at))
+        .limit(limit)
+        .offset(offset)
+    )
+    res = await db.execute(stmt)
+    rfqs = res.scalars().all()
+    return [
+        {
+            "id": str(r.id),
+            "rfq_number": r.rfq_number,
+            "title": r.title,
+            "status": r.status,
+            "quantity": r.quantity,
+            "unit": r.unit,
+            "buyer_name": r.buyer.company.name if r.buyer and r.buyer.company else "Unknown",
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rfqs
+    ]
+
+
+@router.post("/moderation/rfqs/{rfq_id}/action")
+async def moderate_rfq(
+    rfq_id: uuid.UUID,
+    payload: ModerationActionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    stmt = select(RFQ).where(RFQ.id == rfq_id)
+    res = await db.execute(stmt)
+    rfq = res.scalar_one_or_none()
+    if not rfq:
+        raise NotFoundError("RFQ not found")
+
+    if payload.action not in ["approve", "flag", "close"]:
+        raise BadRequestError("Action must be 'approve', 'flag', or 'close'")
+
+    if payload.action == "close":
+        rfq.status = "closed"
+    elif payload.action == "approve":
+        rfq.status = "active"
+    elif payload.action == "flag":
+        rfq.status = "flagged"
+
+    audit = AuditLog(
+        user_id=current_user.id,
+        action=f"MODERATE_RFQ_{payload.action.upper()}",
+        entity_type="rfq",
+        entity_id=str(rfq.id),
+        details={"action": payload.action, "reason": payload.reason, "status": rfq.status},
+    )
+    db.add(audit)
+    await db.commit()
+
+    return {"rfq_id": str(rfq.id), "status": rfq.status}
+
+
+# ---------------------------------------------------------------------------
+# 7. Document Review Queue
+# ---------------------------------------------------------------------------
+
+class DocumentDecisionRequest(BaseModel):
+    action: str  # verify, reject
+    notes: Optional[str] = None
+
+
+@router.get("/documents/review-queue")
+async def get_document_review_queue(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    stmt = (
+        select(Document)
+        .where(Document.status.in_(["uploaded", "needs_review", "processing"]))
+        .options(selectinload(Document.user))
+        .order_by(desc(Document.created_at))
+        .limit(50)
+    )
+    res = await db.execute(stmt)
+    docs = res.scalars().all()
+    return [
+        {
+            "id": str(d.id),
+            "title": d.title,
+            "original_filename": d.original_filename,
+            "doc_type": d.doc_type,
+            "status": d.status,
+            "file_path": d.file_path,
+            "file_size": d.file_size,
+            "mime_type": d.mime_type,
+            "uploaded_by": d.user.email if d.user else "Unknown",
+            "created_at": d.created_at.isoformat() if d.created_at else None,
+        }
+        for d in docs
+    ]
+
+
+@router.post("/documents/{doc_id}/decision")
+async def decide_document_review(
+    doc_id: uuid.UUID,
+    payload: DocumentDecisionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    stmt = select(Document).where(Document.id == doc_id)
+    res = await db.execute(stmt)
+    doc = res.scalar_one_or_none()
+    if not doc:
+        raise NotFoundError("Document not found")
+
+    if payload.action not in ["verify", "reject"]:
+        raise BadRequestError("Action must be 'verify' or 'reject'")
+
+    doc.status = "verified" if payload.action == "verify" else "rejected"
+
+    audit = AuditLog(
+        user_id=current_user.id,
+        action=f"DOCUMENT_{payload.action.upper()}",
+        entity_type="document",
+        entity_id=str(doc.id),
+        details={"status": doc.status, "notes": payload.notes},
+    )
+    db.add(audit)
+    await db.commit()
+
+    return {"document_id": str(doc.id), "status": doc.status, "message": f"Document marked as {doc.status}"}
+
+
+# ---------------------------------------------------------------------------
+# 8. Reported Accounts and Issues
+# ---------------------------------------------------------------------------
+
+class ReportActionRequest(BaseModel):
+    action: str  # dismiss, suspend_target
+    notes: Optional[str] = None
+
+
+@router.get("/reports")
+async def list_reports(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    stmt = (
+        select(AuditLog)
+        .where(AuditLog.entity_type.in_(["report", "reported_account", "issue"]))
+        .order_by(desc(AuditLog.created_at))
+        .limit(50)
+    )
+    res = await db.execute(stmt)
+    reports = res.scalars().all()
+    return [
+        {
+            "id": str(r.id),
+            "action": r.action,
+            "entity_type": r.entity_type,
+            "entity_id": r.entity_id,
+            "details": r.details,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in reports
+    ]
+
+
+@router.post("/reports/{report_id}/action")
+async def take_report_action(
+    report_id: uuid.UUID,
+    payload: ReportActionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    stmt = select(AuditLog).where(AuditLog.id == report_id)
+    res = await db.execute(stmt)
+    report = res.scalar_one_or_none()
+    if not report:
+        raise NotFoundError("Report not found")
+
+    if payload.action not in ["dismiss", "suspend_target"]:
+        raise BadRequestError("Action must be 'dismiss' or 'suspend_target'")
+
+    if payload.action == "suspend_target" and report.entity_id:
+        try:
+            target_user_id = uuid.UUID(report.entity_id)
+            u_stmt = select(User).where(User.id == target_user_id)
+            target_user = (await db.execute(u_stmt)).scalar_one_or_none()
+            if target_user:
+                target_user.is_active = False
+        except ValueError:
+            pass
+
+    audit = AuditLog(
+        user_id=current_user.id,
+        action=f"REPORT_{payload.action.upper()}",
+        entity_type="report_action",
+        entity_id=str(report.id),
+        details={"action": payload.action, "notes": payload.notes},
+    )
+    db.add(audit)
+    await db.commit()
+
+    return {"report_id": str(report.id), "action": payload.action, "status": "resolved"}
+
+
+# ---------------------------------------------------------------------------
+# 9. Matching-Score Weights Configuration
+# ---------------------------------------------------------------------------
+
+class MatchingWeightsRequest(BaseModel):
+    price: Optional[float] = None
+    lead_time: Optional[float] = None
+    rating: Optional[float] = None
+    compliance: Optional[float] = None
+    capacity: Optional[float] = None
+    weights: Optional[Dict[str, float]] = None
+
+
+@router.get("/matching/weights")
+async def get_matching_weights_config(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    stmt = select(SystemSetting).where(SystemSetting.key == "matching_weights")
+    res = await db.execute(stmt)
+    setting = res.scalar_one_or_none()
+    default_weights = {
+        "price": 0.35,
+        "lead_time": 0.25,
+        "rating": 0.20,
+        "compliance": 0.10,
+        "capacity": 0.10,
+    }
+    return setting.value if setting else default_weights
+
+
+@router.put("/matching/weights")
+async def update_matching_weights_config(
+    payload: MatchingWeightsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    if payload.weights:
+        weights_dict = payload.weights
+    else:
+        weights_dict = {
+            "price": payload.price if payload.price is not None else 0.35,
+            "lead_time": payload.lead_time if payload.lead_time is not None else 0.25,
+            "rating": payload.rating if payload.rating is not None else 0.20,
+            "compliance": payload.compliance if payload.compliance is not None else 0.10,
+            "capacity": payload.capacity if payload.capacity is not None else 0.10,
+        }
+
+    total = sum(weights_dict.values())
+    if abs(total - 1.0) > 0.01:
+        raise BadRequestError(f"Matching weights must sum to 1.0 (currently {round(total, 2)})")
+
+    stmt = select(SystemSetting).where(SystemSetting.key == "matching_weights")
+    res = await db.execute(stmt)
+    setting = res.scalar_one_or_none()
+
+    if not setting:
+        setting = SystemSetting(
+            key="matching_weights",
+            value=weights_dict,
+            description="Algorithmic weights for B2B supplier matching ranking",
+        )
+        db.add(setting)
+    else:
+        setting.value = weights_dict
+
+    audit = AuditLog(
+        user_id=current_user.id,
+        action="UPDATE_MATCHING_WEIGHTS",
+        entity_type="system_setting",
+        entity_id="matching_weights",
+        details=weights_dict,
+    )
+    db.add(audit)
+    await db.commit()
+
+    return {"weights": setting.value, "status": "updated"}
 

@@ -168,6 +168,12 @@ async def get_shipment_detail(
     if not shipment:
         raise HTTPException(status_code=404, detail="Shipment not found")
 
+    if current_user.role != "admin" and shipment.order:
+        is_buyer = shipment.order.buyer and shipment.order.buyer.user_id == current_user.id
+        is_supplier = shipment.order.supplier and shipment.order.supplier.user_id == current_user.id
+        if not is_buyer and not is_supplier:
+            raise HTTPException(status_code=403, detail="Not authorized to track this shipment")
+
     events_sorted = sorted(shipment.events, key=lambda e: e.occurred_at)
 
     # 6-step Milestone Progress Definition

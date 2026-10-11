@@ -17,6 +17,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
 from app.core.db import get_db
+from app.core.rate_limit import rate_limit_upload
 from app.models.ai_ops import AuditLog
 from app.models.content import Document, DocumentExtraction
 from app.models.identity import Buyer, Supplier, User
@@ -98,7 +99,8 @@ async def user_has_doc_access(db: AsyncSession, doc: Document, user: User) -> bo
     return False
 
 
-@router.post("/documents", status_code=status.HTTP_201_CREATED)
+@router.post("/documents", status_code=status.HTTP_201_CREATED, dependencies=[Depends(rate_limit_upload)])
+@router.post("/documents/upload", status_code=status.HTTP_201_CREATED, dependencies=[Depends(rate_limit_upload)])
 async def upload_document(
     file: UploadFile = File(...),
     doc_type: str = Form("other"),

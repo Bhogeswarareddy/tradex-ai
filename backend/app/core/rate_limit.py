@@ -38,15 +38,27 @@ class InMemoryRateLimiter:
 
 
 auth_limiter = InMemoryRateLimiter(max_requests=5, window_seconds=60)
+ai_limiter = InMemoryRateLimiter(max_requests=10, window_seconds=60)
+upload_limiter = InMemoryRateLimiter(max_requests=10, window_seconds=60)
+
+
+def _get_client_ip(request: Request) -> str:
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
 async def rate_limit_auth(request: Request) -> None:
-    """FastAPI dependency to rate limit sensitive authentication routes per IP."""
-    # Obtain client IP, respecting proxy forwarded headers
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        client_ip = forwarded.split(",")[0].strip()
-    else:
-        client_ip = request.client.host if request.client else "unknown"
+    """FastAPI dependency to rate limit sensitive authentication routes per IP (5 req/min)."""
+    auth_limiter.check(_get_client_ip(request))
 
-    auth_limiter.check(client_ip)
+
+async def rate_limit_ai(request: Request) -> None:
+    """FastAPI dependency to rate limit AI / Copilot routes per IP (10 req/min)."""
+    ai_limiter.check(_get_client_ip(request))
+
+
+async def rate_limit_upload(request: Request) -> None:
+    """FastAPI dependency to rate limit document upload routes per IP (10 req/min)."""
+    upload_limiter.check(_get_client_ip(request))

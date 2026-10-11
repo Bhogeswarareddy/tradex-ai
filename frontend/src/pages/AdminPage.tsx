@@ -25,13 +25,26 @@ import {
 } from "../lib/api/admin";
 
 export const AdminPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<"overview" | "users" | "verification" | "audit" | "settings" | "ai_diagnostics">("overview");
+  const [activeTab, setActiveTab] = useState<
+    "overview" | "users" | "verification" | "moderation" | "doc_review" | "weights" | "audit" | "settings" | "ai_diagnostics"
+  >("overview");
 
   // State
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [userSearch, setUserSearch] = useState<string>("");
   const [verificationQueue, setVerificationQueue] = useState<VerificationQueueItem[]>([]);
+  const [rejectionNotes, setRejectionNotes] = useState<Record<string, string>>({});
+  const [moderationProducts, setModerationProducts] = useState<any[]>([]);
+  const [moderationRfqs, setModerationRfqs] = useState<any[]>([]);
+  const [docReviewQueue, setDocReviewQueue] = useState<any[]>([]);
+  const [matchingWeights, setMatchingWeights] = useState<Record<string, number>>({
+    price: 0.35,
+    lead_time: 0.25,
+    rating: 0.20,
+    compliance: 0.10,
+    capacity: 0.10,
+  });
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [settings, setSettings] = useState<SystemSettingItem[]>([]);
   const [aiDiagnostics, setAiDiagnostics] = useState<any>(null);
@@ -53,6 +66,17 @@ export const AdminPage: React.FC = () => {
       } else if (activeTab === "verification") {
         const v = await adminApi.getVerificationQueue();
         setVerificationQueue(v);
+      } else if (activeTab === "moderation") {
+        const prods = await adminApi.listProductsForModeration();
+        const rfqs = await adminApi.listRfqsForModeration();
+        setModerationProducts(prods);
+        setModerationRfqs(rfqs);
+      } else if (activeTab === "doc_review") {
+        const docs = await adminApi.getDocumentReviewQueue();
+        setDocReviewQueue(docs);
+      } else if (activeTab === "weights") {
+        const w = await adminApi.getMatchingWeights();
+        setMatchingWeights(w);
       } else if (activeTab === "audit") {
         const a = await adminApi.listAuditLogs();
         setAuditLogs(a);
@@ -85,14 +109,57 @@ export const AdminPage: React.FC = () => {
     }
   };
 
-  const handleVerificationDecision = async (companyId: string, action: "approve" | "reject") => {
+  const handleVerificationDecision = async (companyId: string, action: "approve" | "reject" | "request_info") => {
     try {
-      await adminApi.decideVerification(companyId, action, `Admin decision: ${action}`);
-      setActionMessage(`Supplier verification ${action}d successfully`);
+      const note = rejectionNotes[companyId] || `Admin decision: ${action}`;
+      await adminApi.decideVerification(companyId, action as any, note);
+      setActionMessage(`Supplier verification ${action} completed successfully`);
       const updated = await adminApi.getVerificationQueue();
       setVerificationQueue(updated);
     } catch (err: any) {
       alert(`Error processing verification: ${err.message}`);
+    }
+  };
+
+  const handleModerateProduct = async (productId: string, action: string) => {
+    try {
+      await adminApi.moderateProduct(productId, action);
+      setActionMessage(`Product ${action} action executed`);
+      const prods = await adminApi.listProductsForModeration();
+      setModerationProducts(prods);
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    }
+  };
+
+  const handleModerateRfq = async (rfqId: string, action: string) => {
+    try {
+      await adminApi.moderateRfq(rfqId, action);
+      setActionMessage(`RFQ ${action} action executed`);
+      const rfqs = await adminApi.listRfqsForModeration();
+      setModerationRfqs(rfqs);
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    }
+  };
+
+  const handleDocumentDecision = async (docId: string, action: "verify" | "reject") => {
+    try {
+      await adminApi.decideDocumentReview(docId, action);
+      setActionMessage(`Document ${action}ed successfully`);
+      const docs = await adminApi.getDocumentReviewQueue();
+      setDocReviewQueue(docs);
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    }
+  };
+
+  const handleSaveWeights = async () => {
+    try {
+      await adminApi.updateMatchingWeights(matchingWeights);
+      setActionMessage("Matching weights updated successfully");
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
     }
   };
 
@@ -125,12 +192,15 @@ export const AdminPage: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+      <div className="flex flex-wrap gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
         {[
           { id: "overview", label: "Overview", icon: Shield },
           { id: "users", label: "Users & Roles", icon: Users },
-          { id: "verification", label: "Supplier Verification Queue", icon: CheckCircle },
-          { id: "audit", label: "Audit Logs", icon: FileText },
+          { id: "verification", label: "Supplier Queue", icon: CheckCircle },
+          { id: "moderation", label: "Moderation", icon: AlertCircle },
+          { id: "doc_review", label: "Document Review", icon: FileText },
+          { id: "weights", label: "Matching Weights", icon: Settings },
+          { id: "audit", label: "Audit Logs", icon: Lock },
           { id: "settings", label: "Platform Settings", icon: Settings },
           { id: "ai_diagnostics", label: "AI Diagnostics", icon: Cpu },
         ].map((tab) => {
@@ -306,17 +376,32 @@ export const AdminPage: React.FC = () => {
                       {item.city}, {item.country} • {item.years_in_business} years in business • Contact: {item.contact_email || "N/A"}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="Decision reason / notes..."
+                      value={rejectionNotes[item.company_id] || ""}
+                      onChange={(e) =>
+                        setRejectionNotes({ ...rejectionNotes, [item.company_id]: e.target.value })
+                      }
+                      className="px-2.5 py-1 text-xs rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                    />
+                    <button
+                      onClick={() => handleVerificationDecision(item.company_id, "request_info")}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition"
+                    >
+                      Request Info
+                    </button>
                     <button
                       onClick={() => handleVerificationDecision(item.company_id, "reject")}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 transition"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 transition"
                     >
                       <XCircle className="w-3.5 h-3.5" />
                       Reject
                     </button>
                     <button
                       onClick={() => handleVerificationDecision(item.company_id, "approve")}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition"
                     >
                       <CheckCircle className="w-3.5 h-3.5" />
                       Approve & Verify
@@ -356,6 +441,207 @@ export const AdminPage: React.FC = () => {
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {/* Tab: Moderation */}
+      {activeTab === "moderation" && (
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm p-4 space-y-4">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Product Catalog Moderation</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 uppercase text-[10px]">
+                  <tr>
+                    <th className="py-2 px-3">Product</th>
+                    <th className="py-2 px-3">Supplier</th>
+                    <th className="py-2 px-3">Country</th>
+                    <th className="py-2 px-3">Status</th>
+                    <th className="py-2 px-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {moderationProducts.map((p) => (
+                    <tr key={p.id}>
+                      <td className="py-2.5 px-3 font-semibold text-slate-900 dark:text-slate-100">{p.name}</td>
+                      <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400">{p.supplier_name}</td>
+                      <td className="py-2.5 px-3 text-slate-500">{p.origin_country}</td>
+                      <td className="py-2.5 px-3">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${p.is_active ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>
+                          {p.is_active ? "Active" : "Suspended"}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-right space-x-1.5">
+                        <button
+                          onClick={() => handleModerateProduct(p.id, "approve")}
+                          className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded hover:bg-emerald-100 font-medium"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleModerateProduct(p.id, "flag")}
+                          className="px-2 py-1 bg-amber-50 text-amber-700 rounded hover:bg-amber-100 font-medium"
+                        >
+                          Flag
+                        </button>
+                        <button
+                          onClick={() => handleModerateProduct(p.id, "suspend")}
+                          className="px-2 py-1 bg-red-50 text-red-700 rounded hover:bg-red-100 font-medium"
+                        >
+                          Suspend
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm p-4 space-y-4">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">RFQ Tender Moderation</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 uppercase text-[10px]">
+                  <tr>
+                    <th className="py-2 px-3">RFQ Number</th>
+                    <th className="py-2 px-3">Title</th>
+                    <th className="py-2 px-3">Buyer</th>
+                    <th className="py-2 px-3">Status</th>
+                    <th className="py-2 px-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {moderationRfqs.map((r) => (
+                    <tr key={r.id}>
+                      <td className="py-2.5 px-3 font-mono font-semibold text-blue-600">{r.rfq_number}</td>
+                      <td className="py-2.5 px-3 text-slate-900 dark:text-slate-100">{r.title}</td>
+                      <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400">{r.buyer_name}</td>
+                      <td className="py-2.5 px-3 capitalize text-slate-500">{r.status}</td>
+                      <td className="py-2.5 px-3 text-right space-x-1.5">
+                        <button
+                          onClick={() => handleModerateRfq(r.id, "approve")}
+                          className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded hover:bg-emerald-100 font-medium"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleModerateRfq(r.id, "flag")}
+                          className="px-2 py-1 bg-amber-50 text-amber-700 rounded hover:bg-amber-100 font-medium"
+                        >
+                          Flag
+                        </button>
+                        <button
+                          onClick={() => handleModerateRfq(r.id, "close")}
+                          className="px-2 py-1 bg-red-50 text-red-700 rounded hover:bg-red-100 font-medium"
+                        >
+                          Close
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Document Review Queue */}
+      {activeTab === "doc_review" && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm p-4 space-y-4">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white">Document Compliance Review Queue</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 uppercase text-[10px]">
+                <tr>
+                  <th className="py-2 px-3">Title & File</th>
+                  <th className="py-2 px-3">Type</th>
+                  <th className="py-2 px-3">Uploader</th>
+                  <th className="py-2 px-3">Status</th>
+                  <th className="py-2 px-3 text-right">Review Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {docReviewQueue.map((doc) => (
+                  <tr key={doc.id}>
+                    <td className="py-2.5 px-3">
+                      <div className="font-semibold text-slate-900 dark:text-slate-100">{doc.title}</div>
+                      <div className="text-[11px] text-slate-400">{doc.original_filename}</div>
+                    </td>
+                    <td className="py-2.5 px-3 uppercase text-slate-600 dark:text-slate-400 font-mono text-[11px]">{doc.doc_type}</td>
+                    <td className="py-2.5 px-3 text-slate-500">{doc.uploaded_by}</td>
+                    <td className="py-2.5 px-3">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800">
+                        {doc.status}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 text-right space-x-2">
+                      <a
+                        href={`/api/v1/documents/${doc.id}/download`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2 py-1 bg-slate-100 text-slate-700 rounded hover:bg-slate-200 font-medium inline-block"
+                      >
+                        View
+                      </a>
+                      <button
+                        onClick={() => handleDocumentDecision(doc.id, "reject")}
+                        className="px-2 py-1 bg-red-50 text-red-700 rounded hover:bg-red-100 font-medium"
+                      >
+                        Reject
+                      </button>
+                      <button
+                        onClick={() => handleDocumentDecision(doc.id, "verify")}
+                        className="px-2.5 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700 font-medium"
+                      >
+                        Verify
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Matching Weights */}
+      {activeTab === "weights" && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm p-5 space-y-4 max-w-2xl">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">AI Supplier Matching Algorithm Weights</h3>
+            <p className="text-xs text-slate-500">Configure multi-attribute scoring weights. Sum of weights must equal 1.00.</p>
+          </div>
+          <div className="space-y-3 pt-2">
+            {Object.keys(matchingWeights).map((key) => (
+              <div key={key} className="flex items-center justify-between gap-4 p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                <span className="text-xs font-semibold capitalize text-slate-700 dark:text-slate-300">{key.replace("_", " ")}</span>
+                <input
+                  type="number"
+                  step="0.05"
+                  min="0"
+                  max="1"
+                  value={matchingWeights[key]}
+                  onChange={(e) =>
+                    setMatchingWeights({ ...matchingWeights, [key]: parseFloat(e.target.value) || 0 })
+                  }
+                  className="w-24 px-2 py-1 text-xs text-right rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono"
+                />
+              </div>
+            ))}
+            <div className="pt-2 flex items-center justify-between">
+              <span className="text-xs text-slate-500">
+                Sum: {Object.values(matchingWeights).reduce((a, b) => a + b, 0).toFixed(2)}
+              </span>
+              <button
+                onClick={handleSaveWeights}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition"
+              >
+                Save Algorithmic Weights
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

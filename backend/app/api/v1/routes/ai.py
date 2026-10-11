@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import get_current_user_optional, get_current_user, require_role
 from app.core.config import settings
 from app.core.db import get_db
+from app.core.rate_limit import rate_limit_ai
 from app.ai.circuit_breaker import circuit_breaker
 from app.models.content import CopilotConversation, CopilotMessage
 from app.models.identity import Buyer, Supplier, User
@@ -66,7 +67,8 @@ async def get_copilot_guides() -> List[Dict[str, Any]]:
     return GUIDE_SUMMARIES
 
 
-@router.post("/copilot/chat", response_model=CopilotChatResponse, summary="Chat with AI Trade Copilot with RAG grounding")
+@router.post("/copilot/chat", response_model=CopilotChatResponse, summary="Chat with AI Trade Copilot with RAG grounding", dependencies=[Depends(rate_limit_ai)])
+@router.post("/chat", response_model=CopilotChatResponse, summary="Chat with AI Trade Copilot alias", dependencies=[Depends(rate_limit_ai)])
 async def copilot_chat(
     request: CopilotChatRequest,
     db: AsyncSession = Depends(get_db),

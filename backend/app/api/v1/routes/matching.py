@@ -50,16 +50,6 @@ async def get_weights(db: AsyncSession = Depends(get_db)):
     return {"weights": weights}
 
 
-@router.put("/admin/matching/weights")
-async def update_weights(
-    payload: WeightsInput,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
-):
-    """Updates matching weights in system_settings. Requires admin role."""
-    updated = await set_matching_weights(db, payload.weights)
-    return {"status": "updated", "weights": updated}
-
 
 @router.post("/matching/rank")
 async def rank_suppliers(

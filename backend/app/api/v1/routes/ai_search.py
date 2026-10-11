@@ -12,6 +12,7 @@ from app.ai import generate_structured, SearchRequirement
 from app.api.deps import get_current_user_optional
 from app.core.database import get_db
 from app.models.ai_ops import AISearch
+from app.core.rate_limit import rate_limit_ai
 from app.models.catalog import Category, Certification, Product, SupplierCertification
 from app.models.identity import Company, Supplier, User
 from app.services.matching import get_matching_weights, rank_suppliers_for_requirement
@@ -274,7 +275,7 @@ async def _execute_search_and_matching(
     )
 
 
-@router.post("/search", response_model=AISearchResponse)
+@router.post("/search", response_model=AISearchResponse, dependencies=[Depends(rate_limit_ai)])
 async def perform_ai_search(
     req: AISearchRequest,
     db: AsyncSession = Depends(get_db),
@@ -307,7 +308,7 @@ async def perform_ai_search(
     )
 
 
-@router.post("/search/filter", response_model=AISearchResponse)
+@router.post("/search/filter", response_model=AISearchResponse, dependencies=[Depends(rate_limit_ai)])
 async def filter_ai_search(
     req: AISearchFilterRequest,
     db: AsyncSession = Depends(get_db),

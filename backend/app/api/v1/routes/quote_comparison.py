@@ -84,6 +84,10 @@ async def get_rfq_quote_comparison(
     if not rfq:
         raise HTTPException(status_code=404, detail="RFQ not found")
 
+    if current_user.role != "admin":
+        if not rfq.buyer or rfq.buyer.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Not authorized to view quote comparison for this RFQ")
+
     # Fetch quotes with supplier details
     quotes_stmt = (
         select(Quotation)
@@ -474,11 +478,15 @@ async def toggle_shortlist_quote(
     quote_stmt = (
         select(Quotation)
         .where(Quotation.id == quote_id)
-        .options(selectinload(Quotation.rfq))
+        .options(selectinload(Quotation.rfq).selectinload(RFQ.buyer))
     )
     quote = (await db.execute(quote_stmt)).scalar_one_or_none()
     if not quote:
         raise HTTPException(status_code=404, detail="Quotation not found")
+
+    if current_user.role != "admin":
+        if not quote.rfq or not quote.rfq.buyer or quote.rfq.buyer.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Not authorized to shortlist quotes for this RFQ")
 
     new_status = "submitted" if quote.status == "shortlisted" else "shortlisted"
     quote.status = new_status
