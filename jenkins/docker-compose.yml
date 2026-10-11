@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  jenkins_controller:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jenkins_controller
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    environment:
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=true -Dorg.apache.commons.jelly.tags.fmt.timeZone=UTC
+      - TZ=UTC
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2048M
+
+volumes:
+  jenkins_home:
+    name: tradex_jenkins_home

@@ -1,0 +1,31 @@
+# Jenkins Core Pipeline & VCS
+git:latest
+workflow-aggregator:latest
+pipeline-stage-view:latest
+pipeline-model-definition:latest
+pipeline-utility-steps:latest
+
+# Docker & Container Integration
+docker-workflow:latest
+docker-plugin:latest
+
+# Credentials & Security
+credentials-binding:latest
+plain-credentials:latest
+ssh-credentials:latest
+
+# Notifications & Monitoring
+slack:latest
+prometheus:latest
+mailer:latest
+
+# Test & Code Quality Reporting
+junit:latest
+htmlpublisher:latest
+warnings-ng:latest
+cobertura:latest
+
+# Utilities & Ergonomics
+timestamper:latest
+build-timeout:latest
+ws-cleanup:latest

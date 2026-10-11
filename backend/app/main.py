@@ -17,6 +17,15 @@ from app.core.db import get_db
 from app.core.errors import register_error_handlers
 from app.core.logging import setup_logging
 from app.core.middleware import RequestIDMiddleware, SecurityHeadersMiddleware
+from app.core.metrics import (
+    ACTIVE_WS_CONNECTIONS,
+    HTTP_ERRORS_TOTAL,
+    HTTP_REQUEST_DURATION_SECONDS,
+    HTTP_REQUESTS_TOTAL,
+    get_metrics_response,
+)
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +33,31 @@ logger = logging.getLogger(__name__)
 setup_logging(level="INFO" if settings.ENV != "development" else "DEBUG")
 
 START_TIME = time.time()
+
+
+class PrometheusMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path == "/metrics":
+            return await call_next(request)
+        start = time.time()
+        method = request.method
+        endpoint = request.url.path
+        try:
+            response = await call_next(request)
+            duration = time.time() - start
+            status_code = str(response.status_code)
+            HTTP_REQUESTS_TOTAL.labels(method=method, endpoint=endpoint, status_code=status_code).inc()
+            HTTP_REQUEST_DURATION_SECONDS.labels(method=method, endpoint=endpoint).observe(duration)
+            if response.status_code >= 400:
+                error_type = f"{response.status_code // 100}xx"
+                HTTP_ERRORS_TOTAL.labels(endpoint=endpoint, error_type=error_type).inc()
+            return response
+        except Exception as exc:
+            duration = time.time() - start
+            HTTP_REQUESTS_TOTAL.labels(method=method, endpoint=endpoint, status_code="500").inc()
+            HTTP_REQUEST_DURATION_SECONDS.labels(method=method, endpoint=endpoint).observe(duration)
+            HTTP_ERRORS_TOTAL.labels(endpoint=endpoint, error_type="5xx").inc()
+            raise exc
 
 
 @asynccontextmanager
@@ -56,7 +90,8 @@ app = FastAPI(
 # 1. Error Handling (Centralized Standard Error Envelope)
 register_error_handlers(app)
 
-# 2. Middlewares (Security Headers, Request ID, Timing, GZip, CORS)
+# 2. Middlewares (Prometheus Metrics, Security Headers, Request ID, Timing, GZip, CORS)
+app.add_middleware(PrometheusMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestIDMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -105,6 +140,13 @@ async def readiness_probe(db: AsyncSession = Depends(get_db)) -> JSONResponse:
         )
 
 
+# Prometheus Metrics Scrape Endpoint
+@app.get("/metrics", tags=["Monitoring"], include_in_schema=False)
+async def metrics_endpoint():
+    """Prometheus exposition format metrics for scrapers."""
+    return get_metrics_response()
+
+
 # Backward-compatible root health probe
 @app.get("/health", tags=["Health"])
 async def root_health():
@@ -141,6 +183,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
             pass
 
     await ws_manager.connect(websocket, user_id)
+    ACTIVE_WS_CONNECTIONS.inc()
     try:
         while True:
             data = await websocket.receive_text()
@@ -151,6 +194,8 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None):
             except Exception:
                 pass
     except WebSocketDisconnect:
+        ACTIVE_WS_CONNECTIONS.dec()
         ws_manager.disconnect(websocket, user_id)
     except Exception:
+        ACTIVE_WS_CONNECTIONS.dec()
         ws_manager.disconnect(websocket, user_id)
