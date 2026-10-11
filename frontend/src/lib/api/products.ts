@@ -80,6 +80,9 @@ export interface ProductDetailResponse {
     key_points: string[];
     caution: string;
   };
+  specifications?: Record<string, string>;
+  packaging?: string;
+  incoterms?: string[];
   related_products: ProductItem[];
   is_saved: boolean;
 }
@@ -104,6 +107,7 @@ export interface CompareProductsResponse {
 
 export interface ProductFilterParams {
   q?: string;
+  hs_code?: string;
   category?: string;
   country?: string;
   certifications?: string[];
@@ -113,7 +117,7 @@ export interface ProductFilterParams {
   max_price?: number;
   max_lead_time?: number;
   verified_only?: boolean;
-  sort?: "relevance" | "price_asc" | "price_desc" | "newest" | "rating";
+  sort?: "relevance" | "price_asc" | "price_desc" | "newest" | "rating" | "moq" | "lead_time";
   page?: number;
   page_size?: number;
 }
@@ -122,6 +126,7 @@ export const productsApi = {
   async list(params: ProductFilterParams = {}): Promise<PaginatedProductsResponse> {
     const qs = new URLSearchParams();
     if (params.q) qs.set("q", params.q);
+    if (params.hs_code) qs.set("hs_code", params.hs_code);
     if (params.category) qs.set("category", params.category);
     if (params.country) qs.set("country", params.country);
     if (params.certifications && params.certifications.length > 0) {
@@ -137,13 +142,17 @@ export const productsApi = {
     if (params.page) qs.set("page", String(params.page));
     if (params.page_size) qs.set("page_size", String(params.page_size));
 
-    const res = await fetch(`${BASE_URL}/products?${qs.toString()}`);
+    const res = await fetch(`${BASE_URL}/products?${qs.toString()}`, {
+      credentials: "include",
+    });
     if (!res.ok) throw new Error(`Failed to load products: ${res.statusText}`);
     return res.json();
   },
 
   async getBySlug(slug: string): Promise<ProductDetailResponse> {
-    const res = await fetch(`${BASE_URL}/products/${encodeURIComponent(slug)}`);
+    const res = await fetch(`${BASE_URL}/products/${encodeURIComponent(slug)}`, {
+      credentials: "include",
+    });
     if (!res.ok) throw new Error(`Product not found: ${res.statusText}`);
     return res.json();
   },
@@ -164,9 +173,42 @@ export const productsApi = {
     return res.json();
   },
 
+  getCompareCsvUrl(productIds: string[]): string {
+    const qs = new URLSearchParams();
+    productIds.forEach((id) => qs.append("product_ids", id));
+    return `${BASE_URL}/products/compare/csv?${qs.toString()}`;
+  },
+
   async toggleSaveProduct(productId: string, currentlySaved: boolean): Promise<boolean> {
     const method = currentlySaved ? "DELETE" : "POST";
     const res = await fetch(`${BASE_URL}/saved/products/${productId}`, {
+      method,
+      credentials: "include",
+    });
+    return res.ok ? !currentlySaved : currentlySaved;
+  },
+
+  async getSavedProducts(): Promise<ProductItem[]> {
+    const res = await fetch(`${BASE_URL}/saved/products`, { credentials: "include" });
+    if (!res.ok) throw new Error(`Failed to load saved products: ${res.statusText}`);
+    return res.json();
+  },
+
+  async getSavedSuppliers(): Promise<any[]> {
+    const res = await fetch(`${BASE_URL}/saved/suppliers`, { credentials: "include" });
+    if (!res.ok) throw new Error(`Failed to load saved suppliers: ${res.statusText}`);
+    return res.json();
+  },
+
+  async getAllSaved(): Promise<{ products: ProductItem[]; suppliers: any[]; searches: any[]; counts: Record<string, number> }> {
+    const res = await fetch(`${BASE_URL}/saved`, { credentials: "include" });
+    if (!res.ok) throw new Error(`Failed to load saved items: ${res.statusText}`);
+    return res.json();
+  },
+
+  async toggleSaveSupplier(supplierId: string, currentlySaved: boolean): Promise<boolean> {
+    const method = currentlySaved ? "DELETE" : "POST";
+    const res = await fetch(`${BASE_URL}/saved/suppliers/${supplierId}`, {
       method,
       credentials: "include",
     });

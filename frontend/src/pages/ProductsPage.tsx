@@ -34,12 +34,17 @@ export const ProductsPage: React.FC = () => {
   const initialCategory = searchParams.get("category") || undefined;
   const initialCountry = searchParams.get("country") || undefined;
   const initialSort = (searchParams.get("sort") as ProductFilterParams["sort"]) || "relevance";
+  const initialVerified = searchParams.get("verified_only") === "true";
+  const initialCertifications = searchParams.get("certifications") ? searchParams.get("certifications")!.split(",") : undefined;
+  const initialMaxMoq = searchParams.get("max_moq") ? Number(searchParams.get("max_moq")) : undefined;
+  const initialMaxLead = searchParams.get("max_lead_time") ? Number(searchParams.get("max_lead_time")) : undefined;
+  const initialPage = searchParams.get("page") ? Number(searchParams.get("page")) : 1;
 
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [categories, setCategories] = useState<CategoryNode[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(initialPage);
   const [pageSize] = useState(12);
 
   const [searchInput, setSearchInput] = useState(initialQ);
@@ -48,7 +53,11 @@ export const ProductsPage: React.FC = () => {
     category: initialCategory,
     country: initialCountry,
     sort: initialSort,
-    page: 1,
+    verified_only: initialVerified || undefined,
+    certifications: initialCertifications,
+    max_moq: initialMaxMoq,
+    max_lead_time: initialMaxLead,
+    page: initialPage,
     page_size: 12,
   });
 
@@ -111,13 +120,21 @@ export const ProductsPage: React.FC = () => {
   // Handle filter change
   const handleFilterChange = (newFilters: ProductFilterParams) => {
     setFilters(newFilters);
-    setCurrentPage(1);
+    setCurrentPage(newFilters.page || 1);
 
     const newParams = new URLSearchParams();
     if (newFilters.q) newParams.set("q", newFilters.q);
     if (newFilters.category) newParams.set("category", newFilters.category);
     if (newFilters.country) newParams.set("country", newFilters.country);
-    if (newFilters.sort) newParams.set("sort", newFilters.sort);
+    if (newFilters.sort && newFilters.sort !== "relevance") newParams.set("sort", newFilters.sort);
+    if (newFilters.verified_only) newParams.set("verified_only", "true");
+    if (newFilters.certifications && newFilters.certifications.length > 0) {
+      newParams.set("certifications", newFilters.certifications.join(","));
+    }
+    if (newFilters.max_moq) newParams.set("max_moq", String(newFilters.max_moq));
+    if (newFilters.max_lead_time) newParams.set("max_lead_time", String(newFilters.max_lead_time));
+    if (newFilters.page && newFilters.page > 1) newParams.set("page", String(newFilters.page));
+
     setSearchParams(newParams, { replace: true });
   };
 
@@ -204,6 +221,13 @@ export const ProductsPage: React.FC = () => {
       key: "moq",
       label: `MOQ ≤ ${filters.max_moq} kg`,
       onRemove: () => handleFilterChange({ ...filters, max_moq: undefined }),
+    });
+  }
+  if (filters.max_lead_time) {
+    activeChips.push({
+      key: "lead_time",
+      label: `Lead Time ≤ ${filters.max_lead_time} days`,
+      onRemove: () => handleFilterChange({ ...filters, max_lead_time: undefined }),
     });
   }
 

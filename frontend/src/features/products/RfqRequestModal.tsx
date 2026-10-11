@@ -55,8 +55,26 @@ export const RfqRequestModal: React.FC<RfqRequestModalProps> = ({
           </Button>
         ) : (
           <>
-            <Button variant="outline" size="sm" onClick={onClose}>
-              Cancel
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                onClose();
+                const params = new URLSearchParams({
+                  product: product.name,
+                  title: `Procurement of ${product.name}`,
+                  quantity: quantity,
+                  unit: product.unit,
+                  origin_country: product.origin_country,
+                  incoterm: incoterm,
+                  destination_port: destinationPort,
+                  lead_time_days: String(product.lead_time_days),
+                  supplier_id: product.supplier.id,
+                });
+                window.location.href = `/rfqs?${params.toString()}`;
+              }}
+            >
+              Open Full RFQ Wizard
             </Button>
             <Button
               variant="primary"

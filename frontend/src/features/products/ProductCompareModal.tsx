@@ -4,6 +4,9 @@ import { CompareProductsResponse } from "../../lib/api/products";
 import { CheckCircle2 } from "lucide-react";
 import { Button } from "../../components/ui/Button";
 
+import { Download } from "lucide-react";
+import { productsApi } from "../../lib/api/products";
+
 interface ProductCompareModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -19,6 +22,12 @@ export const ProductCompareModal: React.FC<ProductCompareModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
+  const handleExportCsv = () => {
+    if (!data || data.products.length === 0) return;
+    const csvUrl = productsApi.getCompareCsvUrl(data.products.map((p) => p.id));
+    window.open(csvUrl, "_blank");
+  };
+
   return (
     <Modal
       isOpen={isOpen}
@@ -26,9 +35,20 @@ export const ProductCompareModal: React.FC<ProductCompareModalProps> = ({
       title="Product Specification Comparison Matrix"
       maxWidth="xl"
       footer={
-        <Button variant="primary" size="sm" onClick={onClose}>
-          Done
-        </Button>
+        <div className="flex items-center justify-between w-full">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportCsv}
+            disabled={!data || data.products.length === 0}
+            icon={<Download className="w-3.5 h-3.5" />}
+          >
+            Export Comparison (CSV)
+          </Button>
+          <Button variant="primary" size="sm" onClick={onClose}>
+            Done
+          </Button>
+        </div>
       }
     >
       {isLoading || !data ? (

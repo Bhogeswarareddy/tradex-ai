@@ -3,11 +3,21 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user_optional
 from app.core.db import get_db
+from app.models.catalog import (
+    Category,
+    PriceTier,
+    Product,
+    ProductImage,
+    SupplierCertification,
+)
 from app.models.content import SavedItem
-from app.models.identity import User
+from app.models.identity import Company, Supplier, User
+from app.schemas.products import ProductListItem
+from app.api.v1.routes.products import get_default_product_image
 
 router = APIRouter(prefix="/saved", tags=["Saved Items"])
 
@@ -223,4 +233,174 @@ async def unsave_search(
     )
     await db.commit()
     return {"status": "unsaved", "search_id": str(search_id)}
+
+
+@router.get("/products", response_model=List[ProductListItem], summary="List saved products for current user")
+async def list_saved_products(
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+) -> List[ProductListItem]:
+    user_id = await _resolve_user_id(db, current_user)
+    saved_items = await db.scalars(
+        select(SavedItem).where(
+            SavedItem.user_id == user_id,
+            SavedItem.item_type == "product",
+        ).order_by(SavedItem.created_at.desc())
+    )
+    p_ids = [s.item_id for s in saved_items.all()]
+    if not p_ids:
+        return []
+
+    stmt = (
+        select(Product)
+        .where(Product.id.in_(p_ids))
+        .where(Product.deleted_at.is_(None))
+        .options(
+            selectinload(Product.category),
+            selectinload(Product.price_tiers),
+            selectinload(Product.images),
+            selectinload(Product.supplier).selectinload(Supplier.company),
+            selectinload(Product.supplier).selectinload(Supplier.certifications).selectinload(SupplierCertification.certification),
+        )
+    )
+    res = await db.execute(stmt)
+    products = {p.id: p for p in res.scalars().all()}
+
+    items: List[ProductListItem] = []
+    for pid in p_ids:
+        p = products.get(pid)
+        if not p:
+            continue
+        c_name = p.category.name if p.category else "General"
+        c_slug = p.category.slug if p.category else "general"
+        supplier = p.supplier
+        company = supplier.company if supplier else None
+        sup_name = company.name if company else "Verified Trade Supplier"
+        sup_country = company.country if company else p.origin_country
+        sup_verified = (company.verified_status == "verified") if company else True
+        sup_rating = round(float(supplier.trust_score or 4.8), 1) if supplier else 4.8
+
+        p_min = 2.50
+        p_max = 5.00
+        currency = "USD"
+        if p.price_tiers:
+            prices = [float(t.unit_price) for t in p.price_tiers]
+            p_min = min(prices)
+            p_max = max(prices)
+            currency = p.price_tiers[0].currency or "USD"
+
+        img_url = p.images[0].image_url if p.images else get_default_product_image(c_name)
+
+        certs = []
+        if supplier and supplier.certifications:
+            for sc in supplier.certifications:
+                if sc.certification:
+                    certs.append(sc.certification.name)
+
+        items.append(
+            ProductListItem(
+                id=str(p.id),
+                name=p.name,
+                slug=p.slug,
+                description=p.description,
+                category_name=c_name,
+                category_slug=c_slug,
+                hs_code=p.hs_code,
+                moq=p.moq,
+                unit=p.unit,
+                origin_country=p.origin_country,
+                lead_time_days=p.lead_time_days,
+                price_min=p_min,
+                price_max=p_max,
+                currency=currency,
+                image_url=img_url,
+                supplier_id=str(p.supplier_id),
+                supplier_name=sup_name,
+                supplier_verified=sup_verified,
+                supplier_country=sup_country,
+                supplier_rating=sup_rating,
+                certifications=certs[:3],
+                is_saved=True,
+            )
+        )
+    return items
+
+
+@router.get("/suppliers", summary="List saved suppliers for current user")
+async def list_saved_suppliers(
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    user_id = await _resolve_user_id(db, current_user)
+    saved_items = await db.scalars(
+        select(SavedItem).where(
+            SavedItem.user_id == user_id,
+            SavedItem.item_type == "supplier",
+        ).order_by(SavedItem.created_at.desc())
+    )
+    s_ids = [s.item_id for s in saved_items.all()]
+    if not s_ids:
+        return []
+
+    stmt = (
+        select(Supplier)
+        .where(Supplier.id.in_(s_ids))
+        .options(
+            selectinload(Supplier.company),
+            selectinload(Supplier.certifications).selectinload(SupplierCertification.certification),
+        )
+    )
+    res = await db.execute(stmt)
+    suppliers = {s.id: s for s in res.scalars().all()}
+
+    items = []
+    for sid in s_ids:
+        s = suppliers.get(sid)
+        if not s:
+            continue
+        comp = s.company
+        raw_trust = float(s.trust_score or 4.8)
+        scaled_trust = (raw_trust * 20.0) if raw_trust <= 5.0 else raw_trust
+
+        certs = [sc.certification.name for sc in s.certifications if sc.certification]
+
+        items.append({
+            "id": str(s.id),
+            "company_id": str(comp.id) if comp else str(sid),
+            "name": comp.name if comp else "Global Supplier",
+            "country": comp.country if comp else "India",
+            "city": comp.city if comp else "Mumbai",
+            "logo_url": comp.logo_url if comp else None,
+            "banner_url": comp.banner_url if comp else None,
+            "description": comp.description if comp else "Premier verified exporter.",
+            "trust_score": round(scaled_trust, 1),
+            "rating": round(raw_trust, 1),
+            "on_time_rate": round(float(s.on_time_rate or 95.0), 1),
+            "response_time_hours": float(s.response_time_hours or 4.0),
+            "capacity": s.capacity_per_month,
+            "verified_status": comp.verified_status if comp else "verified",
+            "certifications": certs,
+            "is_saved": True,
+        })
+    return items
+
+
+@router.get("", summary="Get all saved items (products, suppliers, searches) for current user")
+async def get_all_saved(
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    prods = await list_saved_products(db=db, current_user=current_user)
+    sups = await list_saved_suppliers(db=db, current_user=current_user)
+    searches = await list_saved_searches(db=db, current_user=current_user)
+    return {
+        "products": prods,
+        "suppliers": sups,
+        "searches": searches,
+        "counts": {
+            "products": len(prods),
+            "suppliers": len(sups),
+            "searches": len(searches),
+        },
+    }
 

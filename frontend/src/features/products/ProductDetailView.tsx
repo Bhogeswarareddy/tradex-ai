@@ -282,11 +282,11 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <p className="text-xs text-slate-400">Standard Packaging</p>
-                  <p className="font-bold text-slate-800 text-sm mt-0.5">25kg / 50kg HDPE Bags</p>
+                  <p className="font-bold text-slate-800 text-sm mt-0.5">{product.packaging || "25kg / 50kg Export Bags"}</p>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <p className="text-xs text-slate-400">Storage Tolerance</p>
-                  <p className="font-bold text-slate-800 text-sm mt-0.5">Cool & Dry (&lt;10% RH)</p>
+                  <p className="text-xs text-slate-400">Supported Terms</p>
+                  <p className="font-bold text-slate-800 text-sm mt-0.5">{product.incoterms || "FOB, CIF"}</p>
                 </div>
               </div>
             </div>
@@ -295,15 +295,33 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
           {activeTab === "specs" && (
             <div className="space-y-3">
               <h3 className="font-bold text-slate-900 text-base">Technical Specifications</h3>
-              <table className="w-full text-xs text-left text-slate-700 divide-y divide-slate-100">
-                <tbody>
-                  <tr className="py-2.5 flex justify-between"><td className="font-semibold text-slate-500">Curcumin Content / Purity</td><td className="font-bold text-slate-900">&ge; 5.0% by HPLC</td></tr>
-                  <tr className="py-2.5 flex justify-between"><td className="font-semibold text-slate-500">Moisture Percentage</td><td className="font-bold text-slate-900">&le; 9.5%</td></tr>
-                  <tr className="py-2.5 flex justify-between"><td className="font-semibold text-slate-500">Total Ash</td><td className="font-bold text-slate-900">&le; 7.0%</td></tr>
-                  <tr className="py-2.5 flex justify-between"><td className="font-semibold text-slate-500">Extraneous Matter</td><td className="font-bold text-slate-900">Nil / Laboratory Verified</td></tr>
-                  <tr className="py-2.5 flex justify-between"><td className="font-semibold text-slate-500">Particle Fineness</td><td className="font-bold text-slate-900">80 - 100 Mesh Screen</td></tr>
-                </tbody>
-              </table>
+              {product.specifications && Object.keys(product.specifications).length > 0 ? (
+                <div className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden">
+                  <table className="w-full text-xs text-left text-slate-700 divide-y divide-slate-200">
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {Object.entries(product.specifications).map(([key, val]) => (
+                        <tr key={key} className="hover:bg-slate-50/50">
+                          <td className="py-2.5 px-4 font-semibold text-slate-600 w-1/3">
+                            {key.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
+                          </td>
+                          <td className="py-2.5 px-4 font-bold text-slate-900">
+                            {String(val)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <table className="w-full text-xs text-left text-slate-700 divide-y divide-slate-100">
+                  <tbody>
+                    <tr className="py-2.5 flex justify-between"><td className="font-semibold text-slate-500">Curcumin Content / Purity</td><td className="font-bold text-slate-900">&ge; 5.0% by HPLC</td></tr>
+                    <tr className="py-2.5 flex justify-between"><td className="font-semibold text-slate-500">Moisture Percentage</td><td className="font-bold text-slate-900">&le; 9.5%</td></tr>
+                    <tr className="py-2.5 flex justify-between"><td className="font-semibold text-slate-500">Total Ash</td><td className="font-bold text-slate-900">&le; 7.0%</td></tr>
+                    <tr className="py-2.5 flex justify-between"><td className="font-semibold text-slate-500">Particle Fineness</td><td className="font-bold text-slate-900">80 - 100 Mesh Screen</td></tr>
+                  </tbody>
+                </table>
+              )}
             </div>
           )}
 
@@ -327,8 +345,9 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
           {activeTab === "shipping" && (
             <div className="space-y-3 text-xs text-slate-600">
               <h3 className="font-bold text-slate-900 text-base">Logistics & Incoterms Protocols</h3>
-              <p>Supported standard terms: <strong>FOB (Free on Board)</strong> at Mundra / Nhava Sheva Ports; <strong>CIF (Cost, Insurance and Freight)</strong> to European and North American destination seaports.</p>
-              <p>Container load configurations: 20ft FCL holds approx. 18 Metric Tons palletized; 40ft FCL holds up to 26 Metric Tons.</p>
+              <p>Supported standard terms: <strong>{product.incoterms || "FOB, CIF, EXW"}</strong> originating from <strong>{product.origin_country}</strong> ports.</p>
+              <p>Packaging configuration: <strong>{product.packaging || "Export standard palletized bulk packing"}</strong>.</p>
+              <p>Standard lead time for dispatch: <strong>{product.lead_time_days} business days</strong> from LC confirmation.</p>
             </div>
           )}
 

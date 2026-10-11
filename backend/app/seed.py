@@ -387,39 +387,162 @@ def seed():
             ("Cast Inconel Turbocharger Turbine Wheel Housing", "turbocharger-turbine-wheel-housing", "machinery", "Madhav Agro Exports", "8414.90", 30, 210.00, "piece"),
         ]
 
+        def get_seed_product_image(cat_s: str, s_slug: str) -> str:
+            s = s_slug.lower()
+            if "turmeric" in s:
+                return "https://images.unsplash.com/photo-1615485500704-8e990f9900f7?auto=format&fit=crop&w=800&q=80"
+            if "chilli" in s or "chili" in s:
+                return "https://images.unsplash.com/photo-1588252303782-cb80119abd6d?auto=format&fit=crop&w=800&q=80"
+            if "cumin" in s:
+                return "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=800&q=80"
+            if "pepper" in s:
+                return "https://images.unsplash.com/photo-1509358271058-acd22cc93898?auto=format&fit=crop&w=800&q=80"
+            if "cardamom" in s:
+                return "https://images.unsplash.com/photo-1599940824399-b87987ceb72a?auto=format&fit=crop&w=800&q=80"
+            if "ginger" in s:
+                return "https://images.unsplash.com/photo-1615485290382-441e4d049cb5?auto=format&fit=crop&w=800&q=80"
+            if "clove" in s:
+                return "https://images.unsplash.com/photo-1599940824399-b87987ceb72a?auto=format&fit=crop&w=800&q=80"
+            if "cinnamon" in s:
+                return "https://images.unsplash.com/photo-1509358271058-acd22cc93898?auto=format&fit=crop&w=800&q=80"
+            if "fennel" in s or "fenugreek" in s or "coriander" in s:
+                return "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=800&q=80"
+            if "rice" in s:
+                return "https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=800&q=80"
+            if "sesame" in s:
+                return "https://images.unsplash.com/photo-1508061253366-f7da158b6d46?auto=format&fit=crop&w=800&q=80"
+            if "maize" in s or "wheat" in s or "soybean" in s:
+                return "https://images.unsplash.com/photo-1551754655-cd27e38d2076?auto=format&fit=crop&w=800&q=80"
+            if "chickpea" in s or "bean" in s or "lentil" in s:
+                return "https://images.unsplash.com/photo-1515543237350-b3eea1ec8082?auto=format&fit=crop&w=800&q=80"
+            if "peanut" in s or "cashew" in s:
+                return "https://images.unsplash.com/photo-1536591375315-1b8368903277?auto=format&fit=crop&w=800&q=80"
+            if "cotton" in s or "yarn" in s:
+                return "https://images.unsplash.com/photo-1579762715118-a6f1d4b934f1?auto=format&fit=crop&w=800&q=80"
+            if "fabric" in s or "twill" in s or "sheeting" in s:
+                return "https://images.unsplash.com/photo-1584100936595-c0654b55a2e2?auto=format&fit=crop&w=800&q=80"
+            if "denim" in s:
+                return "https://images.unsplash.com/photo-1541099649105-f69ad21f3246?auto=format&fit=crop&w=800&q=80"
+            if "linen" in s or "canvas" in s or "jersey" in s:
+                return "https://images.unsplash.com/photo-1607083206869-4c7672e72a8a?auto=format&fit=crop&w=800&q=80"
+            if "crankshaft" in s or "shaft" in s or "piston" in s:
+                return "https://images.unsplash.com/photo-1486006920555-c77dce18193b?auto=format&fit=crop&w=800&q=80"
+            if "brake" in s or "disc" in s:
+                return "https://images.unsplash.com/photo-1600790142055-619df03207e6?auto=format&fit=crop&w=800&q=80"
+            if "gear" in s or "gearbox" in s or "transmission" in s:
+                return "https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=800&q=80"
+            if "cnc" in s or "knuckle" in s or "hub" in s or "manifold" in s or "turbocharger" in s or "valve" in s or "fitting" in s or "tie-rod" in s or "bushing" in s or "pipe" in s:
+                return "https://images.unsplash.com/photo-1581092335397-9583fe92d232?auto=format&fit=crop&w=800&q=80"
+            if cat_s == "spices":
+                return "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=800&q=80"
+            if cat_s == "agri":
+                return "https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=800&q=80"
+            if cat_s == "textiles":
+                return "https://images.unsplash.com/photo-1579762715118-a6f1d4b934f1?auto=format&fit=crop&w=800&q=80"
+            return "https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=800&q=80"
+
+        def get_seed_product_specs(cat_s: str, p_name: str) -> dict:
+            if cat_s == "spices":
+                return {
+                    "Purity": "≥ 99.5% Sortex Cleaned",
+                    "Moisture Content": "≤ 9.0% max",
+                    "Total Ash": "≤ 6.8%",
+                    "Extraneous Matter": "Nil / Laboratory COA verified",
+                    "Pesticide Residue": "EU & US FDA Compliant",
+                    "Packaging": "25kg multi-wall kraft paper bags with inner PE food liner",
+                    "Incoterms": "FOB Mundra / CIF Hamburg, Rotterdam, Felixstowe",
+                }
+            elif cat_s == "agri":
+                return {
+                    "Purity": "99.8% Double Polished Sortex Cleaned",
+                    "Moisture Content": "≤ 11.5% max",
+                    "Admixture": "≤ 0.5%",
+                    "Broken Grains": "≤ 1.0%",
+                    "Crop Year": "Current 2025/2026 Harvest",
+                    "Packaging": "50kg export PP woven bags or 1 MT jumbo bulk bags",
+                    "Incoterms": "FOB Kandla / CIF Jebel Ali, Rotterdam, Mersin",
+                }
+            elif cat_s == "textiles":
+                return {
+                    "Fiber Composition": "100% Export Grade Natural Cotton",
+                    "Yarn Count / Density": "30s Ne Combed Ring Spun / 200 TC",
+                    "Tensile Strength": "≥ 360 cN (ASTM D2256)",
+                    "Color Fastness": "Grade 4-5 (ISO 105-C06)",
+                    "Shrinkage": "< 3% after commercial laundering",
+                    "Packaging": "Palletized export cartons (45.4 kg / box) stretch wrapped",
+                    "Incoterms": "FOB Nhava Sheva / CIF Chittagong, Hamburg",
+                }
+            else:  # machinery
+                return {
+                    "Material Grade": "AISI 4340 Forged Alloy Steel / High-Tensile Cast Iron",
+                    "Hardness": "28 - 34 HRC (Heat-Treated Induction Hardened)",
+                    "Surface Finish": "Ra 0.4 µm Ground & Polished",
+                    "Dimensional Tolerance": "ISO 2768-mK (±0.012 mm precision)",
+                    "Dynamic Balancing": "ISO 1940 G2.5 balanced",
+                    "Packaging": "VCI anti-corrosion barrier foil in ISPM-15 export wooden crates",
+                    "Incoterms": "FOB Nhava Sheva / CIF Hamburg, Detroit, Rotterdam",
+                }
+
         print(f"Checking / seeding {len(product_catalog_specs)} products...")
         for name, slug, cat_slug, supp_name, hs, moq, base_price, unit in product_catalog_specs:
+            prod_id = uuid.uuid5(uuid.NAMESPACE_DNS, f"tradex.product.{slug}")
             prod = session.execute(select(Product).where(Product.slug == slug)).scalar_one_or_none()
             supp = suppliers_dict[supp_name]
             cat = cats_dict[cat_slug]
+            specs = get_seed_product_specs(cat_slug, name)
+            img_url = get_seed_product_image(cat_slug, slug)
 
             if not prod:
                 prod = Product(
+                    id=prod_id,
                     supplier_id=supp.id,
                     category_id=cat.id,
                     name=name,
                     slug=slug,
-                    description=f"Export-certified {name}. Origin India. Conforms to EU/US importing specifications.",
+                    description=f"Export-certified {name}. Origin India. Conforms to EU/US importing specifications. Standard trade terms FOB/CIF supported.",
                     hs_code=hs,
                     moq=moq,
                     unit=unit,
                     origin_country="India",
                     lead_time_days=15,
                     is_active=True,
+                    specifications=specs,
                 )
                 session.add(prod)
                 session.flush()
+            else:
+                prod.supplier_id = supp.id
+                prod.category_id = cat.id
+                prod.name = name
+                prod.description = f"Export-certified {name}. Origin India. Conforms to EU/US importing specifications. Standard trade terms FOB/CIF supported."
+                prod.hs_code = hs
+                prod.moq = moq
+                prod.unit = unit
+                prod.origin_country = "India"
+                prod.lead_time_days = 15
+                prod.is_active = True
+                prod.specifications = specs
 
-                # Add image
+            # Ensure primary image exists and matches authentic image
+            primary_img = session.execute(
+                select(ProductImage).where(ProductImage.product_id == prod.id, ProductImage.is_primary == True)
+            ).scalar_one_or_none()
+            if primary_img:
+                primary_img.image_url = img_url
+            else:
                 img = ProductImage(
                     product_id=prod.id,
-                    image_url=f"https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=600&q=80",
+                    image_url=img_url,
                     is_primary=True,
                     display_order=1,
                 )
                 session.add(img)
 
-                # Add 3 price tiers
+            # Ensure price tiers exist
+            existing_tiers = session.execute(
+                select(PriceTier).where(PriceTier.product_id == prod.id)
+            ).scalars().all()
+            if not existing_tiers:
                 tier1 = PriceTier(
                     product_id=prod.id,
                     min_qty=moq,

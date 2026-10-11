@@ -86,6 +86,9 @@ class ProductDetailResponse(BaseModel):
     certifications: List[str] = Field(default_factory=list)
     reviews_summary: ReviewsSummary
     ai_summary: AISummary
+    specifications: Optional[Dict[str, str]] = None
+    packaging: Optional[str] = None
+    incoterms: List[str] = Field(default_factory=lambda: ["FOB", "CIF", "EXW"])
     related_products: List[ProductListItem] = Field(default_factory=list)
     is_saved: bool = False
 
