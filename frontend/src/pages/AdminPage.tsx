@@ -1,0 +1,467 @@
+import React, { useState, useEffect } from "react";
+import {
+  Shield,
+  Users,
+  CheckCircle,
+  XCircle,
+  FileText,
+  Settings,
+  Download,
+  AlertCircle,
+  Search,
+  ExternalLink,
+  Lock,
+} from "lucide-react";
+import {
+  adminApi,
+  AdminOverview,
+  AdminUser,
+  VerificationQueueItem,
+  AuditLogItem,
+  SystemSettingItem,
+} from "../lib/api/admin";
+
+export const AdminPage: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<"overview" | "users" | "verification" | "audit" | "settings">("overview");
+
+  // State
+  const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [userSearch, setUserSearch] = useState<string>("");
+  const [verificationQueue, setVerificationQueue] = useState<VerificationQueueItem[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
+  const [settings, setSettings] = useState<SystemSettingItem[]>([]);
+
+  const [loading, setLoading] = useState<boolean>(true);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      if (activeTab === "overview") {
+        const ov = await adminApi.getOverview();
+        setOverview(ov);
+      } else if (activeTab === "users") {
+        const u = await adminApi.listUsers({ search: userSearch || undefined });
+        setUsers(u);
+      } else if (activeTab === "verification") {
+        const v = await adminApi.getVerificationQueue();
+        setVerificationQueue(v);
+      } else if (activeTab === "audit") {
+        const a = await adminApi.listAuditLogs();
+        setAuditLogs(a);
+      } else if (activeTab === "settings") {
+        const s = await adminApi.getSettings();
+        setSettings(s);
+      }
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [activeTab]);
+
+  const handleToggleUserActive = async (user: AdminUser) => {
+    try {
+      await adminApi.updateUser(user.id, { is_active: !user.is_active });
+      setActionMessage(`Updated status for ${user.email}`);
+      const updated = await adminApi.listUsers({ search: userSearch || undefined });
+      setUsers(updated);
+    } catch (err: any) {
+      alert(`Error updating user: ${err.message}`);
+    }
+  };
+
+  const handleVerificationDecision = async (companyId: string, action: "approve" | "reject") => {
+    try {
+      await adminApi.decideVerification(companyId, action, `Admin decision: ${action}`);
+      setActionMessage(`Supplier verification ${action}d successfully`);
+      const updated = await adminApi.getVerificationQueue();
+      setVerificationQueue(updated);
+    } catch (err: any) {
+      alert(`Error processing verification: ${err.message}`);
+    }
+  };
+
+  return (
+    <div className="space-y-6 pb-12 max-w-7xl mx-auto px-4 sm:px-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
+        <div>
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-red-600 text-white rounded-lg shadow">
+              <Shield className="w-5 h-5" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                Admin Platform Governance & Control
+              </h1>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Restricted to administrators. Audit logs, verification queue, security enforcement, and settings.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {actionMessage && (
+          <div className="text-xs bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300 px-3 py-1.5 rounded-lg flex items-center gap-2">
+            <CheckCircle className="w-3.5 h-3.5" />
+            {actionMessage}
+          </div>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+        {[
+          { id: "overview", label: "Overview", icon: Shield },
+          { id: "users", label: "Users & Roles", icon: Users },
+          { id: "verification", label: "Supplier Verification Queue", icon: CheckCircle },
+          { id: "audit", label: "Audit Logs", icon: FileText },
+          { id: "settings", label: "Platform Settings", icon: Settings },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition ${
+                isActive
+                  ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow"
+                  : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {loading && (
+        <div className="text-xs text-slate-400 animate-pulse">Loading administrative records...</div>
+      )}
+
+      {/* Tab: Overview */}
+      {activeTab === "overview" && overview && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm">
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              <span>Total Platform Users</span>
+              <Users className="w-4 h-4 text-blue-500" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">
+              {overview.total_users}
+            </p>
+          </div>
+
+          <div className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm">
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              <span>Purchase Orders Managed</span>
+              <FileText className="w-4 h-4 text-emerald-500" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">
+              {overview.total_orders}
+            </p>
+          </div>
+
+          <div className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm">
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              <span>Cumulative Trade Value</span>
+              <Shield className="w-4 h-4 text-indigo-500" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">
+              €{overview.cumulative_trade_value_eur.toLocaleString()}
+            </p>
+          </div>
+
+          <div className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm">
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              <span>Pending Verifications</span>
+              <AlertCircle className="w-4 h-4 text-amber-500" />
+            </div>
+            <p className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">
+              {overview.pending_supplier_verifications}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Users & Roles */}
+      {activeTab === "users" && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm p-4 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+              <input
+                type="text"
+                placeholder="Search by email or name..."
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && loadData()}
+                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+              />
+            </div>
+            <button
+              onClick={loadData}
+              className="px-3 py-1.5 text-xs bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-lg text-slate-700 dark:text-slate-300 font-medium"
+            >
+              Search
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 uppercase text-[10px] tracking-wider">
+                <tr>
+                  <th className="py-2.5 px-3">User</th>
+                  <th className="py-2.5 px-3">Role</th>
+                  <th className="py-2.5 px-3">Status</th>
+                  <th className="py-2.5 px-3">Created</th>
+                  <th className="py-2.5 px-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {users.map((u) => (
+                  <tr key={u.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                    <td className="py-2.5 px-3">
+                      <div className="font-semibold text-slate-900 dark:text-slate-100">
+                        {u.full_name || "Unnamed"}
+                      </div>
+                      <div className="text-slate-400">{u.email}</div>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <span className="capitalize px-2 py-0.5 rounded font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                        {u.role}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${
+                          u.is_active
+                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                            : "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300"
+                        }`}
+                      >
+                        {u.is_active ? "Active" : "Disabled"}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 text-slate-500">
+                      {u.created_at ? u.created_at.slice(0, 10) : "-"}
+                    </td>
+                    <td className="py-2.5 px-3 text-right">
+                      <button
+                        onClick={() => handleToggleUserActive(u)}
+                        className={`px-2.5 py-1 rounded text-[11px] font-semibold transition ${
+                          u.is_active
+                            ? "bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-950 dark:text-red-300"
+                            : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300"
+                        }`}
+                      >
+                        {u.is_active ? "Disable" : "Activate"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Verification Queue */}
+      {activeTab === "verification" && (
+        <div className="space-y-4">
+          {verificationQueue.length === 0 ? (
+            <div className="p-8 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-500">
+              No pending supplier verification requests in queue.
+            </div>
+          ) : (
+            verificationQueue.map((item) => (
+              <div
+                key={item.company_id}
+                className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm space-y-4"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      {item.company_name}
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      {item.city}, {item.country} • {item.years_in_business} years in business • Contact: {item.contact_email || "N/A"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleVerificationDecision(item.company_id, "reject")}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 transition"
+                    >
+                      <XCircle className="w-3.5 h-3.5" />
+                      Reject
+                    </button>
+                    <button
+                      onClick={() => handleVerificationDecision(item.company_id, "approve")}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition"
+                    >
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      Approve & Verify
+                    </button>
+                  </div>
+                </div>
+
+                {/* Side-by-side documents viewer */}
+                <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
+                  <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
+                    Uploaded Compliance Documents ({item.documents.length}):
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    {item.documents.map((doc) => (
+                      <div
+                        key={doc.id}
+                        className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700 text-xs flex items-center justify-between"
+                      >
+                        <div className="truncate mr-2">
+                          <p className="font-semibold text-slate-800 dark:text-slate-200 truncate">
+                            {doc.title}
+                          </p>
+                          <span className="text-[10px] text-slate-500 capitalize">{doc.doc_type}</span>
+                        </div>
+                        <a
+                          href={`/api/v1/documents/${doc.id}/download`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-1.5 bg-white dark:bg-slate-700 rounded text-slate-600 dark:text-slate-300 hover:text-primary transition"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Tab: Audit Logs */}
+      {activeTab === "audit" && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm p-4 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Lock className="w-4 h-4 text-slate-500" />
+                Immutable Append-Only Audit Trail
+              </h3>
+              <p className="text-xs text-slate-500">
+                All security events, role alterations, and verification decisions logged with timestamp.
+              </p>
+            </div>
+            <a
+              href={adminApi.getAuditLogsExportUrl()}
+              download
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 transition"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export Audit CSV
+            </a>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 uppercase text-[10px] tracking-wider">
+                <tr>
+                  <th className="py-2.5 px-3">Timestamp</th>
+                  <th className="py-2.5 px-3">Action</th>
+                  <th className="py-2.5 px-3">Entity Type</th>
+                  <th className="py-2.5 px-3">Entity ID</th>
+                  <th className="py-2.5 px-3">Actor ID</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {auditLogs.map((log) => (
+                  <tr key={log.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                    <td className="py-2.5 px-3 text-slate-500 font-mono text-[11px]">
+                      {log.created_at ? log.created_at.slice(0, 19).replace("T", " ") : "-"}
+                    </td>
+                    <td className="py-2.5 px-3 font-semibold text-slate-800 dark:text-slate-200">
+                      {log.action}
+                    </td>
+                    <td className="py-2.5 px-3 capitalize text-slate-600 dark:text-slate-400">
+                      {log.entity_type}
+                    </td>
+                    <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500">
+                      {log.entity_id || "-"}
+                    </td>
+                    <td className="py-2.5 px-3 font-mono text-[11px] text-slate-400">
+                      {log.user_id ? `${log.user_id.slice(0, 8)}...` : "System"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Platform Settings */}
+      {activeTab === "settings" && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm p-5 space-y-4">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+            System Configuration & Rate Limiting Controls
+          </h3>
+          <p className="text-xs text-slate-500">
+            Platform-wide security toggles, API rate limits, and verification thresholds.
+          </p>
+
+          <div className="space-y-3 pt-2">
+            <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  Rate Limiting Enforcement
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  5 attempts per minute per IP on authentication routes (HTTP 429 + Retry-After).
+                </p>
+              </div>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                Enforced
+              </span>
+            </div>
+
+            <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  HTTP Security Headers
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  CSP, Strict HSTS, X-Content-Type-Options: nosniff, X-Frame-Options: DENY.
+                </p>
+              </div>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                Active
+              </span>
+            </div>
+
+            {settings.map((s) => (
+              <div key={s.key} className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{s.key}</p>
+                  <p className="text-[11px] text-slate-500">{s.description || JSON.stringify(s.value)}</p>
+                </div>
+                <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                  Configured
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

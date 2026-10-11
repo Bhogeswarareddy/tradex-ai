@@ -26,6 +26,7 @@ import {
   DocumentsPage,
   CopilotPage,
   AnalyticsPage,
+  AdminPage,
 } from "../pages";
 import { AppLayout } from "../components/layout";
 import { RoleGuard } from "../features/auth";
@@ -103,10 +104,7 @@ export const AppRoutes: React.FC = () => {
           path="/admin"
           element={
             <RoleGuard allowedRoles={["admin"]}>
-              <ModulePlaceholderPage
-                title="Admin Platform Governance"
-                description="Platform user directory, verification auditing, and system logs."
-              />
+              <AdminPage />
             </RoleGuard>
           }
         />

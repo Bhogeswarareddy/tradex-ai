@@ -92,8 +92,13 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppException)
     async def app_exception_handler(_: Request, exc: AppException) -> JSONResponse:
         logger.warning(f"AppException: {exc.code} - {exc.message}")
+        headers = {}
+        if exc.status_code == 429 and isinstance(exc.details, dict) and "retry_after_seconds" in exc.details:
+            headers["Retry-After"] = str(exc.details["retry_after_seconds"])
+
         return JSONResponse(
             status_code=exc.status_code,
+            headers=headers,
             content={
                 "error": {
                     "code": exc.code,

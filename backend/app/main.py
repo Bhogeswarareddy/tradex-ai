@@ -16,7 +16,7 @@ from app.core.config import settings
 from app.core.db import get_db
 from app.core.errors import register_error_handlers
 from app.core.logging import setup_logging
-from app.core.middleware import RequestIDMiddleware
+from app.core.middleware import RequestIDMiddleware, SecurityHeadersMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,8 @@ app = FastAPI(
 # 1. Error Handling (Centralized Standard Error Envelope)
 register_error_handlers(app)
 
-# 2. Middlewares (Request ID, Timing, GZip, CORS)
+# 2. Middlewares (Security Headers, Request ID, Timing, GZip, CORS)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestIDMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
