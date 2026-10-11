@@ -53,26 +53,28 @@ export const HeroStatsPanel: React.FC<HeroStatsPanelProps> = ({ stats, isLoading
         <p className="text-xs text-slate-500 mt-0.5">Real-time trade platform network</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3.5">
+      <div className="flex flex-col gap-2.5">
         {statItems.map((item) => (
           <div
             key={item.label}
-            className={`p-3 rounded-xl bg-gradient-to-b ${item.glowColor} bg-slate-950/60 border border-slate-800/80 flex flex-col justify-between`}
+            className={`p-3 rounded-xl bg-gradient-to-r ${item.glowColor} bg-slate-950/70 border border-slate-800/80 flex items-center justify-between gap-3`}
           >
-            <div className="flex items-center justify-between mb-2">
-              <span className="p-1.5 rounded-lg bg-slate-800/60">{item.icon}</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            </div>
-            <div>
-              <div className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                {isLoading ? (
-                  <div className="h-6 w-16 bg-slate-800 rounded animate-pulse" />
-                ) : (
-                  item.value
-                )}
+            <div className="flex items-center gap-3">
+              <span className="p-2 rounded-lg bg-slate-800/60 shrink-0">{item.icon}</span>
+              <div>
+                <div className="text-lg sm:text-xl font-black text-white tracking-tight leading-tight">
+                  {isLoading ? (
+                    <div className="h-5 w-16 bg-slate-800 rounded animate-pulse" />
+                  ) : (
+                    item.value
+                  )}
+                </div>
+                <p className="text-xs font-semibold text-slate-300">{item.label}</p>
               </div>
-              <p className="text-xs font-semibold text-slate-300 mt-0.5">{item.label}</p>
-              <p className="text-[10px] text-slate-500 hidden sm:block mt-0.5">{item.subtext}</p>
+            </div>
+            <div className="text-right shrink-0 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[11px] text-slate-400 hidden xl:inline">{item.subtext}</span>
             </div>
           </div>
         ))}

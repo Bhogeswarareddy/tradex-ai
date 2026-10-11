@@ -92,7 +92,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavClick, className = "" }) 
                 AI
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium">B2B Trade Discovery</p>
+            <p className="text-[11px] text-slate-400 font-medium">Global Trade Network</p>
           </div>
         </div>
 

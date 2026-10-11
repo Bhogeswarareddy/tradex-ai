@@ -49,8 +49,9 @@ export const HeroSearchSection: React.FC<HeroSearchSectionProps> = ({ stats, isL
           </div>
 
           {/* Headline */}
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-tight sm:leading-none">
-            Global Trade,{" "}
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-tight">
+            Global Trade,
+            <br />
             <span className="text-[#38BDF8] drop-shadow-[0_0_20px_rgba(56,189,248,0.4)]">
               Smarter
             </span>{" "}

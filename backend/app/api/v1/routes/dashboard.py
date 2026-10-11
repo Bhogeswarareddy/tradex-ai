@@ -47,53 +47,55 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)) -> Dashboard
     db_suppliers = await db.scalar(select(func.count(Supplier.id))) or 0
     db_buyers = await db.scalar(select(func.count(Buyer.id))) or 0
 
-    # Dynamic metrics reflecting DB reality with target baseline scale
-    active_rfqs_val = max(124, db_rfqs * 60)
-    total_orders_val = max(342, db_orders * 170)
-    shipments_val = max(86, db_shipments * 40)
-    verified_suppliers_count = max(2847, db_suppliers * 500)
-    global_buyers_count = max(12430, db_buyers * 2500)
-    active_shipments_count = max(1250, db_shipments * 625)
+    db_trade_val = await db.scalar(select(func.sum(Order.total_amount))) or 0.0
 
+    # Stats panel spec: 2,847 Verified Suppliers, 12,430 Global Buyers, 1,250 Active Shipments, 98 Countries Covered
     hero_stats = HeroStats(
-        verified_suppliers=verified_suppliers_count,
-        global_buyers=global_buyers_count,
-        active_shipments=active_shipments_count,
+        verified_suppliers=2847,
+        global_buyers=12430,
+        active_shipments=1250,
         countries_covered=98,
     )
 
+    trade_val_str = (
+        f"${float(db_trade_val) / 1_000_000:.1f}M"
+        if float(db_trade_val) >= 1_000_000
+        else (f"${float(db_trade_val):,.0f}" if float(db_trade_val) > 0 else "$8.4M")
+    )
+
+    # Real DB counts ensure dashboard numbers equal numbers on Orders, RFQs, and Shipments pages
     kpis = [
         KPICard(
             title="Active RFQs",
-            value=f"{active_rfqs_val:,}",
+            value=f"{db_rfqs:,}",
             delta_percentage="+18%",
             is_positive=True,
             subtext="vs last month",
         ),
         KPICard(
             title="Total Orders",
-            value=f"{total_orders_val:,}",
+            value=f"{db_orders:,}",
             delta_percentage="+27%",
             is_positive=True,
             subtext="high fulfillment",
         ),
         KPICard(
             title="Shipments in Transit",
-            value=f"{shipments_val:,}",
+            value=f"{db_shipments:,}",
             delta_percentage="+12%",
             is_positive=True,
             subtext="on-schedule delivery",
         ),
         KPICard(
             title="Total Trade Value",
-            value="$8.4M",
+            value=trade_val_str,
             delta_percentage="+31%",
             is_positive=True,
             subtext="secured by escrow",
         ),
         KPICard(
             title="New Supplier Leads",
-            value="520",
+            value=f"{max(5, db_suppliers):,}",
             delta_percentage="+45%",
             is_positive=True,
             subtext="verified this week",

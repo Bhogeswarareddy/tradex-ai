@@ -55,6 +55,58 @@ export interface AnalyticsFilterParams {
   country?: string;
 }
 
+export interface BuyerSpendMonth {
+  month: string;
+  spend: number;
+  orders_count: number;
+}
+
+export interface BuyerSpendResponse {
+  buyer_id: string;
+  total_spend_eur: number;
+  spend_by_month: BuyerSpendMonth[];
+}
+
+export interface SupplierPerformanceResponse {
+  supplier_id: string;
+  orders_fulfilled: number;
+  on_time_delivery_rate: number;
+  quality_compliance_rate: number;
+  average_rfq_quote_speed_hours: number;
+  overall_supplier_rating: number;
+}
+
+export interface RfqTrendItem {
+  month: string;
+  rfqs_created: number;
+  volume_demanded: number;
+}
+
+export interface RfqTrendsResponse {
+  report: string;
+  trends: RfqTrendItem[];
+}
+
+export interface PlatformSupplierActivityResponse {
+  report: string;
+  total_active_suppliers: number;
+  total_orders_serviced: number;
+  avg_response_time_hours: number;
+  on_time_shipment_rate: number;
+  label: string;
+}
+
+export interface TradeVolumeItem {
+  month: string;
+  trade_value_eur: number;
+  order_count: number;
+}
+
+export interface TradeVolumeResponse {
+  report: string;
+  volume_series: TradeVolumeItem[];
+}
+
 export const analyticsApi = {
   getTopProducts: async (params?: AnalyticsFilterParams): Promise<TopProductItem[]> => {
     return api.get<TopProductItem[]>("/analytics/market/top-products", params as Record<string, unknown>);
@@ -82,24 +134,24 @@ export const analyticsApi = {
     });
   },
 
-  getBuyerSpend: async (params?: AnalyticsFilterParams) => {
-    return api.get("/analytics/buyer/spend", params as Record<string, unknown>);
+  getBuyerSpend: async (params?: AnalyticsFilterParams): Promise<BuyerSpendResponse> => {
+    return api.get<BuyerSpendResponse>("/analytics/buyer/spend", params as Record<string, unknown>);
   },
 
-  getSupplierPerformance: async () => {
-    return api.get("/analytics/supplier/performance");
+  getSupplierPerformance: async (): Promise<SupplierPerformanceResponse> => {
+    return api.get<SupplierPerformanceResponse>("/analytics/supplier/performance");
   },
 
-  getPlatformRfqTrends: async (params?: AnalyticsFilterParams) => {
-    return api.get("/analytics/platform/rfq-trends", params as Record<string, unknown>);
+  getPlatformRfqTrends: async (params?: AnalyticsFilterParams): Promise<RfqTrendsResponse> => {
+    return api.get<RfqTrendsResponse>("/analytics/platform/rfq-trends", params as Record<string, unknown>);
   },
 
-  getPlatformSupplierActivity: async () => {
-    return api.get("/analytics/platform/supplier-activity");
+  getPlatformSupplierActivity: async (): Promise<PlatformSupplierActivityResponse> => {
+    return api.get<PlatformSupplierActivityResponse>("/analytics/platform/supplier-activity");
   },
 
-  getPlatformTradeVolume: async (params?: AnalyticsFilterParams) => {
-    return api.get("/analytics/platform/trade-volume", params as Record<string, unknown>);
+  getPlatformTradeVolume: async (params?: AnalyticsFilterParams): Promise<TradeVolumeResponse> => {
+    return api.get<TradeVolumeResponse>("/analytics/platform/trade-volume", params as Record<string, unknown>);
   },
 
   getExportUrl: (report = "market", format = "csv", params?: AnalyticsFilterParams) => {
@@ -115,4 +167,3 @@ export const analyticsApi = {
     return `/api/v1/analytics/export?${q}`;
   },
 };
-

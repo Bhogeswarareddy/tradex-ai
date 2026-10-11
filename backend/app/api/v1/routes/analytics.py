@@ -505,9 +505,10 @@ async def generate_market_insights(
         func.sum(MarketSeries.volume).label("tot_volume"),
     ).group_by(MarketSeries.product).order_by(desc("tot_volume")).limit(5)
     top_res = await db.execute(top_items_query)
+    top_rows = top_res.all()
     top_data = [
         f"{r.product}: demand={round(float(r.avg_demand or 0), 1)}, avg_price=EUR{round(float(r.avg_price or 0), 2)}, vol={round(float(r.tot_volume or 0), 1)}"
-        for r in top_res.all()
+        for r in top_rows
     ]
 
     market_context = f"Top Commodities Summary: {'; '.join(top_data)}. Filter product={payload.product or 'All'}, category={payload.category or 'All'}."
@@ -523,16 +524,18 @@ async def generate_market_insights(
         return ai_res
     except Exception as exc:
         logger.warning(f"Fallback due to AI generation error: {exc}")
+        rule_insights = [
+            f"{r.product}: Recorded average spot price of €{round(float(r.avg_price or 0), 2)}/kg with {round(float(r.tot_volume or 0), 1)} MT cumulative volume and demand index of {round(float(r.avg_demand or 0), 1)}."
+            for r in top_rows
+        ]
+        if not rule_insights:
+            rule_insights = [
+                "Market data indicates stable trade activity across monitored trade corridors."
+            ]
         return InsightsResponse(
-            insights=[
-                "Organic Turmeric exhibits the fastest market growth with a +42.0% expansion in demand index and average spot price reaching €3.48/kg across European trade corridors.",
-                "Basmati Rice demonstrated sustained momentum with +35.0% demand growth over the 24-month horizon, stabilizing at €1.55/kg spot benchmark.",
-                "Cotton Fibre saw a +28.0% demand index surge accompanied by trade volume growth to 1,254 MT, driven by Southeast Asian textile mills.",
-                "Precision Auto Components expanded +24.0% with strong German manufacturing demand averaging €18.85/unit across Tier-1 supply chains.",
-                "White Sesame Seeds registered a +19.0% increase in buyer inquiries, supported by steady North American volume reaching 738 MT.",
-            ],
-            summary="Overall commodity demand is upward trending led by organic spices and grains.",
-            source="Simulated market data",
+            insights=rule_insights,
+            summary="Rule-based summary: Derived strictly from database market series records without generative AI.",
+            source="Rule-based summary (Simulated market data)",
         )
 
 

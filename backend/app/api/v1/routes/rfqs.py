@@ -347,6 +347,30 @@ async def list_rfqs(
             )
         )
 
+    # Compute true total count before pagination
+    count_stmt = select(func.count(RFQ.id)).where(RFQ.deleted_at.is_(None))
+    if current_user.role == "buyer":
+        buyer = await get_or_create_buyer(db, current_user)
+        count_stmt = count_stmt.where(RFQ.buyer_id == buyer.id)
+    elif current_user.role == "supplier":
+        count_stmt = count_stmt.where(RFQ.status.in_(["active", "evaluating", "open"]))
+
+    if status_filter and status_filter.lower() != "all":
+        count_stmt = count_stmt.where(RFQ.status == status_filter.lower())
+
+    if q:
+        needle = f"%{q.strip()}%"
+        count_stmt = count_stmt.where(
+            or_(
+                RFQ.title.ilike(needle),
+                RFQ.product.ilike(needle),
+                RFQ.rfq_number.ilike(needle),
+                RFQ.destination_country.ilike(needle),
+            )
+        )
+
+    total_count = await db.scalar(count_stmt) or 0
+
     stmt = stmt.limit(limit).offset(offset)
     result = await db.execute(stmt)
     rfqs = result.scalars().all()
@@ -373,7 +397,7 @@ async def list_rfqs(
             "created_at": r.created_at.isoformat() if r.created_at else None,
         })
 
-    return {"total": len(items), "rfqs": items}
+    return {"total": total_count, "rfqs": items}
 
 
 @router.get("/{id}")
