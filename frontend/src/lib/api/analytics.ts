@@ -1,17 +1,4 @@
-const getStorageItem = (key: string): string => {
-  if (typeof window !== "undefined" && window.localStorage) {
-    return window.localStorage.getItem(key) || "";
-  }
-  if (typeof globalThis !== "undefined" && (globalThis as any).localStorage) {
-    return (globalThis as any).localStorage.getItem(key) || "";
-  }
-  return "";
-};
-
-const authHeaders = () => ({
-  "Content-Type": "application/json",
-  Authorization: `Bearer ${getStorageItem("tradex_access_token")}`,
-});
+import { api } from "./client";
 
 export interface TopProductItem {
   product: string;
@@ -70,98 +57,49 @@ export interface AnalyticsFilterParams {
 
 export const analyticsApi = {
   getTopProducts: async (params?: AnalyticsFilterParams): Promise<TopProductItem[]> => {
-    const q = new URLSearchParams(params as any).toString();
-    const r = await fetch(`/api/v1/analytics/market/top-products${q ? `?${q}` : ""}`, {
-      headers: authHeaders(),
-    });
-    if (!r.ok) throw new Error(await r.text());
-    return r.json();
+    return api.get<TopProductItem[]>("/analytics/market/top-products", params as Record<string, unknown>);
   },
 
   getRisingDemand: async (params?: AnalyticsFilterParams): Promise<RisingDemandItem[]> => {
-    const q = new URLSearchParams(params as any).toString();
-    const r = await fetch(`/api/v1/analytics/market/rising-demand${q ? `?${q}` : ""}`, {
-      headers: authHeaders(),
-    });
-    if (!r.ok) throw new Error(await r.text());
-    return r.json();
+    return api.get<RisingDemandItem[]>("/analytics/market/rising-demand", params as Record<string, unknown>);
   },
 
   getPriceTrends: async (params?: AnalyticsFilterParams): Promise<PriceTrendsResponse> => {
-    const q = new URLSearchParams(params as any).toString();
-    const r = await fetch(`/api/v1/analytics/market/price-trends${q ? `?${q}` : ""}`, {
-      headers: authHeaders(),
-    });
-    if (!r.ok) throw new Error(await r.text());
-    return r.json();
+    return api.get<PriceTrendsResponse>("/analytics/market/price-trends", params as Record<string, unknown>);
   },
 
   getDestinationDemand: async (params?: AnalyticsFilterParams): Promise<DestinationDemandItem[]> => {
-    const q = new URLSearchParams(params as any).toString();
-    const r = await fetch(`/api/v1/analytics/market/destination-demand${q ? `?${q}` : ""}`, {
-      headers: authHeaders(),
-    });
-    if (!r.ok) throw new Error(await r.text());
-    return r.json();
+    return api.get<DestinationDemandItem[]>("/analytics/market/destination-demand", params as Record<string, unknown>);
   },
 
   getInsights: async (params?: AnalyticsFilterParams): Promise<InsightsResponse> => {
-    const r = await fetch("/api/v1/analytics/insights", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({
-        from_date: params?.from || null,
-        to_date: params?.to || null,
-        product: params?.product || null,
-        category: params?.category || null,
-        country: params?.country || null,
-      }),
+    return api.post<InsightsResponse>("/analytics/insights", {
+      from_date: params?.from || null,
+      to_date: params?.to || null,
+      product: params?.product || null,
+      category: params?.category || null,
+      country: params?.country || null,
     });
-    if (!r.ok) throw new Error(await r.text());
-    return r.json();
   },
 
   getBuyerSpend: async (params?: AnalyticsFilterParams) => {
-    const q = new URLSearchParams(params as any).toString();
-    const r = await fetch(`/api/v1/analytics/buyer/spend${q ? `?${q}` : ""}`, {
-      headers: authHeaders(),
-    });
-    if (!r.ok) throw new Error(await r.text());
-    return r.json();
+    return api.get("/analytics/buyer/spend", params as Record<string, unknown>);
   },
 
   getSupplierPerformance: async () => {
-    const r = await fetch("/api/v1/analytics/supplier/performance", {
-      headers: authHeaders(),
-    });
-    if (!r.ok) throw new Error(await r.text());
-    return r.json();
+    return api.get("/analytics/supplier/performance");
   },
 
   getPlatformRfqTrends: async (params?: AnalyticsFilterParams) => {
-    const q = new URLSearchParams(params as any).toString();
-    const r = await fetch(`/api/v1/analytics/platform/rfq-trends${q ? `?${q}` : ""}`, {
-      headers: authHeaders(),
-    });
-    if (!r.ok) throw new Error(await r.text());
-    return r.json();
+    return api.get("/analytics/platform/rfq-trends", params as Record<string, unknown>);
   },
 
   getPlatformSupplierActivity: async () => {
-    const r = await fetch("/api/v1/analytics/platform/supplier-activity", {
-      headers: authHeaders(),
-    });
-    if (!r.ok) throw new Error(await r.text());
-    return r.json();
+    return api.get("/analytics/platform/supplier-activity");
   },
 
   getPlatformTradeVolume: async (params?: AnalyticsFilterParams) => {
-    const q = new URLSearchParams(params as any).toString();
-    const r = await fetch(`/api/v1/analytics/platform/trade-volume${q ? `?${q}` : ""}`, {
-      headers: authHeaders(),
-    });
-    if (!r.ok) throw new Error(await r.text());
-    return r.json();
+    return api.get("/analytics/platform/trade-volume", params as Record<string, unknown>);
   },
 
   getExportUrl: (report = "market", format = "csv", params?: AnalyticsFilterParams) => {
@@ -177,3 +115,4 @@ export const analyticsApi = {
     return `/api/v1/analytics/export?${q}`;
   },
 };
+
