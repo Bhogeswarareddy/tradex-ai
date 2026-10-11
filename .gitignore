@@ -50,6 +50,8 @@ dist/
 dist-ssr/
 *.local
 .eslintcache
+playwright-report/
+test-results/
 
 # Logs & Databases
 *.log

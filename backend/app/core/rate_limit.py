@@ -37,9 +37,11 @@ class InMemoryRateLimiter:
         self.storage.clear()
 
 
-auth_limiter = InMemoryRateLimiter(max_requests=5, window_seconds=60)
-ai_limiter = InMemoryRateLimiter(max_requests=10, window_seconds=60)
-upload_limiter = InMemoryRateLimiter(max_requests=10, window_seconds=60)
+import os
+
+auth_limiter = InMemoryRateLimiter(max_requests=int(os.getenv("RATE_LIMIT_AUTH", "5")), window_seconds=60)
+ai_limiter = InMemoryRateLimiter(max_requests=int(os.getenv("RATE_LIMIT_AI", "10")), window_seconds=60)
+upload_limiter = InMemoryRateLimiter(max_requests=int(os.getenv("RATE_LIMIT_UPLOAD", "10")), window_seconds=60)
 
 
 def _get_client_ip(request: Request) -> str:

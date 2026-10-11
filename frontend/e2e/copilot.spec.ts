@@ -3,8 +3,8 @@ import { test, expect } from "@playwright/test";
 test.describe("AI Trade Copilot & RAG Knowledge Engine", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/login");
-    await page.fill('input[type="email"]', "buyer@speisekammer.de");
-    await page.fill('input[type="password"]', "Password123!");
+    await page.fill('input[type="email"]', "bhogeswara@tradex.ai");
+    await page.fill('input[type="password"]', "buyer123");
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL(/\/(dashboard)?$/);
   });
