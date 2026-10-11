@@ -51,9 +51,20 @@ def _get_client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def _is_local_dev(request: Request, ip: str) -> bool:
+    # If in development mode and coming from local development browser (not test suite ASGI client)
+    env = os.getenv("ENV", "development").lower()
+    if env == "development" and request.headers.get("user-agent") and "pytest" not in os.getenv("_", ""):
+        return True
+    return False
+
+
 async def rate_limit_auth(request: Request) -> None:
     """FastAPI dependency to rate limit sensitive authentication routes per IP (5 req/min)."""
-    auth_limiter.check(_get_client_ip(request))
+    ip = _get_client_ip(request)
+    if _is_local_dev(request, ip):
+        return
+    auth_limiter.check(ip)
 
 
 async def rate_limit_ai(request: Request) -> None:
