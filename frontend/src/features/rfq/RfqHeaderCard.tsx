@@ -17,6 +17,8 @@ interface RfqHeaderCardProps {
   isBuyer: boolean;
   onInviteSuppliers?: () => void;
   onCloseRfq?: () => void;
+  onCancelRfq?: () => void;
+  onPublishRfq?: () => void;
 }
 
 export const RfqHeaderCard: React.FC<RfqHeaderCardProps> = ({
@@ -24,6 +26,8 @@ export const RfqHeaderCard: React.FC<RfqHeaderCardProps> = ({
   isBuyer,
   onInviteSuppliers,
   onCloseRfq,
+  onCancelRfq,
+  onPublishRfq,
 }) => {
   const isExpired = rfq.deadline ? new Date(rfq.deadline) < new Date() : false;
   const statusColor =
@@ -73,8 +77,19 @@ export const RfqHeaderCard: React.FC<RfqHeaderCardProps> = ({
 
         {/* Action buttons */}
         {isBuyer && (
-          <div className="flex items-center gap-2">
-            {onInviteSuppliers && (
+          <div className="flex flex-wrap items-center gap-2">
+            {onPublishRfq && rfq.status === "draft" && (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={onPublishRfq}
+                className="flex items-center gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <span>Publish RFQ</span>
+              </Button>
+            )}
+
+            {onInviteSuppliers && (rfq.status === "active" || rfq.status === "open") && (
               <Button
                 variant="outline"
                 size="sm"
@@ -86,7 +101,7 @@ export const RfqHeaderCard: React.FC<RfqHeaderCardProps> = ({
               </Button>
             )}
 
-            {onCloseRfq && rfq.status === "active" && (
+            {onCloseRfq && (rfq.status === "active" || rfq.status === "open") && (
               <Button
                 variant="outline"
                 size="sm"
@@ -95,6 +110,18 @@ export const RfqHeaderCard: React.FC<RfqHeaderCardProps> = ({
               >
                 <XCircle className="w-3.5 h-3.5 text-rose-500" />
                 <span>Close Bidding</span>
+              </Button>
+            )}
+
+            {onCancelRfq && (rfq.status === "active" || rfq.status === "draft" || rfq.status === "open") && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onCancelRfq}
+                className="flex items-center gap-1.5 text-xs text-slate-600 border-slate-300 hover:bg-slate-50"
+              >
+                <XCircle className="w-3.5 h-3.5 text-slate-500" />
+                <span>Cancel RFQ</span>
               </Button>
             )}
           </div>

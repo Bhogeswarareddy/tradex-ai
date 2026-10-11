@@ -64,6 +64,29 @@ export const RfqDetailPage: React.FC = () => {
     }
   };
 
+  const handlePublishRfq = async () => {
+    if (!rfq) return;
+    try {
+      await rfqsApi.publish(rfq.id);
+      setToastMessage("RFQ published successfully.");
+      loadRfq();
+    } catch (err: any) {
+      alert(err.message || "Failed to publish RFQ");
+    }
+  };
+
+  const handleCancelRfq = async () => {
+    if (!rfq) return;
+    if (!window.confirm("Are you sure you want to cancel this RFQ?")) return;
+    try {
+      await rfqsApi.cancel(rfq.id);
+      setToastMessage("RFQ has been cancelled.");
+      loadRfq();
+    } catch (err: any) {
+      alert(err.message || "Failed to cancel RFQ");
+    }
+  };
+
   const handleInviteSuppliers = async () => {
     if (!rfq) return;
     const ids = window.prompt("Enter Supplier Profile IDs to invite (comma separated):");
@@ -132,6 +155,8 @@ export const RfqDetailPage: React.FC = () => {
         isBuyer={isBuyer}
         onCloseRfq={handleCloseRfq}
         onInviteSuppliers={handleInviteSuppliers}
+        onPublishRfq={handlePublishRfq}
+        onCancelRfq={handleCancelRfq}
       />
 
       {/* Tabs Bar: Quotes (5), AI Comparison, Negotiation, Documents, Timeline */}

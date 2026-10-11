@@ -165,6 +165,15 @@ export const rfqsApi = {
     return res.json();
   },
 
+  async cancel(id: string): Promise<{ status: string; rfq_number: string }> {
+    const res = await fetch(`${BASE_URL}/rfqs/${id}/cancel`, {
+      method: "POST",
+      headers: getAuthHeader(),
+    });
+    if (!res.ok) throw new Error("Failed to cancel RFQ");
+    return res.json();
+  },
+
   async award(id: string, quoteId: string): Promise<{ status: string; winning_quote_number: string }> {
     const res = await fetch(`${BASE_URL}/rfqs/${id}/award`, {
       method: "POST",

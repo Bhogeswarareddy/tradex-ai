@@ -117,7 +117,63 @@ export const CreateRfqWizard: React.FC<CreateRfqWizardProps> = ({
     }));
   };
 
+  const [stepErrors, setStepErrors] = useState<Record<string, string>>({});
+
+  const validateStep = (step: number): boolean => {
+    const errs: Record<string, string> = {};
+    if (step === 1) {
+      if (!formData.title.trim()) {
+        errs.title = "RFQ Title is required (e.g. Organic Turmeric Powder)";
+      }
+      if (!formData.product.trim()) {
+        errs.product = "Product name is required";
+      }
+    } else if (step === 2) {
+      if (!formData.quality_requirements.trim() && formData.specifications.length === 0) {
+        errs.requirements = "Please specify quality requirements or add at least one specification";
+      }
+    } else if (step === 3) {
+      if (!formData.quantity || formData.quantity <= 0) {
+        errs.quantity = "Quantity must be greater than zero";
+      }
+      if (!formData.destination_country.trim()) {
+        errs.destination_country = "Destination country is required";
+      }
+      if (!formData.destination_port.trim()) {
+        errs.destination_port = "Destination port is required";
+      }
+      if (
+        formData.target_price_min > 0 &&
+        formData.target_price_max > 0 &&
+        formData.target_price_min > formData.target_price_max
+      ) {
+        errs.price = "Minimum target price cannot exceed maximum target price";
+      }
+    }
+
+    setStepErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const handleContinue = () => {
+    if (validateStep(currentStep)) {
+      setStepErrors({});
+      setCurrentStep((prev) => Math.min(prev + 1, 4));
+    }
+  };
+
+  const handleBack = () => {
+    setStepErrors({});
+    setCurrentStep((prev) => Math.max(prev - 1, 1));
+  };
+
   const handleSubmit = async (publishNow: boolean) => {
+    if (isSubmitting) return;
+    if (!validateStep(1) || !validateStep(2) || !validateStep(3)) {
+      setError("Please fix the validation errors across wizard steps before submitting.");
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
 
@@ -145,6 +201,7 @@ export const CreateRfqWizard: React.FC<CreateRfqWizardProps> = ({
         quality_requirements: formData.quality_requirements,
         required_certifications: formData.certifications,
         specifications: specsMap,
+        notes: formData.notes,
         status: publishNow ? "active" : "draft",
       };
 
@@ -264,8 +321,11 @@ export const CreateRfqWizard: React.FC<CreateRfqWizardProps> = ({
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 placeholder="e.g. Organic Turmeric Powder (High Curcumin, EU Certified)"
-                className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-xl focus:border-blue-500 focus:outline-none"
+                className={`w-full px-4 py-2.5 text-sm border rounded-xl focus:outline-none ${
+                  stepErrors.title ? "border-rose-400 bg-rose-50/30" : "border-slate-300 focus:border-blue-500"
+                }`}
               />
+              {stepErrors.title && <p className="text-[11px] text-rose-600 mt-1">{stepErrors.title}</p>}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -276,8 +336,11 @@ export const CreateRfqWizard: React.FC<CreateRfqWizardProps> = ({
                   value={formData.product}
                   onChange={(e) => setFormData({ ...formData, product: e.target.value })}
                   placeholder="e.g. Organic Turmeric Powder"
-                  className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-xl focus:border-blue-500 focus:outline-none"
+                  className={`w-full px-4 py-2.5 text-sm border rounded-xl focus:outline-none ${
+                    stepErrors.product ? "border-rose-400 bg-rose-50/30" : "border-slate-300 focus:border-blue-500"
+                  }`}
                 />
+                {stepErrors.product && <p className="text-[11px] text-rose-600 mt-1">{stepErrors.product}</p>}
               </div>
 
               <div>
@@ -301,6 +364,11 @@ export const CreateRfqWizard: React.FC<CreateRfqWizardProps> = ({
         {/* STEP 2: Requirements & Specifications */}
         {currentStep === 2 && (
           <div className="space-y-5">
+            {stepErrors.requirements && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700">
+                {stepErrors.requirements}
+              </div>
+            )}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-bold text-slate-700">Detailed Specifications (Key/Value)</label>
@@ -377,6 +445,11 @@ export const CreateRfqWizard: React.FC<CreateRfqWizardProps> = ({
         {/* STEP 3: Delivery & Pricing */}
         {currentStep === 3 && (
           <div className="space-y-4">
+            {stepErrors.price && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700">
+                {stepErrors.price}
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Total Quantity *</label>
@@ -385,7 +458,9 @@ export const CreateRfqWizard: React.FC<CreateRfqWizardProps> = ({
                     type="number"
                     value={formData.quantity}
                     onChange={(e) => setFormData({ ...formData, quantity: Number(e.target.value) })}
-                    className="flex-1 px-4 py-2.5 text-sm border border-slate-300 rounded-xl focus:border-blue-500 focus:outline-none"
+                    className={`flex-1 px-4 py-2.5 text-sm border rounded-xl focus:outline-none ${
+                      stepErrors.quantity ? "border-rose-400 bg-rose-50/30" : "border-slate-300 focus:border-blue-500"
+                    }`}
                   />
                   <input
                     type="text"
@@ -394,6 +469,7 @@ export const CreateRfqWizard: React.FC<CreateRfqWizardProps> = ({
                     className="w-20 px-3 py-2.5 text-sm border border-slate-300 rounded-xl focus:border-blue-500 focus:outline-none"
                   />
                 </div>
+                {stepErrors.quantity && <p className="text-[11px] text-rose-600 mt-1">{stepErrors.quantity}</p>}
               </div>
 
               <div>
@@ -434,8 +510,13 @@ export const CreateRfqWizard: React.FC<CreateRfqWizardProps> = ({
                   type="text"
                   value={formData.destination_country}
                   onChange={(e) => setFormData({ ...formData, destination_country: e.target.value })}
-                  className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-xl focus:border-blue-500 focus:outline-none"
+                  className={`w-full px-4 py-2.5 text-sm border rounded-xl focus:outline-none ${
+                    stepErrors.destination_country ? "border-rose-400 bg-rose-50/30" : "border-slate-300 focus:border-blue-500"
+                  }`}
                 />
+                {stepErrors.destination_country && (
+                  <p className="text-[11px] text-rose-600 mt-1">{stepErrors.destination_country}</p>
+                )}
               </div>
 
               <div>
@@ -444,8 +525,13 @@ export const CreateRfqWizard: React.FC<CreateRfqWizardProps> = ({
                   type="text"
                   value={formData.destination_port}
                   onChange={(e) => setFormData({ ...formData, destination_port: e.target.value })}
-                  className="w-full px-4 py-2.5 text-sm border border-slate-300 rounded-xl focus:border-blue-500 focus:outline-none"
+                  className={`w-full px-4 py-2.5 text-sm border rounded-xl focus:outline-none ${
+                    stepErrors.destination_port ? "border-rose-400 bg-rose-50/30" : "border-slate-300 focus:border-blue-500"
+                  }`}
                 />
+                {stepErrors.destination_port && (
+                  <p className="text-[11px] text-rose-600 mt-1">{stepErrors.destination_port}</p>
+                )}
               </div>
 
               <div>
@@ -492,7 +578,12 @@ export const CreateRfqWizard: React.FC<CreateRfqWizardProps> = ({
         {currentStep === 4 && (
           <div className="space-y-4">
             <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-3">
-              <h3 className="text-sm font-bold text-slate-900">{formData.title}</h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-slate-900">{formData.title}</h3>
+                <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-100 text-blue-700">
+                  {formData.category}
+                </span>
+              </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
                   <span className="text-slate-400 block">Quantity:</span>
@@ -514,9 +605,31 @@ export const CreateRfqWizard: React.FC<CreateRfqWizardProps> = ({
                 </div>
                 <div>
                   <span className="text-slate-400 block">Incoterm & Terms:</span>
-                  <span className="font-semibold text-slate-800">{formData.incoterm}</span>
+                  <span className="font-semibold text-slate-800">
+                    {formData.incoterm} &bull; {formData.payment_terms}
+                  </span>
                 </div>
               </div>
+
+              {formData.specifications.length > 0 && (
+                <div className="pt-2 border-t border-slate-200">
+                  <span className="text-slate-400 block mb-1">Specifications:</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-[11px]">
+                    {formData.specifications.filter((s) => s.key.trim()).map((s, idx) => (
+                      <div key={idx} className="flex gap-2 text-slate-700">
+                        <strong className="text-slate-900">{s.key}:</strong> {s.value}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {formData.quality_requirements && (
+                <div className="pt-2 border-t border-slate-200">
+                  <span className="text-slate-400 block mb-0.5">Quality Requirements:</span>
+                  <p className="text-slate-700 italic">{formData.quality_requirements}</p>
+                </div>
+              )}
 
               <div className="pt-2 border-t border-slate-200">
                 <span className="text-slate-400 block mb-1">Required Certifications:</span>
@@ -543,7 +656,8 @@ export const CreateRfqWizard: React.FC<CreateRfqWizardProps> = ({
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setCurrentStep(currentStep - 1)}
+              disabled={isSubmitting}
+              onClick={handleBack}
               className="flex items-center gap-1.5 text-xs border-slate-300"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
@@ -559,7 +673,7 @@ export const CreateRfqWizard: React.FC<CreateRfqWizardProps> = ({
                 type="button"
                 variant="primary"
                 size="sm"
-                onClick={() => setCurrentStep(currentStep + 1)}
+                onClick={handleContinue}
                 className="flex items-center gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white"
               >
                 <span>Continue</span>
@@ -573,9 +687,9 @@ export const CreateRfqWizard: React.FC<CreateRfqWizardProps> = ({
                   size="sm"
                   disabled={isSubmitting}
                   onClick={() => handleSubmit(false)}
-                  className="text-xs border-slate-300 hover:bg-slate-50"
+                  className="text-xs border-slate-300 hover:bg-slate-50 disabled:opacity-50"
                 >
-                  Save as Draft
+                  {isSubmitting ? "Saving..." : "Save as Draft"}
                 </Button>
                 <Button
                   type="button"
@@ -583,10 +697,10 @@ export const CreateRfqWizard: React.FC<CreateRfqWizardProps> = ({
                   size="sm"
                   disabled={isSubmitting}
                   onClick={() => handleSubmit(true)}
-                  className="text-xs bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5"
+                  className="text-xs bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 disabled:opacity-50"
                 >
                   <Check className="w-4 h-4" />
-                  <span>Publish RFQ</span>
+                  <span>{isSubmitting ? "Publishing..." : "Publish RFQ"}</span>
                 </Button>
               </>
             )}

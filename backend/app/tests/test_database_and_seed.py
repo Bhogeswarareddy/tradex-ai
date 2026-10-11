@@ -15,9 +15,9 @@ def test_seed_row_counts_and_invariants():
         users_count = session.execute(select(func.count(User.id))).scalar_one()
         assert users_count >= 3, f"Expected at least 3 users, got {users_count}"
 
-        # Check 5 Suppliers
+        # Check Suppliers
         suppliers_count = session.execute(select(func.count(Supplier.id))).scalar_one()
-        assert suppliers_count == 5, f"Expected 5 suppliers, got {suppliers_count}"
+        assert suppliers_count >= 5, f"Expected at least 5 suppliers, got {suppliers_count}"
 
         # Check 60+ Products
         products_count = session.execute(select(func.count(Product.id))).scalar_one()

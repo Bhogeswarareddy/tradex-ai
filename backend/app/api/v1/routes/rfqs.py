@@ -518,6 +518,11 @@ async def publish_rfq(
     if not rfq:
         raise HTTPException(status_code=404, detail="RFQ not found")
 
+    if current_user.role != "admin":
+        buyer = await get_or_create_buyer(db, current_user)
+        if rfq.buyer_id != buyer.id:
+            raise HTTPException(status_code=403, detail="Not authorized to publish this RFQ")
+
     rfq.status = "active"
     await db.commit()
     return {"status": "published", "rfq_number": rfq.rfq_number}
@@ -536,9 +541,40 @@ async def close_rfq(
     if not rfq:
         raise HTTPException(status_code=404, detail="RFQ not found")
 
+    if current_user.role != "admin":
+        buyer = await get_or_create_buyer(db, current_user)
+        if rfq.buyer_id != buyer.id:
+            raise HTTPException(status_code=403, detail="Not authorized to close this RFQ")
+
     rfq.status = "closed"
     await db.commit()
     return {"status": "closed", "rfq_number": rfq.rfq_number}
+
+
+@router.post("/{id}/cancel")
+async def cancel_rfq(
+    id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Cancels an RFQ before award."""
+    stmt = select(RFQ).where(RFQ.id == uuid.UUID(id))
+    result = await db.execute(stmt)
+    rfq = result.scalar_one_or_none()
+    if not rfq:
+        raise HTTPException(status_code=404, detail="RFQ not found")
+
+    if current_user.role != "admin":
+        buyer = await get_or_create_buyer(db, current_user)
+        if rfq.buyer_id != buyer.id:
+            raise HTTPException(status_code=403, detail="Not authorized to cancel this RFQ")
+
+    if rfq.status.lower() in ["awarded"]:
+        raise HTTPException(status_code=400, detail="Cannot cancel an already awarded RFQ")
+
+    rfq.status = "cancelled"
+    await db.commit()
+    return {"status": "cancelled", "rfq_number": rfq.rfq_number}
 
 
 @router.post("/{id}/award")
@@ -554,6 +590,11 @@ async def award_rfq(
     rfq = result.scalar_one_or_none()
     if not rfq:
         raise HTTPException(status_code=404, detail="RFQ not found")
+
+    if current_user.role != "admin":
+        buyer = await get_or_create_buyer(db, current_user)
+        if rfq.buyer_id != buyer.id:
+            raise HTTPException(status_code=403, detail="Not authorized to award this RFQ")
 
     target_quote_id = uuid.UUID(payload.quote_id)
     winning_quote = None
@@ -571,13 +612,21 @@ async def award_rfq(
     rfq.status = "awarded"
 
     # Create acceptance notification for the winning supplier
-    note = Notification(
-        user_id=winning_quote.supplier_id,
-        title=f"Quotation Accepted! RFQ {rfq.rfq_number}",
-        message=f"Congratulations! Your quotation {winning_quote.quote_number} was selected for contract award.",
-        link=f"/rfqs/{rfq.id}",
-    )
-    db.add(note)
+    supplier_user_id = None
+    sup_stmt = select(Supplier).where(Supplier.id == winning_quote.supplier_id)
+    sup_res = await db.execute(sup_stmt)
+    sup_rec = sup_res.scalar_one_or_none()
+    if sup_rec and sup_rec.user_id:
+        supplier_user_id = sup_rec.user_id
+
+    if supplier_user_id:
+        note = Notification(
+            user_id=supplier_user_id,
+            title=f"Quotation Accepted! RFQ {rfq.rfq_number}",
+            message=f"Congratulations! Your quotation {winning_quote.quote_number} was selected for contract award.",
+            link=f"/rfqs/{rfq.id}",
+        )
+        db.add(note)
 
     await db.commit()
     return {
@@ -600,6 +649,11 @@ async def invite_suppliers(
     rfq = result.scalar_one_or_none()
     if not rfq:
         raise HTTPException(status_code=404, detail="RFQ not found")
+
+    if current_user.role != "admin":
+        buyer = await get_or_create_buyer(db, current_user)
+        if rfq.buyer_id != buyer.id:
+            raise HTTPException(status_code=403, detail="Not authorized to invite suppliers for this RFQ")
 
     invited_count = 0
     for s_id in payload.supplier_ids:
@@ -641,8 +695,8 @@ async def submit_quote(
     if not rfq:
         raise HTTPException(status_code=404, detail="RFQ not found")
 
-    if rfq.status.lower() in ["closed", "awarded", "cancelled"]:
-        raise HTTPException(status_code=400, detail="This RFQ is no longer accepting quotations")
+    if rfq.status.lower() in ["draft", "closed", "awarded", "cancelled"]:
+        raise HTTPException(status_code=400, detail="This RFQ is not currently open for quotations")
 
     if rfq.deadline and rfq.deadline < date.today():
         raise HTTPException(status_code=400, detail="RFQ bidding deadline has expired")
@@ -677,13 +731,21 @@ async def submit_quote(
     db.add(quote)
 
     # Notify buyer of new quote
-    note = Notification(
-        user_id=rfq.buyer_id,
-        title=f"New Quote Received: {q_number}",
-        message=f"A new quote of {quote.currency} {quote.unit_price} has been submitted on RFQ {rfq.rfq_number}.",
-        link=f"/rfqs/{rfq.id}",
-    )
-    db.add(note)
+    buyer_user_id = None
+    buyer_stmt = select(Buyer).where(Buyer.id == rfq.buyer_id)
+    buyer_res = await db.execute(buyer_stmt)
+    buyer_rec = buyer_res.scalar_one_or_none()
+    if buyer_rec and buyer_rec.user_id:
+        buyer_user_id = buyer_rec.user_id
+
+    if buyer_user_id:
+        note = Notification(
+            user_id=buyer_user_id,
+            title=f"New Quote Received: {q_number}",
+            message=f"A new quote of {quote.currency} {quote.unit_price} has been submitted on RFQ {rfq.rfq_number}.",
+            link=f"/rfqs/{rfq.id}",
+        )
+        db.add(note)
 
     await db.commit()
     await db.refresh(quote)

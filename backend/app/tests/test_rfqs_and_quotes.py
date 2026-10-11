@@ -189,6 +189,68 @@ async def test_rfq_workflow_publish_close_award():
 
 
 @pytest.mark.asyncio
+async def test_rfq_cancel_and_ownership_rbac():
+    """Tests RFQ cancellation and verifies non-owner cannot cancel or publish."""
+    owner_token = await get_test_token("bhogeswara@tradex.ai")
+    supplier_token = await get_test_token("supplier@sribharat.com")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1. Owner creates RFQ
+        create_res = await client.post(
+            "/api/v1/rfqs",
+            json={
+                "title": "Organic Cumin Seeds",
+                "quantity": 2000,
+                "destination_country": "Germany",
+                "destination_port": "Hamburg",
+                "status": "active",
+            },
+            headers={"Authorization": f"Bearer {owner_token}"},
+        )
+        assert create_res.status_code == 201
+        rfq_id = create_res.json()["id"]
+
+        # 2. Supplier attempts to cancel -> 403 Forbidden
+        cancel_hack_res = await client.post(
+            f"/api/v1/rfqs/{rfq_id}/cancel",
+            headers={"Authorization": f"Bearer {supplier_token}"},
+        )
+        assert cancel_hack_res.status_code == 403
+
+        # 3. Supplier attempts to quote on active RFQ -> 201 Created
+        quote_res = await client.post(
+            f"/api/v1/rfqs/{rfq_id}/quotes",
+            json={
+                "unit_price": 4.25,
+                "currency": "EUR",
+                "lead_time_days": 30,
+                "moq": 1000,
+                "payment_terms": "LC at sight",
+            },
+            headers={"Authorization": f"Bearer {supplier_token}"},
+        )
+        assert quote_res.status_code == 201
+        quote_id = quote_res.json()["id"]
+
+        # 4. Owner awards the quotation
+        award_res = await client.post(
+            f"/api/v1/rfqs/{rfq_id}/award",
+            json={"quote_id": quote_id},
+            headers={"Authorization": f"Bearer {owner_token}"},
+        )
+        assert award_res.status_code == 200
+        assert award_res.json()["status"] == "awarded"
+
+        # 5. Cannot cancel an awarded RFQ -> 400 Bad Request
+        award_cancel_res = await client.post(
+            f"/api/v1/rfqs/{rfq_id}/cancel",
+            headers={"Authorization": f"Bearer {owner_token}"},
+        )
+        assert award_cancel_res.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_apscheduler_closes_expired_rfqs():
     """Asserts periodic scheduler closes RFQs past their deadline."""
     async with AsyncSessionLocal() as session:

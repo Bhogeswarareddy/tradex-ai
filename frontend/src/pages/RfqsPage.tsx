@@ -85,7 +85,14 @@ export const RfqsPage: React.FC = () => {
 
   const handleWizardSuccess = (rfqId: string, _rfqNum: string) => {
     setIsWizardOpen(false);
-    navigate(`/rfq/${rfqId}`);
+    navigate(`/rfq/${rfqId}`, { replace: true });
+  };
+
+  const handleWizardCancel = () => {
+    setIsWizardOpen(false);
+    if (searchParams.toString()) {
+      navigate("/rfq", { replace: true });
+    }
   };
 
   return (
@@ -129,7 +136,7 @@ export const RfqsPage: React.FC = () => {
           initialPrompt={wizardInitialPrompt}
           initialData={wizardInitialData}
           onSuccess={handleWizardSuccess}
-          onCancel={() => setIsWizardOpen(false)}
+          onCancel={handleWizardCancel}
         />
       )}
 
