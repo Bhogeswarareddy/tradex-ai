@@ -52,7 +52,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if "Content-Security-Policy" not in response.headers:
             response.headers["Content-Security-Policy"] = (
                 "default-src 'self'; img-src 'self' data: https:; "
-                "script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
+                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;"
             )
         return response
 
