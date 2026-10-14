@@ -12,6 +12,7 @@ import {
   LogOut,
   Palette,
   Building,
+  Sparkles,
 } from "lucide-react";
 import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
@@ -106,6 +107,16 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       {/* Right: Actions, Language, Currency, Notifications, Profile */}
       <div className="flex items-center gap-1.5 sm:gap-3">
+        {/* AI Mode quick launcher pill */}
+        <Link
+          to="/ai-mode"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-xs hover:from-orange-600 hover:to-amber-600 transition-all mr-1"
+          title="Open AI Mode"
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          <span>AI Mode</span>
+        </Link>
+
         {/* Language selector stub */}
         <div className="hidden md:flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer border border-transparent hover:border-slate-200 transition-colors">
           <Globe className="w-3.5 h-3.5 text-slate-400" />

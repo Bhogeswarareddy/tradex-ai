@@ -489,3 +489,18 @@ async def send_draft_endpoint(
         linked_thread_id=str(draft.linked_thread_id) if draft.linked_thread_id else None,
         created_at=draft.created_at.isoformat(),
     )
+
+
+direct_router = APIRouter(tags=["Negotiation Drafts"])
+
+
+@direct_router.post("/negotiation-drafts/{id}/send", response_model=NegotiationDraftResponse)
+async def send_draft_direct_endpoint(
+    id: uuid.UUID,
+    payload: NegotiationDraftSendInput,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> NegotiationDraftResponse:
+    """Alias for /negotiation-drafts/{id}/send without /ai-mode prefix."""
+    return await send_draft_endpoint(id=id, payload=payload, db=db, current_user=current_user)
+

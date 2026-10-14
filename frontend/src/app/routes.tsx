@@ -33,6 +33,7 @@ const NotFoundPage = lazy(() => import("../pages/NotFoundPage").then(m => ({ def
 const CompanyPage = lazy(() => import("../pages/CompanyPage").then(m => ({ default: m.CompanyPage })));
 const SettingsPage = lazy(() => import("../pages/SettingsPage").then(m => ({ default: m.SettingsPage })));
 const SavedPage = lazy(() => import("../pages/SavedPage").then(m => ({ default: m.SavedPage })));
+const AiModePage = lazy(() => import("../pages/AiModePage").then(m => ({ default: m.AiModePage })));
 
 const RouteLoadingFallback: React.FC = () => (
   <div className="min-h-[50vh] flex flex-col items-center justify-center p-8 text-center" role="status" aria-label="Loading page">
@@ -57,6 +58,9 @@ export const AppRoutes: React.FC = () => {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+
+        {/* Dedicated Standalone AI Mode Screen (Prompt 19) */}
+        <Route path="/ai-mode" element={<AiModePage />} />
 
         {/* Main Dashboard Pages (Inside AppLayout) */}
         <Route element={<LayoutWrapper />}>

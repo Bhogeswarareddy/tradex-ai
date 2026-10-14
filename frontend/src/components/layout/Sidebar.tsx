@@ -112,6 +112,27 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavClick, className = "" }) 
           </div>
         </div>
 
+        {/* AI Mode Featured Link (Prompt 19) */}
+        <div className="px-3 pt-2 pb-1">
+          <Link
+            to="/ai-mode"
+            onClick={onNavClick}
+            className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs group ${
+              location.pathname.startsWith("/ai-mode")
+                ? "bg-linear-to-r from-orange-500 to-amber-500 text-white shadow-orange-500/25"
+                : "bg-linear-to-r from-orange-500/15 to-amber-500/15 border border-orange-500/30 text-orange-300 hover:text-white hover:bg-orange-500/25"
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Sparkles className="w-4 h-4 text-orange-400 group-hover:scale-110 transition-transform" />
+              <span>AI Mode</span>
+            </div>
+            <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-orange-500 text-white uppercase tracking-wider">
+              NEW
+            </span>
+          </Link>
+        </div>
+
         {/* 13 Ordered Navigation Links */}
         <nav className="p-3 space-y-1 overflow-y-auto flex-1 scrollbar-thin scrollbar-thumb-white/10">
           {navItems.map((item) => {
