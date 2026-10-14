@@ -6,7 +6,7 @@ from app.models.trade import (
     SimulatedFreightRate, SimulatedTariffDuty, SimulatedPortHandlingFee, SimulatedExchangeRate
 )
 from app.models.content import Document, DocumentExtraction, Message, Notification, Review, SavedItem, Thread
-from app.models.ai_ops import AILog, AIRecommendation, AISearch, AuditLog, KnowledgeChunk, MarketInsight, SystemSetting
+from app.models.ai_ops import AILog, AIRecommendation, AISearch, AuditLog, KnowledgeChunk, KnowledgeDocument, MarketInsight, SystemSetting
 from app.models.market import MarketSeries
 
 __all__ = [
@@ -50,6 +50,7 @@ __all__ = [
     "AILog",
     "AIRecommendation",
     "KnowledgeChunk",
+    "KnowledgeDocument",
     "MarketInsight",
     "AuditLog",
     "SystemSetting",

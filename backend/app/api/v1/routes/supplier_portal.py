@@ -14,7 +14,7 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import get_current_user, get_db, require_role
 from app.core.config import settings
 from app.core.freshness import get_product_freshness_metadata
-from app.models.catalog import Category, Certification, PriceTier, Product, ProductImage, SupplierCertification
+from app.models.catalog import Category, Certification, IndexJob, PriceTier, Product, ProductImage, SupplierCertification
 from app.models.content import Message
 from app.models.identity import Company, Supplier, User
 from app.models.trade import RFQ
@@ -779,6 +779,43 @@ async def get_supplier_product_detail(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
     return serialize_supplier_product(product)
+
+
+@router.get("/products/{id}/index-status")
+async def get_supplier_product_index_status(
+    id: str,
+    supplier: Supplier = Depends(get_current_supplier),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        p_uuid = uuid.UUID(id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+
+    res = await db.execute(select(Product).where(Product.id == p_uuid))
+    product = res.scalar_one_or_none()
+    if not product or product.supplier_id != supplier.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+
+    job_res = await db.execute(
+        select(IndexJob)
+        .where(IndexJob.entity_type == "product", IndexJob.entity_id == str(product.id))
+        .order_by(IndexJob.created_at.desc())
+        .limit(1)
+    )
+    job = job_res.scalar_one_or_none()
+
+    current_status = job.status if job else ("Ready" if product.status == "published" else "Pending")
+    attempts = job.attempts if job else 0
+    last_error = job.error if job else None
+
+    return {
+        "product_id": str(product.id),
+        "status": current_status,
+        "attempts": attempts,
+        "last_error": last_error,
+        "updated_at": job.updated_at.isoformat() if job and job.updated_at else product.updated_at.isoformat() if product.updated_at else None,
+    }
 
 
 @router.patch("/products/{id}")

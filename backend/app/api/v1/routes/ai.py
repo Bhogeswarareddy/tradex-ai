@@ -7,6 +7,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from pydantic import BaseModel
 from app.api.deps import get_current_user_optional, get_current_user, require_role
 from app.core.config import settings
 from app.core.db import get_db
@@ -16,6 +17,7 @@ from app.models.content import CopilotConversation, CopilotMessage
 from app.models.identity import Buyer, Supplier, User
 from app.models.ai_ops import KnowledgeChunk
 from app.ai.rag.retriever import retrieve_knowledge_chunks
+from app.services.catalog_assistant import ask_catalog_assistant
 from app.schemas.dashboard import (
     SuggestedPrompt,
     CopilotChatRequest,
@@ -232,7 +234,7 @@ async def copilot_chat(
             "title": chunk.title,
             "guide_slug": chunk.guide_slug,
             "source_uri": chunk.source_uri,
-            "relevance_score": chunk.score,
+            "relevance_score": float(chunk.score),
         }
         for chunk in retrieved_chunks
     ]
@@ -538,3 +540,50 @@ async def test_ai_connection(
             "error": str(e),
             "message": "AI provider connection failed. Fallback to Demo AI is enabled.",
         }
+
+
+class CatalogQueryRequest(BaseModel):
+    query: str
+    target_price: Optional[float] = None
+    currency: Optional[str] = "USD"
+    quantity: Optional[int] = None
+    destination: Optional[str] = None
+    certifications: Optional[List[str]] = []
+
+
+@router.post("/catalog/query", summary="Grounded RAG catalog search and assistant pipeline")
+async def query_catalog_assistant(
+    payload: CatalogQueryRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    """
+    Executes Prompt 16 Grounded Catalog Assistant pipeline.
+    Uses PostgreSQL as single source of truth for price, tiers, stock, certs.
+    """
+    supplier_id = None
+    role = "buyer"
+    if current_user:
+        role = current_user.role or "buyer"
+        if role.lower() == "supplier":
+            s_res = await db.execute(select(Supplier).where(Supplier.user_id == current_user.id))
+            supplier = s_res.scalar_one_or_none()
+            if supplier:
+                supplier_id = supplier.id
+
+    filters = {
+        "target_price": payload.target_price,
+        "currency": payload.currency,
+        "quantity": payload.quantity,
+        "destination": payload.destination,
+        "certifications": payload.certifications,
+    }
+
+    result = await ask_catalog_assistant(
+        query=payload.query,
+        db=db,
+        role=role,
+        supplier_id=supplier_id,
+        filters=filters,
+    )
+    return result

@@ -151,6 +151,8 @@ class IndexJob(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     entity_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     entity_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     operation: Mapped[str] = mapped_column(String(50), nullable=False)
-    status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(50), default="Pending", nullable=False, index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     payload: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 

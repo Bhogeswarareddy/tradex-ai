@@ -58,6 +58,36 @@ class AIRecommendation(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     reasoning: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+from typing import List, Optional
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+
+class KnowledgeDocument(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "knowledge_documents"
+    __table_args__ = (
+        Index("idx_knowledge_docs_source", "source_type", "source_id"),
+        Index("idx_knowledge_docs_product", "product_id"),
+        Index("idx_knowledge_docs_supplier", "supplier_id"),
+        Index("idx_knowledge_docs_visibility", "visibility"),
+        Index("idx_knowledge_docs_content_hash", "content_hash"),
+    )
+
+    source_type: Mapped[str] = mapped_column(String(50), nullable=False)  # product, company, certificate_document, trade_guide, faq
+    source_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    supplier_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    visibility: Mapped[str] = mapped_column(String(50), default="public", nullable=False)  # public, supplier_private, admin_only
+    status: Mapped[str] = mapped_column(String(50), default="active", nullable=False)  # active, inactive, stale
+    content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    embedding_model: Mapped[str] = mapped_column(String(100), default="mock-embed-v1", nullable=False)
+
+    chunks: Mapped[List["KnowledgeChunk"]] = relationship("KnowledgeChunk", back_populates="document", cascade="all, delete-orphan")
+
+
 class KnowledgeChunk(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "knowledge_chunks"
     __table_args__ = (
@@ -65,17 +95,26 @@ class KnowledgeChunk(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         Index("idx_knowledge_chunks_guide_slug", "guide_slug"),
         Index("idx_knowledge_chunks_is_public", "is_public"),
         Index("idx_knowledge_chunks_company_id", "company_id"),
+        Index("idx_knowledge_chunks_document_id", "document_id"),
+        Index("idx_knowledge_chunks_is_active", "is_active"),
     )
 
+    document_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("knowledge_documents.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    document: Mapped[Optional["KnowledgeDocument"]] = relationship("KnowledgeDocument", back_populates="chunks")
     entity_type: Mapped[str] = mapped_column(String(50), default="guide", nullable=False)  # 'guide', 'supplier', 'product', 'spec'
     entity_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     embedding = mapped_column(Vector(1536), nullable=True)
     chunk_metadata: Mapped[Optional[dict]] = mapped_column("metadata", JSONB, nullable=True)
     guide_slug: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     source_uri: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     is_public: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    embedding_model: Mapped[Optional[str]] = mapped_column(String(100), default="mock-embed-v1", nullable=True)
     company_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True
     )

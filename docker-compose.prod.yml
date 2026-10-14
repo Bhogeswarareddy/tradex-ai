@@ -73,6 +73,32 @@ services:
           memory: 1536M
     restart: unless-stopped
 
+  worker:
+    image: ${ECR_REGISTRY:-tradex-ai}/backend:${IMAGE_TAG:-latest}
+    container_name: tradex_worker
+    command: ["python", "-m", "app.worker"]
+    environment:
+      ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      SYNC_DATABASE_URL: ${SYNC_DATABASE_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      LOCAL_STORAGE_PATH: /app/storage
+    volumes:
+      - uploads:/app/storage
+    networks:
+      - backend_net
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+    restart: unless-stopped
+
   frontend:
     image: ${ECR_REGISTRY:-tradex-ai}/frontend:${IMAGE_TAG:-latest}
     container_name: react_app

@@ -15,7 +15,8 @@ from app.api.deps import require_role
 from app.core.db import get_db
 from app.core.errors import BadRequestError, NotFoundError
 from app.models.ai_ops import AuditLog, SystemSetting
-from app.models.catalog import Product
+from app.models.catalog import IndexJob, Product
+from app.services.indexer import CURRENT_EMBEDDING_MODEL, process_index_job, reindex_all
 from app.models.content import Document
 from app.models.identity import Buyer, Company, Supplier, User
 from app.models.trade import Order, RFQ
@@ -967,4 +968,113 @@ async def verify_admin_mfa(
     await db.commit()
 
     return {"status": "mfa_enabled", "message": "MFA has been successfully verified and activated."}
+
+
+# ---------------------------------------------------------------------------
+# 12. Knowledge Indexing & Search Administration (Prompt 16)
+# ---------------------------------------------------------------------------
+
+@router.get("/indexing/jobs")
+async def list_indexing_jobs(
+    status: Optional[str] = Query(None),
+    entity_type: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """Lists indexing jobs with optional filtering by status and entity_type."""
+    query = select(IndexJob)
+    count_query = select(func.count(IndexJob.id))
+
+    if status:
+        query = query.where(func.lower(IndexJob.status) == status.lower())
+        count_query = count_query.where(func.lower(IndexJob.status) == status.lower())
+    if entity_type:
+        query = query.where(func.lower(IndexJob.entity_type) == entity_type.lower())
+        count_query = count_query.where(func.lower(IndexJob.entity_type) == entity_type.lower())
+
+    total_res = await db.execute(count_query)
+    total = total_res.scalar() or 0
+
+    query = query.order_by(IndexJob.created_at.desc()).offset(offset).limit(limit)
+    res = await db.execute(query)
+    jobs = res.scalars().all()
+
+    # Aggregate status counts
+    stats_query = select(IndexJob.status, func.count(IndexJob.id)).group_by(IndexJob.status)
+    stats_res = await db.execute(stats_query)
+    stats_dict = {row[0]: row[1] for row in stats_res.all()}
+
+    return {
+        "items": [
+            {
+                "id": str(j.id),
+                "entity_type": j.entity_type,
+                "entity_id": j.entity_id,
+                "operation": j.operation,
+                "status": j.status,
+                "attempts": j.attempts,
+                "error": j.error,
+                "created_at": j.created_at.isoformat() if j.created_at else None,
+                "updated_at": j.updated_at.isoformat() if j.updated_at else None,
+            }
+            for j in jobs
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "stats": {
+            "pending": stats_dict.get("Pending", 0) + stats_dict.get("pending", 0),
+            "processing": stats_dict.get("Processing", 0) + stats_dict.get("processing", 0),
+            "ready": stats_dict.get("Ready", 0) + stats_dict.get("ready", 0),
+            "failed": stats_dict.get("Failed", 0) + stats_dict.get("failed", 0),
+        },
+    }
+
+
+@router.post("/indexing/jobs/{id}/retry")
+async def retry_indexing_job(
+    id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """Resets attempts and error for a failed job and marks it Pending for immediate execution."""
+    try:
+        job_uuid = uuid.UUID(id)
+    except ValueError:
+        raise NotFoundError("Index job not found")
+
+    res = await db.execute(select(IndexJob).where(IndexJob.id == job_uuid))
+    job = res.scalar_one_or_none()
+    if not job:
+        raise NotFoundError("Index job not found")
+
+    job.status = "Pending"
+    job.attempts = 0
+    job.error = None
+    job.updated_at = datetime.now(timezone.utc)
+    db.add(job)
+    await db.commit()
+
+    # Process immediately
+    await process_index_job(job, db)
+
+    return {
+        "id": str(job.id),
+        "status": job.status,
+        "attempts": job.attempts,
+        "error": job.error,
+        "message": f"Job reset and executed with status: {job.status}",
+    }
+
+
+@router.post("/indexing/reindex")
+async def trigger_reindexing(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    """Reindexes published products and flags documents with stale embedding models."""
+    result = await reindex_all(db)
+    return result
 
