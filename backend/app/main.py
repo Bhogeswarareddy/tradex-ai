@@ -161,6 +161,10 @@ async def root_health():
 # Mount versioned API routes (/api/v1)
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+# Also mount /ai-mode at root for direct endpoint calls
+from app.api.v1.routes.ai_mode import router as ai_mode_router
+app.include_router(ai_mode_router)
+
 
 # WebSocket /ws Real-Time Handshake (Prompt 15)
 from fastapi import WebSocket, WebSocketDisconnect

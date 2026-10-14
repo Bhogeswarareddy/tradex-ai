@@ -8,6 +8,7 @@ from app.models.trade import (
 from app.models.content import Document, DocumentExtraction, Message, Notification, Review, SavedItem, Thread
 from app.models.ai_ops import AILog, AIRecommendation, AISearch, AuditLog, KnowledgeChunk, KnowledgeDocument, MarketInsight, SystemSetting
 from app.models.market import MarketSeries
+from app.models.ai_mode import AIConversation, AIMessage, AISelectedProduct, NegotiationDraft
 
 __all__ = [
     "Base",
@@ -55,4 +56,9 @@ __all__ = [
     "AuditLog",
     "SystemSetting",
     "MarketSeries",
+    # AI Mode
+    "AIConversation",
+    "AIMessage",
+    "AISelectedProduct",
+    "NegotiationDraft",
 ]

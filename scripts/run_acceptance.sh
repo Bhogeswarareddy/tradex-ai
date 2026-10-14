@@ -16,5 +16,5 @@ export RATE_LIMIT_AUTH=1000
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/../backend"
-
-/home/devcontainers/.be_venv/bin/pytest app/tests/test_catalogue_acceptance.py -v "$@"
+TEST_TARGET="${*:-app/tests/test_catalogue_acceptance.py}"
+/home/devcontainers/.be_venv/bin/pytest $TEST_TARGET -v
