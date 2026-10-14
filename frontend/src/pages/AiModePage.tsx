@@ -932,7 +932,8 @@ export const AiModePage: React.FC = () => {
             </div>
             <button
               onClick={() => setNegotiateProduct(null)}
-              className="p-1 rounded-lg hover:bg-slate-200/50 text-slate-400 hover:text-slate-600"
+              aria-label="Close negotiation"
+              className="p-1 rounded-lg hover:bg-slate-200/50 text-slate-400 hover:text-slate-600 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>

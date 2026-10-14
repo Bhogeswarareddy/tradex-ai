@@ -12,7 +12,6 @@ echo "Connecting to PostgreSQL at $PG_IP:5432..."
 export DATABASE_URL="postgresql+asyncpg://tradex_user:tradex_password@${PG_IP}:5432/tradex"
 export SYNC_DATABASE_URL="postgresql+psycopg2://tradex_user:tradex_password@${PG_IP}:5432/tradex"
 export SECRET_KEY="production-secret-key-tradex-32bytes-secure"
-export RATE_LIMIT_AUTH=1000
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/../backend"

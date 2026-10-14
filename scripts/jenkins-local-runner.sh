@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ==============================================================================
-# TradeX AI - Jenkins Pipeline Local Simulation & Dry-Run Demonstrator
+# TradeX AI - Jenkins Pipeline Local Simulation & Dry-Run Demonstrato
 # Executes all 10 pipeline stages locally in sequence with DRY_RUN capability
 # ==============================================================================
 

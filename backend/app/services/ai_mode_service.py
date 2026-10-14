@@ -160,7 +160,17 @@ def extract_criteria(content: str, current_state: Dict[str, Any], classification
     # Destination country
     dest_matches = ["usa", "united states", "germany", "netherlands", "france", "uae", "singapore", "uk", "hamburg", "rotterdam"]
     for d in dest_matches:
-        if f"for {d}" in text_lower or f"to {d}" in text_lower or f"in {d}" in text_lower or f"into {d}" in text_lower:
+        if (
+            f"for the {d}" in text_lower
+            or f"for {d}" in text_lower
+            or f"to the {d}" in text_lower
+            or f"to {d}" in text_lower
+            or f"in the {d}" in text_lower
+            or f"in {d}" in text_lower
+            or f"into the {d}" in text_lower
+            or f"into {d}" in text_lower
+            or f"destination {d}" in text_lower
+        ):
             criteria["destination"] = "USA" if d in ["usa", "united states"] else d.title()
             break
 

@@ -123,12 +123,7 @@ async def list_products(
 
     # Country filter
     if country and country.strip():
-        stmt = stmt.where(
-            or_(
-                Product.origin_country.ilike(f"%{country.strip()}%"),
-                Company.country.ilike(f"%{country.strip()}%"),
-            )
-        )
+        stmt = stmt.where(Product.origin_country.ilike(f"%{country.strip()}%"))
 
     # MOQ filters
     if min_moq is not None:

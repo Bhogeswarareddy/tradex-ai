@@ -297,7 +297,13 @@ async def select_product(
 
         await db.commit()
 
-    return {"status": "selected", "conversation_id": str(id), "product_id": str(product_id)}
+    current_sel = list((conv.search_state or {}).get("selected_product_ids") or [])
+    return {
+        "status": "selected",
+        "conversation_id": str(id),
+        "product_id": str(product_id),
+        "selected_product_ids": current_sel,
+    }
 
 
 @router.delete("/conversations/{id}/selection/{product_id}", status_code=status.HTTP_200_OK)
@@ -324,7 +330,12 @@ async def unselect_product(
         conv.search_state = s_state
 
     await db.commit()
-    return {"status": "unselected", "conversation_id": str(id), "product_id": str(product_id)}
+    return {
+        "status": "unselected",
+        "conversation_id": str(id),
+        "product_id": str(product_id),
+        "selected_product_ids": sel_ids,
+    }
 
 
 @router.get("/conversations/{id}/compare")
