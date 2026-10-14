@@ -145,23 +145,26 @@ async def test_buyer_role_denial_on_admin_endpoint():
 
 @pytest.mark.asyncio
 async def test_rate_limiting_on_login():
+    from app.core.rate_limit import auth_limiter
+    auth_limiter.reset()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         # Trigger 5 login attempts
         for _ in range(5):
             await client.post(
                 "/api/v1/auth/login",
-                json={"email": "bhogeswara@tradex.ai", "password": "badpassword1"},
+                json={"email": "ratelimit_probe@example.com", "password": "badpassword1"},
             )
 
         # 6th attempt within the minute should trigger 429 Too Many Requests
         rate_limited_res = await client.post(
             "/api/v1/auth/login",
-            json={"email": "bhogeswara@tradex.ai", "password": "badpassword1"},
+            json={"email": "ratelimit_probe@example.com", "password": "badpassword1"},
         )
         assert rate_limited_res.status_code == 429
         data = rate_limited_res.json()
         assert data["error"]["code"] == "RATE_LIMIT_EXCEEDED"
+    auth_limiter.reset()
 
 
 @pytest.mark.asyncio

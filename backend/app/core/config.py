@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     STORAGE_BACKEND: str = "local"
     LOCAL_STORAGE_PATH: str = "/app/storage"
 
+    # Admin Security & MFA
+    ADMIN_REQUIRE_MFA: bool = False
+    ADMIN_BOOTSTRAP_EMAIL: str = ""
+    ADMIN_BOOTSTRAP_PASSWORD: str = ""
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:

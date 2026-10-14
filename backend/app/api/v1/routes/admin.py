@@ -749,3 +749,69 @@ async def update_matching_weights_config(
 
     return {"weights": setting.value, "status": "updated"}
 
+
+# ---------------------------------------------------------------------------
+# 11. Admin MFA Setup & Verification
+# ---------------------------------------------------------------------------
+
+class MfaVerifyRequest(BaseModel):
+    totp_code: str
+
+
+@router.post("/mfa/setup")
+async def setup_admin_mfa(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    import pyotp
+    secret = pyotp.random_base32()
+    current_user.mfa_secret = secret
+    db.add(current_user)
+    await db.commit()
+
+    totp = pyotp.TOTP(secret)
+    provisioning_uri = totp.provisioning_uri(
+        name=current_user.email,
+        issuer_name="TradeX Admin Portal",
+    )
+
+    # Generate 5 recovery codes
+    import secrets
+    recovery_codes = [secrets.token_hex(4).upper() for _ in range(5)]
+
+    return {
+        "secret": secret,
+        "provisioning_uri": provisioning_uri,
+        "recovery_codes": recovery_codes,
+        "message": "Scan provisioning URI or enter secret in Authenticator app, then verify code",
+    }
+
+
+@router.post("/mfa/verify")
+async def verify_admin_mfa(
+    payload: MfaVerifyRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    import pyotp
+    if not current_user.mfa_secret:
+        raise BadRequestError("MFA setup not initialized. Call /api/v1/admin/mfa/setup first.")
+
+    totp = pyotp.TOTP(current_user.mfa_secret)
+    if not totp.verify(payload.totp_code, valid_window=1):
+        raise BadRequestError("Invalid TOTP verification code")
+
+    current_user.mfa_enabled = True
+    audit = AuditLog(
+        user_id=current_user.id,
+        action="ENABLE_MFA",
+        entity_type="user",
+        entity_id=str(current_user.id),
+        details={"status": "mfa_enabled"},
+    )
+    db.add(audit)
+    db.add(current_user)
+    await db.commit()
+
+    return {"status": "mfa_enabled", "message": "MFA has been successfully verified and activated."}
+

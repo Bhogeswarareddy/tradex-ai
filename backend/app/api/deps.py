@@ -73,17 +73,8 @@ async def get_current_user_optional(
         return None
 
 
+from app.core.permissions import require_roles
+
 def require_role(*allowed_roles: str) -> Callable:
-    """Dependency factory restricting route access to specified roles."""
-
-    async def role_checker(current_user: User = Depends(get_current_user)) -> User:
-        user_role = (current_user.role or "").lower().strip()
-        cleaned_allowed = [r.lower().strip() for r in allowed_roles]
-
-        if user_role not in cleaned_allowed:
-            raise PermissionDeniedError(
-                f"Role '{user_role}' is not authorized to access this resource. Required: {', '.join(allowed_roles)}"
-            )
-        return current_user
-
-    return role_checker
+    """Dependency factory restricting route access to specified roles (alias to require_roles)."""
+    return require_roles(*allowed_roles)

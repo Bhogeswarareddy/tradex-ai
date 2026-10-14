@@ -49,12 +49,21 @@ def seed():
                 session.flush()
             roles_dict[role_name] = role
 
-        # 2. Demo Users
+        # 2. Demo Users & Production Environment Check
+        current_env = os.getenv("ENV", "development").lower()
+        if current_env == "production":
+            existing_admin = session.execute(select(User).where(User.email == "admin@tradex.ai")).scalar_one_or_none()
+            if existing_admin:
+                raise RuntimeError("CRITICAL SECURITY ERROR: Demo admin (admin@tradex.ai) is prohibited in production!")
+
         demo_users = [
             ("bhogeswara@tradex.ai", "buyer123", "buyer", "Bhogeswara Reddy (Global Importer)"),
             ("supplier@sribharat.com", "supplier123", "supplier", "Ramesh Kumar (Sri Bharat Spices)"),
-            ("admin@tradex.ai", "admin123", "admin", "TradeX System Admin"),
         ]
+        # Only seed demo admin if not in production
+        if current_env != "production":
+            demo_users.append(("admin@tradex.ai", "admin123", "admin", "TradeX System Admin"))
+
         users_dict = {}
         for email, pwd, role_str, full_name in demo_users:
             user = session.execute(select(User).where(User.email == email)).scalar_one_or_none()

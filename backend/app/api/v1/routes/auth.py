@@ -1,7 +1,8 @@
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, Cookie, Depends, Header, Request, Response, status
+from app.core.config import settings
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -64,15 +65,16 @@ async def register(
     if existing_user.scalar_one_or_none():
         raise ConflictError("An account with this email address already exists")
 
-    # 2. Get role
-    role_obj = (await db.execute(select(Role).where(Role.name == payload.role))).scalar_one_or_none()
+    # 2. Get sanitized role (ADMIN cannot be created via public registration)
+    target_role = "supplier" if payload.role.lower().strip() == "supplier" else "buyer"
+    role_obj = (await db.execute(select(Role).where(Role.name == target_role))).scalar_one_or_none()
 
     # 3. Create User
     new_user = User(
         email=payload.email,
         password_hash=get_password_hash(payload.password),
         full_name=payload.full_name,
-        role=payload.role,
+        role=target_role,
         role_id=role_obj.id if role_obj else None,
         is_active=True,
         email_verified=False,
@@ -147,6 +149,7 @@ async def register(
 @router.post("/login", response_model=TokenResponse, dependencies=[Depends(rate_limit_auth)])
 async def login(
     payload: UserLoginRequest,
+    request: Request,
     response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
@@ -162,15 +165,88 @@ async def login(
     result = await db.execute(stmt)
     user = result.scalar_one_or_none()
 
-    # 2. Constant-time generic failure check
+    now_utc = datetime.now(timezone.utc)
+
+    # 1.5 Account lockout check
+    if user and user.locked_until and user.locked_until > now_utc:
+        remaining_sec = int((user.locked_until - now_utc).total_seconds())
+        logger.warning(f"Attempt to login to locked account: {payload.email} (locked for {remaining_sec}s)")
+        raise AuthenticationError(f"Account temporarily locked due to multiple failed logins. Try again in {remaining_sec}s.")
+
+    # 2. Verify credentials
     if not user or not verify_password(payload.password, user.password_hash):
+        if user:
+            user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+            if user.failed_login_attempts >= 5:
+                user.locked_until = now_utc + timedelta(minutes=15)
+                logger.warning(f"User account locked after 5 failed attempts: {user.email}")
+            db.add(user)
+            await db.commit()
+
+            if user.role.lower() == "admin":
+                from app.core.permissions import record_audit_log
+                await record_audit_log(
+                    db=db,
+                    action="admin_login_failed",
+                    entity_type="user",
+                    entity_id=str(user.id),
+                    user_id=user.id,
+                    details={"email": user.email, "reason": "invalid_password", "failed_attempts": user.failed_login_attempts},
+                )
+
         logger.warning(f"Failed login attempt for email: {payload.email}")
         raise AuthenticationError("Invalid email address or password")
 
     if not user.is_active:
         raise AuthenticationError("Account has been disabled")
 
-    # 3. Create tokens
+    # Reset failed login count on successful auth
+    if user.failed_login_attempts > 0 or user.locked_until is not None:
+        user.failed_login_attempts = 0
+        user.locked_until = None
+        db.add(user)
+
+    # 3. Handle Admin MFA if required
+    # Check if user is admin and MFA is enabled or required
+    is_admin = user.role.lower() == "admin"
+    mfa_required = is_admin and (settings.ADMIN_REQUIRE_MFA or user.mfa_enabled)
+    # Check if totp_code is provided in request if schema supports it or headers
+    totp_code = request.headers.get("X-MFA-Code") or getattr(payload, "totp_code", None)
+    if mfa_required:
+        import pyotp
+        if not user.mfa_secret:
+            # Generate pending secret if not set
+            user.mfa_secret = pyotp.random_base32()
+            db.add(user)
+            await db.commit()
+
+        totp = pyotp.TOTP(user.mfa_secret)
+        if not totp_code or not totp.verify(totp_code, valid_window=1):
+            if is_admin:
+                from app.core.permissions import record_audit_log
+                await record_audit_log(
+                    db=db,
+                    action="admin_mfa_challenge_issued",
+                    entity_type="user",
+                    entity_id=str(user.id),
+                    user_id=user.id,
+                    details={"email": user.email, "mfa_required": True},
+                )
+            raise AuthenticationError("MFA code required for Admin access. Provide valid 6-digit TOTP code.")
+
+    # Audit successful admin login
+    if is_admin:
+        from app.core.permissions import record_audit_log
+        await record_audit_log(
+            db=db,
+            action="admin_login_success",
+            entity_type="user",
+            entity_id=str(user.id),
+            user_id=user.id,
+            details={"email": user.email, "mfa_verified": mfa_required},
+        )
+
+    # 4. Create tokens
     access_token = create_access_token({"sub": str(user.id), "role": user.role})
     raw_refresh, refresh_hash, refresh_expires = create_refresh_token(str(user.id))
 

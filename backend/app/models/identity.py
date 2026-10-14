@@ -30,6 +30,10 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     settings: Mapped[Optional[dict]] = mapped_column(JSONB, default=dict, nullable=True)
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    mfa_secret: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, default=None)
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     role_rel: Mapped[Optional["Role"]] = relationship("Role", back_populates="users")
     buyers: Mapped[List["Buyer"]] = relationship("Buyer", back_populates="user")

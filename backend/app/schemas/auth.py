@@ -8,7 +8,7 @@ class UserRegisterRequest(BaseModel):
     email: EmailStr = Field(..., description="User unique email address")
     password: str = Field(..., min_length=10, description="Password (min 10 chars, 1 digit)")
     full_name: str = Field(..., min_length=2, max_length=100, description="Full name of contact")
-    role: str = Field(default="buyer", description="Role: 'buyer', 'supplier', or 'admin'")
+    role: str = Field(default="buyer", description="Role: 'buyer' or 'supplier'")
     company_name: str = Field(..., min_length=2, max_length=150, description="Registered company name")
     country: str = Field(..., min_length=2, max_length=100, description="Country of business incorporation")
 
@@ -24,8 +24,10 @@ class UserRegisterRequest(BaseModel):
     @classmethod
     def validate_role(cls, v: str) -> str:
         cleaned = v.lower().strip()
-        if cleaned not in {"buyer", "supplier", "admin"}:
-            raise ValueError("Role must be 'buyer', 'supplier', or 'admin'")
+        if cleaned in ("admin", "administrator"):
+            raise ValueError("Public registration cannot create ADMIN accounts")
+        if cleaned not in {"buyer", "supplier"}:
+            raise ValueError("Role must be 'buyer' or 'supplier'")
         return cleaned
 
 
