@@ -62,22 +62,50 @@ export interface PortalProductItem {
   id: string;
   name: string;
   slug: string;
-  category_id: string;
-  category_name: string;
+  category_id?: string;
+  category_name?: string;
   hs_code?: string;
+  product_form?: string;
+  origin_country?: string;
+  production_region?: string;
+  description?: string;
   moq: number;
   unit: string;
   price_min: number;
   price_max: number;
   currency: string;
-  is_active: boolean;
+  price_valid_from?: string;
+  price_valid_until?: string;
+  available_quantity?: number;
+  reserved_quantity?: number;
+  availability_status?: string;
+  monthly_capacity?: string;
   lead_time_days: number;
-  stock_available: number;
-  next_available_date?: string;
+  packaging?: string;
+  storage?: string;
+  export_details?: string;
+  supported_destinations?: string[];
+  incoterms?: string[];
+  payment_terms?: string[];
+  supporting_documents?: Array<{ name: string; url: string; doc_type?: string }>;
+  certifications_json?: Array<{ certification_name: string; certificate_no?: string; issuer?: string; issued_at?: string; expires_at?: string; status?: string }>;
+  status?: string;
+  is_active: boolean;
+  rejection_reason?: string;
   image_url?: string;
   images: string[];
-  price_tiers: Array<{ min_qty: number; max_qty?: number; unit_price: number; currency: string }>;
+  price_tiers: Array<{ id?: string; min_qty: number; max_qty?: number; unit_price: number; currency?: string }>;
   specifications: Record<string, any>;
+  stock_available?: number;
+  next_available_date?: string;
+  price_status?: "current" | "unconfirmed" | "stale";
+  availability_status_confirmed?: "current" | "unconfirmed" | "stale";
+  price_confirmed_at?: string;
+  inventory_confirmed_at?: string;
+  price_badge?: string;
+  availability_badge?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface CsvImportRowError {
@@ -170,6 +198,115 @@ export const supplierPortalApi = {
       body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error(`Failed to create product: ${res.statusText}`);
+    return res.json();
+  },
+
+  async getProduct(id: string): Promise<PortalProductItem> {
+    const res = await fetch(`${BASE_URL}/supplier/products/${encodeURIComponent(id)}`, {
+      headers: getAuthHeader(),
+    });
+    if (!res.ok) throw new Error(`Failed to load product: ${res.statusText}`);
+    return res.json();
+  },
+
+  async patchProduct(id: string, data: Record<string, any>): Promise<{ message: string; product: PortalProductItem }> {
+    const res = await fetch(`${BASE_URL}/supplier/products/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error(`Failed to patch product: ${res.statusText}`);
+    return res.json();
+  },
+
+  async submitProduct(id: string): Promise<{ message: string; status: string }> {
+    const res = await fetch(`${BASE_URL}/supplier/products/${encodeURIComponent(id)}/submit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+    });
+    if (!res.ok) throw new Error(`Failed to submit product: ${res.statusText}`);
+    return res.json();
+  },
+
+  async publishProduct(id: string): Promise<{ message: string; status: string }> {
+    const res = await fetch(`${BASE_URL}/supplier/products/${encodeURIComponent(id)}/publish`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+    });
+    if (!res.ok) throw new Error(`Failed to publish product: ${res.statusText}`);
+    return res.json();
+  },
+
+  async unpublishProduct(id: string): Promise<{ message: string; status: string }> {
+    const res = await fetch(`${BASE_URL}/supplier/products/${encodeURIComponent(id)}/unpublish`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+    });
+    if (!res.ok) throw new Error(`Failed to unpublish product: ${res.statusText}`);
+    return res.json();
+  },
+
+  async archiveProduct(id: string): Promise<{ message: string; status: string }> {
+    const res = await fetch(`${BASE_URL}/supplier/products/${encodeURIComponent(id)}/archive`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+    });
+    if (!res.ok) throw new Error(`Failed to archive product: ${res.statusText}`);
+    return res.json();
+  },
+
+  async updatePriceTiers(id: string, priceTiers: Array<{ min_qty: number; max_qty?: number; unit_price: number; currency?: string }>): Promise<any> {
+    const res = await fetch(`${BASE_URL}/supplier/products/${encodeURIComponent(id)}/price-tiers`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify({ price_tiers: priceTiers }),
+    });
+    if (!res.ok) throw new Error(`Failed to update price tiers: ${res.statusText}`);
+    return res.json();
+  },
+
+  async updateInventory(id: string, data: { available_quantity?: number; reserved_quantity?: number; availability_status?: string; monthly_capacity?: string; lead_time_days?: number }): Promise<any> {
+    const res = await fetch(`${BASE_URL}/supplier/products/${encodeURIComponent(id)}/inventory`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error(`Failed to update inventory: ${res.statusText}`);
+    return res.json();
+  },
+
+  async uploadProductImage(id: string, file: File): Promise<any> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`${BASE_URL}/supplier/products/${encodeURIComponent(id)}/images`, {
+      method: "POST",
+      headers: getAuthHeader(),
+      body: formData,
+    });
+    if (!res.ok) throw new Error(`Failed to upload product image: ${res.statusText}`);
+    return res.json();
+  },
+
+  async uploadProductDocument(id: string, file: File, documentType?: string): Promise<any> {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (documentType) formData.append("document_type", documentType);
+    const res = await fetch(`${BASE_URL}/supplier/products/${encodeURIComponent(id)}/documents`, {
+      method: "POST",
+      headers: getAuthHeader(),
+      body: formData,
+    });
+    if (!res.ok) throw new Error(`Failed to upload product document: ${res.statusText}`);
+    return res.json();
+  },
+
+  async addProductCertification(id: string, data: { certification_name: string; certificate_no?: string; issuer?: string; issued_at?: string; expires_at?: string }): Promise<any> {
+    const res = await fetch(`${BASE_URL}/supplier/products/${encodeURIComponent(id)}/certifications`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error(`Failed to add product certification: ${res.statusText}`);
     return res.json();
   },
 

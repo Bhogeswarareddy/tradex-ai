@@ -146,6 +146,33 @@ export const adminApi = {
     return r.json();
   },
 
+  // Product Catalogue Review (Prompt 15)
+  getAdminProducts: async (status: string = "pending_review"): Promise<any> => {
+    const r = await fetch(`/api/v1/admin/products?status=${encodeURIComponent(status)}`, { headers: authHeaders() });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+
+  approveProduct: async (id: string, notes?: string): Promise<any> => {
+    const r = await fetch(`/api/v1/admin/products/${encodeURIComponent(id)}/approve`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ admin_notes: notes }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+
+  rejectProduct: async (id: string, reason: string, notes?: string): Promise<any> => {
+    const r = await fetch(`/api/v1/admin/products/${encodeURIComponent(id)}/reject`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ reason, admin_notes: notes }),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+
   // Product & RFQ Moderation
   listProductsForModeration: async (): Promise<any[]> => {
     const r = await fetch("/api/v1/admin/moderation/products", { headers: authHeaders() });

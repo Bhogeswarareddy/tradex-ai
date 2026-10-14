@@ -1,7 +1,7 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import List, Optional
-from sqlalchemy import Boolean, CheckConstraint, Date, Float, ForeignKey, Index, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Index, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -61,6 +61,7 @@ class Product(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
         CheckConstraint("lead_time_days >= 0", name="chk_product_lead_time_non_negative"),
         Index("idx_products_origin_country", "origin_country"),
         Index("idx_products_is_active", "is_active"),
+        Index("idx_products_status", "status"),
     )
 
     supplier_id: Mapped[uuid.UUID] = mapped_column(
@@ -81,6 +82,31 @@ class Product(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     specifications: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     stock_available: Mapped[int] = mapped_column(Integer, default=1000, nullable=False)
     next_available_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+
+    # Prompt 15 Catalog Enhancements
+    product_form: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    production_region: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    currency: Mapped[str] = mapped_column(String(10), default="USD", nullable=False)
+    price_valid_from: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    price_valid_until: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    available_quantity: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    reserved_quantity: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    availability_status: Mapped[str] = mapped_column(String(50), default="in_stock", nullable=False)
+    monthly_capacity: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    packaging: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    storage: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    export_details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    supported_destinations: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    incoterms: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    payment_terms: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    supporting_documents: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    certifications_json: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="draft", nullable=False, index=True)
+    rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    admin_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    price_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    inventory_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     supplier: Mapped["Supplier"] = relationship("Supplier", back_populates="products")
     category: Mapped["Category"] = relationship("Category", back_populates="products")
@@ -117,3 +143,14 @@ class PriceTier(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     currency: Mapped[str] = mapped_column(String(10), default="USD", nullable=False)
 
     product: Mapped["Product"] = relationship("Product", back_populates="price_tiers")
+
+
+class IndexJob(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "index_jobs"
+
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    entity_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    operation: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False, index=True)
+    payload: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+

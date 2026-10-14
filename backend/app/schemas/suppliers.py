@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class SupplierCertificationItem(BaseModel):
@@ -205,44 +205,169 @@ class StorefrontProfileResponse(BaseModel):
 
 
 class PriceTierCreate(BaseModel):
-    min_qty: int = Field(..., gt=0)
-    max_qty: Optional[int] = None
-    unit_price: float = Field(..., ge=0.0)
+    min_qty: int = Field(..., gt=0, description="Minimum order quantity for tier")
+    max_qty: Optional[int] = Field(None, description="Maximum order quantity for tier, or null for unbounded")
+    unit_price: float = Field(..., ge=0.0, description="Unit price for this tier (non-negative)")
     currency: str = "USD"
+
+    @field_validator("unit_price")
+    @classmethod
+    def validate_price_non_negative(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("Unit price cannot be negative")
+        return v
+
+
+def validate_price_tiers_no_overlap(tiers: List[PriceTierCreate]) -> List[PriceTierCreate]:
+    if not tiers:
+        return tiers
+    for t in tiers:
+        if t.unit_price < 0:
+            raise ValueError("Unit price cannot be negative")
+        if t.max_qty is not None and t.max_qty < t.min_qty:
+            raise ValueError(f"Max quantity ({t.max_qty}) cannot be less than min quantity ({t.min_qty})")
+
+    sorted_tiers = sorted(tiers, key=lambda x: x.min_qty)
+    for i in range(len(sorted_tiers) - 1):
+        curr = sorted_tiers[i]
+        nxt = sorted_tiers[i + 1]
+        if curr.min_qty == nxt.min_qty:
+            raise ValueError(f"Duplicate min quantity in price tiers: {curr.min_qty}")
+        if curr.max_qty is None:
+            curr.max_qty = nxt.min_qty - 1
+        elif nxt.min_qty <= curr.max_qty:
+            raise ValueError(
+                f"Overlapping price tiers detected: {curr.min_qty}-{curr.max_qty} overlaps with {nxt.min_qty}-{nxt.max_qty}"
+            )
+    return tiers
 
 
 class SupplierProductCreate(BaseModel):
     name: str = Field(..., min_length=2, max_length=255)
-    category_id: str
+    slug: Optional[str] = None
+    category_id: Optional[str] = None
+    category_name: Optional[str] = None
     description: Optional[str] = None
+    product_form: Optional[str] = None
+    specifications: Optional[Dict[str, Any]] = None
+    technical_specifications: Optional[Dict[str, Any]] = None
+    origin_country: str = "India"
+    production_region: Optional[str] = None
     hs_code: Optional[str] = None
     moq: int = Field(..., gt=0)
     unit: str = "kg"
-    origin_country: str = "India"
-    lead_time_days: int = 14
+    currency: str = "USD"
     price_tiers: List[PriceTierCreate] = []
-    is_active: bool = True
-    specifications: Optional[Dict[str, Any]] = None
-    images: Optional[List[str]] = None
+    price_valid_from: Optional[str] = None
+    price_valid_until: Optional[str] = None
+    available_quantity: Optional[int] = 0
+    reserved_quantity: Optional[int] = 0
     stock_available: Optional[int] = 1000
+    availability_status: str = "in_stock"
+    monthly_capacity: Optional[str] = None
+    lead_time_days: int = 14
+    packaging: Optional[str] = None
+    storage: Optional[str] = None
+    export_details: Optional[str] = None
+    supported_destinations: Optional[List[str]] = []
+    incoterms: Optional[List[str]] = []
+    payment_terms: Optional[List[str]] = []
+    images: Optional[List[str]] = []
+    supporting_documents: Optional[List[Dict[str, Any]]] = []
+    certifications_json: Optional[List[Dict[str, Any]]] = []
+    is_active: bool = True
     next_available_date: Optional[str] = None
+    submit_for_review: bool = False
+
+    @field_validator("price_tiers")
+    @classmethod
+    def check_tiers(cls, v: List[PriceTierCreate]) -> List[PriceTierCreate]:
+        return validate_price_tiers_no_overlap(v)
 
 
 class SupplierProductUpdate(BaseModel):
     name: Optional[str] = None
+    slug: Optional[str] = None
     category_id: Optional[str] = None
     description: Optional[str] = None
+    product_form: Optional[str] = None
+    specifications: Optional[Dict[str, Any]] = None
+    technical_specifications: Optional[Dict[str, Any]] = None
+    origin_country: Optional[str] = None
+    production_region: Optional[str] = None
     hs_code: Optional[str] = None
     moq: Optional[int] = None
     unit: Optional[str] = None
-    origin_country: Optional[str] = None
-    lead_time_days: Optional[int] = None
+    currency: Optional[str] = None
     price_tiers: Optional[List[PriceTierCreate]] = None
-    is_active: Optional[bool] = None
-    specifications: Optional[Dict[str, Any]] = None
+    price_valid_from: Optional[str] = None
+    price_valid_until: Optional[str] = None
+    available_quantity: Optional[int] = None
+    reserved_quantity: Optional[int] = None
+    stock_available: Optional[int] = None
+    availability_status: Optional[str] = None
+    monthly_capacity: Optional[str] = None
+    lead_time_days: Optional[int] = None
+    packaging: Optional[str] = None
+    storage: Optional[str] = None
+    export_details: Optional[str] = None
+    supported_destinations: Optional[List[str]] = None
+    incoterms: Optional[List[str]] = None
+    payment_terms: Optional[List[str]] = None
     images: Optional[List[str]] = None
+    supporting_documents: Optional[List[Dict[str, Any]]] = None
+    certifications_json: Optional[List[Dict[str, Any]]] = None
+    is_active: Optional[bool] = None
+    next_available_date: Optional[str] = None
+
+    @field_validator("price_tiers")
+    @classmethod
+    def check_tiers(cls, v: Optional[List[PriceTierCreate]]) -> Optional[List[PriceTierCreate]]:
+        if v is not None:
+            return validate_price_tiers_no_overlap(v)
+        return v
+
+
+class PriceTiersUpdateRequest(BaseModel):
+    price_tiers: List[PriceTierCreate]
+
+    @field_validator("price_tiers")
+    @classmethod
+    def check_tiers(cls, v: List[PriceTierCreate]) -> List[PriceTierCreate]:
+        return validate_price_tiers_no_overlap(v)
+
+
+class InventoryUpdateRequest(BaseModel):
+    available_quantity: int = Field(..., ge=0)
+    reserved_quantity: Optional[int] = 0
+    availability_status: str = Field(default="in_stock", description="in_stock, limited, made_to_order, out_of_stock")
+    monthly_capacity: Optional[str] = None
+    lead_time_days: Optional[int] = None
     stock_available: Optional[int] = None
     next_available_date: Optional[str] = None
+
+
+class AddDocumentRequest(BaseModel):
+    title: str
+    doc_type: str = "specification"
+    file_url: str
+    file_size_bytes: Optional[int] = None
+    file_name: Optional[str] = None
+
+
+class AddCertificationRequest(BaseModel):
+    name: str
+    code: Optional[str] = None
+    certificate_no: str
+    issued_at: Optional[str] = None
+    expires_at: Optional[str] = None
+    document_url: Optional[str] = None
+    status: str = "pending"
+
+
+class AdminProductRejectRequest(BaseModel):
+    reason: str = Field(..., min_length=1, description="Audited rejection reason")
+    admin_notes: Optional[str] = None
 
 
 class BulkStatusUpdateRequest(BaseModel):

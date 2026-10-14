@@ -37,6 +37,9 @@ export const AdminPage: React.FC = () => {
   const [rejectionNotes, setRejectionNotes] = useState<Record<string, string>>({});
   const [moderationProducts, setModerationProducts] = useState<any[]>([]);
   const [moderationRfqs, setModerationRfqs] = useState<any[]>([]);
+  const [pendingReviewProducts, setPendingReviewProducts] = useState<any[]>([]);
+  const [productReviewNotes, setProductReviewNotes] = useState<Record<string, string>>({});
+  const [productRejectionReason, setProductRejectionReason] = useState<Record<string, string>>({});
   const [docReviewQueue, setDocReviewQueue] = useState<any[]>([]);
   const [matchingWeights, setMatchingWeights] = useState<Record<string, number>>({
     price: 0.35,
@@ -67,10 +70,14 @@ export const AdminPage: React.FC = () => {
         const v = await adminApi.getVerificationQueue();
         setVerificationQueue(v);
       } else if (activeTab === "moderation") {
-        const prods = await adminApi.listProductsForModeration();
-        const rfqs = await adminApi.listRfqsForModeration();
+        const [prods, rfqs, pendingProds] = await Promise.all([
+          adminApi.listProductsForModeration().catch(() => []),
+          adminApi.listRfqsForModeration().catch(() => []),
+          adminApi.getAdminProducts("pending_review").catch(() => []),
+        ]);
         setModerationProducts(prods);
         setModerationRfqs(rfqs);
+        setPendingReviewProducts(pendingProds);
       } else if (activeTab === "doc_review") {
         const docs = await adminApi.getDocumentReviewQueue();
         setDocReviewQueue(docs);
@@ -129,6 +136,35 @@ export const AdminPage: React.FC = () => {
       setModerationProducts(prods);
     } catch (err: any) {
       alert(`Error: ${err.message}`);
+    }
+  };
+
+  const handleApprovePendingProduct = async (id: string) => {
+    try {
+      const note = productReviewNotes[id];
+      await adminApi.approveProduct(id, note);
+      setActionMessage("Product approved and published successfully.");
+      const updated = await adminApi.getAdminProducts("pending_review");
+      setPendingReviewProducts(updated);
+    } catch (err: any) {
+      alert(`Approval failed: ${err.message}`);
+    }
+  };
+
+  const handleRejectPendingProduct = async (id: string) => {
+    const reason = productRejectionReason[id];
+    if (!reason || !reason.trim()) {
+      alert("A rejection reason is required.");
+      return;
+    }
+    try {
+      const note = productReviewNotes[id];
+      await adminApi.rejectProduct(id, reason.trim(), note);
+      setActionMessage("Product rejected.");
+      const updated = await adminApi.getAdminProducts("pending_review");
+      setPendingReviewProducts(updated);
+    } catch (err: any) {
+      alert(`Rejection failed: ${err.message}`);
     }
   };
 
@@ -447,6 +483,94 @@ export const AdminPage: React.FC = () => {
       {/* Tab: Moderation */}
       {activeTab === "moderation" && (
         <div className="space-y-6">
+          {/* Pending Product Approval Queue (Prompt 15) */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-blue-600" />
+                  Supplier Product Approval Queue ({pendingReviewProducts.length})
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Products submitted by suppliers pending compliance verification before public listing
+                </p>
+              </div>
+            </div>
+
+            {pendingReviewProducts.length === 0 ? (
+              <div className="p-6 text-center text-xs text-slate-400 bg-slate-50 dark:bg-slate-800/30 rounded-lg">
+                No products currently pending review. All submissions processed!
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {pendingReviewProducts.map((p) => (
+                  <div
+                    key={p.id}
+                    className="p-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl space-y-3"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                          {p.name}
+                        </h4>
+                        <p className="text-[11px] text-slate-500">
+                          Supplier: <span className="font-semibold text-slate-700 dark:text-slate-300">{p.supplier_name || "Supplier"}</span> • {p.origin_country || "India"} • Category: {p.category_name} • HS: {p.hs_code || "N/A"}
+                        </p>
+                      </div>
+                      <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                        MOQ: {p.moq} {p.unit} • Price: ${p.price_min?.toFixed(2)} - ${p.price_max?.toFixed(2)} / {p.unit}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      <input
+                        type="text"
+                        placeholder="Rejection Reason (required for reject)..."
+                        value={productRejectionReason[p.id] || ""}
+                        onChange={(e) =>
+                          setProductRejectionReason({
+                            ...productRejectionReason,
+                            [p.id]: e.target.value,
+                          })
+                        }
+                        className="px-2.5 py-1 text-xs rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Internal Admin Notes (never shared publicly)..."
+                        value={productReviewNotes[p.id] || ""}
+                        onChange={(e) =>
+                          setProductReviewNotes({
+                            ...productReviewNotes,
+                            [p.id]: e.target.value,
+                          })
+                        }
+                        className="px-2.5 py-1 text-xs rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-200 dark:border-slate-700">
+                      <button
+                        onClick={() => handleRejectPendingProduct(p.id)}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition"
+                      >
+                        <XCircle className="w-3.5 h-3.5" />
+                        Reject Submission
+                      </button>
+                      <button
+                        onClick={() => handleApprovePendingProduct(p.id)}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition shadow-sm"
+                      >
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        Approve & Publish
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm p-4 space-y-4">
             <h3 className="text-sm font-bold text-slate-900 dark:text-white">Product Catalog Moderation</h3>
             <div className="overflow-x-auto">

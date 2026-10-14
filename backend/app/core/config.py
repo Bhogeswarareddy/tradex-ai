@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     ADMIN_BOOTSTRAP_EMAIL: str = ""
     ADMIN_BOOTSTRAP_PASSWORD: str = ""
 
+    # Catalog & Approval Workflow (Prompt 15)
+    REQUIRE_PRODUCT_APPROVAL: bool = True
+    STALE_PRICE_DAYS: int = 30
+    STALE_INVENTORY_DAYS: int = 14
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:

@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -48,6 +48,13 @@ class ProductListItem(BaseModel):
     supplier_rating: float = 4.8
     certifications: List[str] = Field(default_factory=list)
     is_saved: bool = False
+    status: Optional[str] = "published"
+    price_status: Optional[str] = "current"
+    availability_status_confirmed: Optional[str] = "current"
+    price_confirmed_at: Optional[str] = None
+    inventory_confirmed_at: Optional[str] = None
+    price_badge: Optional[str] = None
+    availability_badge: Optional[str] = None
 
 
 class PaginatedProductsResponse(BaseModel):
@@ -91,6 +98,25 @@ class ProductDetailResponse(BaseModel):
     incoterms: List[str] = Field(default_factory=lambda: ["FOB", "CIF", "EXW"])
     related_products: List[ProductListItem] = Field(default_factory=list)
     is_saved: bool = False
+
+    # Prompt 15 Freshness & Status Metadata
+    status: Optional[str] = "published"
+    product_form: Optional[str] = None
+    production_region: Optional[str] = None
+    available_quantity: Optional[int] = 0
+    reserved_quantity: Optional[int] = 0
+    availability_status: Optional[str] = "in_stock"
+    monthly_capacity: Optional[str] = None
+    price_status: Optional[str] = "current"
+    availability_status_confirmed: Optional[str] = "current"
+    price_confirmed_at: Optional[str] = None
+    inventory_confirmed_at: Optional[str] = None
+    price_badge: Optional[str] = None
+    availability_badge: Optional[str] = None
+    supporting_documents: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
+    certifications_json: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
+    supported_destinations: Optional[List[str]] = Field(default_factory=list)
+    payment_terms: Optional[List[str]] = Field(default_factory=list)
 
 
 class CategoryNode(BaseModel):

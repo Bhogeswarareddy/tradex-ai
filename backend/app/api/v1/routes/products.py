@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user_optional
 from app.core.db import get_db
+from app.core.freshness import get_product_freshness_metadata
 from app.models.catalog import (
     Category,
     Certification,
@@ -73,11 +74,12 @@ async def list_products(
     db: AsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user_optional),
 ) -> PaginatedProductsResponse:
-    # Build base select
+    # Build base select - only published, active products from active companies appear publicly
     stmt = (
         select(Product)
         .where(Product.deleted_at.is_(None))
         .where(Product.is_active.is_(True))
+        .where(Product.status == "published")
         .join(Category, Product.category_id == Category.id)
         .join(Supplier, Product.supplier_id == Supplier.id)
         .join(Company, Supplier.company_id == Company.id)
@@ -302,6 +304,8 @@ async def list_products(
         if not certs:
             certs = ["ISO 22000", "Organic Certified"]
 
+        freshness = get_product_freshness_metadata(p)
+
         items.append(
             ProductListItem(
                 id=str(p.id),
@@ -326,6 +330,13 @@ async def list_products(
                 supplier_rating=sup_rating,
                 certifications=certs[:3],
                 is_saved=(p.id in saved_ids),
+                status=p.status or "published",
+                price_status=freshness["price_status"],
+                availability_status_confirmed=freshness["availability_status_confirmed"],
+                price_confirmed_at=freshness["price_confirmed_at"],
+                inventory_confirmed_at=freshness["inventory_confirmed_at"],
+                price_badge=freshness["price_badge"],
+                availability_badge=freshness["availability_badge"],
             )
         )
 
@@ -397,6 +408,8 @@ async def get_product_detail(
         select(Product)
         .where(cond)
         .where(Product.deleted_at.is_(None))
+        .where(Product.is_active.is_(True))
+        .where(Product.status == "published")
         .options(
             selectinload(Product.category),
             selectinload(Product.price_tiers),
@@ -411,7 +424,7 @@ async def get_product_detail(
     if not p:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Product with identifier '{slug}' not found.",
+            detail=f"Product with identifier '{slug}' not found or is not currently published.",
         )
 
     c_name = p.category.name if p.category else "Agricultural Commodities"
@@ -555,6 +568,8 @@ async def get_product_detail(
         )
         is_saved = (saved_rec is not None)
 
+    freshness = get_product_freshness_metadata(p)
+
     return ProductDetailResponse(
         id=str(p.id),
         name=p.name,
@@ -574,10 +589,27 @@ async def get_product_detail(
         reviews_summary=ReviewsSummary(average_rating=round(raw_trust, 1), total_reviews=128),
         ai_summary=ai_summary,
         specifications=specs,
-        packaging=packaging,
-        incoterms=incoterms,
+        packaging=p.packaging or packaging,
+        incoterms=p.incoterms or incoterms,
         related_products=related,
         is_saved=is_saved,
+        status=p.status or "published",
+        product_form=p.product_form,
+        production_region=p.production_region,
+        available_quantity=p.available_quantity,
+        reserved_quantity=p.reserved_quantity,
+        availability_status=p.availability_status or "in_stock",
+        monthly_capacity=p.monthly_capacity,
+        price_status=freshness["price_status"],
+        availability_status_confirmed=freshness["availability_status_confirmed"],
+        price_confirmed_at=freshness["price_confirmed_at"],
+        inventory_confirmed_at=freshness["inventory_confirmed_at"],
+        price_badge=freshness["price_badge"],
+        availability_badge=freshness["availability_badge"],
+        supporting_documents=p.supporting_documents or [],
+        certifications_json=p.certifications_json or [],
+        supported_destinations=p.supported_destinations or [],
+        payment_terms=p.payment_terms or [],
     )
 
 

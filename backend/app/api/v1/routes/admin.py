@@ -459,6 +459,159 @@ async def moderate_product(
     return {"product_id": str(product.id), "status": payload.action, "is_active": product.is_active}
 
 
+# --- Prompt 15: Product Approval Workflow Endpoints ---
+
+class AdminProductRejectRequest(BaseModel):
+    reason: str
+    admin_notes: Optional[str] = None
+
+
+@router.get("/products")
+async def list_admin_products(
+    status: Optional[str] = Query(None, description="Filter products by status, e.g. pending_review"),
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    query = (
+        select(Product)
+        .options(
+            selectinload(Product.supplier).selectinload(Supplier.company),
+            selectinload(Product.category),
+            selectinload(Product.price_tiers),
+        )
+        .order_by(desc(Product.created_at))
+        .limit(limit)
+        .offset(offset)
+    )
+    if status:
+        query = query.where(Product.status == status)
+
+    res = await db.execute(query)
+    products = res.scalars().all()
+
+    return [
+        {
+            "id": str(p.id),
+            "name": p.name,
+            "slug": p.slug,
+            "category_name": p.category.name if p.category else "General",
+            "supplier_id": str(p.supplier_id),
+            "supplier_name": p.supplier.company.name if p.supplier and p.supplier.company else "Unknown",
+            "origin_country": p.origin_country,
+            "moq": p.moq,
+            "unit": p.unit,
+            "status": p.status,
+            "is_active": p.is_active,
+            "rejection_reason": p.rejection_reason,
+            "admin_notes": p.admin_notes,
+            "price_confirmed_at": p.price_confirmed_at.isoformat() if p.price_confirmed_at else None,
+            "inventory_confirmed_at": p.inventory_confirmed_at.isoformat() if p.inventory_confirmed_at else None,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+            "price_tiers": [
+                {
+                    "min_qty": pt.min_qty,
+                    "max_qty": pt.max_qty,
+                    "unit_price": float(pt.unit_price),
+                    "currency": pt.currency,
+                }
+                for pt in p.price_tiers
+            ],
+        }
+        for p in products
+    ]
+
+
+@router.post("/products/{id}/approve")
+async def approve_admin_product(
+    id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    stmt = select(Product).where(Product.id == id)
+    res = await db.execute(stmt)
+    product = res.scalar_one_or_none()
+    if not product:
+        raise NotFoundError("Product not found")
+
+    product.status = "published"
+    product.is_active = True
+    product.rejection_reason = None
+    product.updated_at = datetime.now(timezone.utc)
+
+    # Audited
+    audit = AuditLog(
+        user_id=current_user.id,
+        action="PRODUCT_APPROVED",
+        entity_type="product",
+        entity_id=str(product.id),
+        details={"status": "published", "is_active": True},
+    )
+    db.add(audit)
+
+    # Search / RAG index hook
+    from app.services.indexer import enqueue_index_job
+    await enqueue_index_job("product", product.id, "publish", db)
+
+    await db.commit()
+    await db.refresh(product)
+    return {
+        "id": str(product.id),
+        "status": product.status,
+        "is_active": product.is_active,
+        "message": "Product approved and published successfully",
+    }
+
+
+@router.post("/products/{id}/reject")
+async def reject_admin_product(
+    id: uuid.UUID,
+    payload: AdminProductRejectRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    if not payload.reason or not payload.reason.strip():
+        raise BadRequestError("Rejection reason is required")
+
+    stmt = select(Product).where(Product.id == id)
+    res = await db.execute(stmt)
+    product = res.scalar_one_or_none()
+    if not product:
+        raise NotFoundError("Product not found")
+
+    product.status = "rejected"
+    product.is_active = False
+    product.rejection_reason = payload.reason.strip()
+    if payload.admin_notes:
+        product.admin_notes = payload.admin_notes.strip()
+    product.updated_at = datetime.now(timezone.utc)
+
+    # Audited
+    audit = AuditLog(
+        user_id=current_user.id,
+        action="PRODUCT_REJECTED",
+        entity_type="product",
+        entity_id=str(product.id),
+        details={"status": "rejected", "reason": payload.reason, "admin_notes": payload.admin_notes},
+    )
+    db.add(audit)
+
+    # Search / RAG index hook
+    from app.services.indexer import enqueue_index_job
+    await enqueue_index_job("product", product.id, "unpublish", db)
+
+    await db.commit()
+    await db.refresh(product)
+    return {
+        "id": str(product.id),
+        "status": product.status,
+        "rejection_reason": product.rejection_reason,
+        "is_active": product.is_active,
+        "message": "Product rejected successfully",
+    }
+
+
 @router.get("/moderation/rfqs")
 async def list_rfqs_for_moderation(
     limit: int = 50,
