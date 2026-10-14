@@ -589,6 +589,55 @@ export const SupplierProductsManagerView: React.FC<SupplierProductsManagerViewPr
     );
   };
 
+  const getIndexBadge = (p: PortalProductItem) => {
+    const isPublished = (p.status || "").toLowerCase() === "published";
+    const isPending = (p.status || "").toLowerCase() === "pending_review";
+    const status = p.index_status || (isPublished ? "Ready" : isPending ? "Pending" : "Inactive");
+    const st = status.toLowerCase();
+
+    if (st === "ready") {
+      return (
+        <span
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold"
+          title="Indexed in AI Knowledge Base — available for Grounded RAG"
+        >
+          <Sparkles className="w-2.5 h-2.5 text-emerald-600" />
+          AI: Ready
+        </span>
+      );
+    }
+    if (st === "pending" || st === "processing") {
+      return (
+        <span
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-semibold"
+          title="Indexing in progress"
+        >
+          <Clock className="w-2.5 h-2.5 text-amber-600" />
+          AI: Indexing
+        </span>
+      );
+    }
+    if (st === "failed") {
+      return (
+        <span
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-semibold"
+          title="Vector indexing failed"
+        >
+          <AlertCircle className="w-2.5 h-2.5 text-rose-600" />
+          AI: Failed
+        </span>
+      );
+    }
+    return (
+      <span
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-semibold"
+        title="Inactive in vector index (Product unpublished/draft)"
+      >
+        AI: Inactive
+      </span>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Header & Actions Bar */}
@@ -813,7 +862,10 @@ export const SupplierProductsManagerView: React.FC<SupplierProductsManagerViewPr
                       </td>
                       <td className="p-3">
                         <div className="space-y-1">
-                          {getStatusBadge(p.status, p.is_active, p.rejection_reason)}
+                          <div className="flex flex-wrap items-center gap-1">
+                            {getStatusBadge(p.status, p.is_active, p.rejection_reason)}
+                            {getIndexBadge(p)}
+                          </div>
                           {isRejected && p.rejection_reason && (
                             <div className="text-[10px] text-rose-600 max-w-xs truncate" title={p.rejection_reason}>
                               Reason: {p.rejection_reason}

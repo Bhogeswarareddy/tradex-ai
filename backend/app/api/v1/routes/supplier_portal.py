@@ -381,6 +381,7 @@ def serialize_supplier_product(product: Product) -> dict:
         "inventory_confirmed_at": freshness["inventory_confirmed_at"],
         "price_badge": freshness["price_badge"],
         "availability_badge": freshness["availability_badge"],
+        "index_status": "Ready" if (product.status or "").lower() == "published" else ("Pending" if (product.status or "").lower() == "pending_review" else "Inactive"),
         "created_at": product.created_at.isoformat() if product.created_at else None,
         "updated_at": product.updated_at.isoformat() if product.updated_at else None,
     }
@@ -523,7 +524,7 @@ async def create_supplier_product(
         is_active=is_active,
         status=initial_status,
         specifications=specs,
-        stock_available=payload.stock_available or 1000,
+        stock_available=payload.available_quantity or payload.stock_available or 1000,
         available_quantity=payload.available_quantity or payload.stock_available or 1000,
         reserved_quantity=payload.reserved_quantity or 0,
         availability_status=payload.availability_status or "in_stock",
@@ -567,11 +568,12 @@ async def create_supplier_product(
             )
             db.add(tier)
     else:
+        unit_p = Decimal(str(payload.price)) if payload.price is not None else Decimal("4.50")
         default_tier = PriceTier(
             product_id=product.id,
             min_qty=payload.moq,
             max_qty=None,
-            unit_price=Decimal("4.50"),
+            unit_price=unit_p,
             currency=payload.currency or "USD",
         )
         db.add(default_tier)
@@ -926,6 +928,17 @@ async def update_supplier_product(
                 currency=pt.currency,
             )
             db.add(tier)
+        price_changed = True
+    elif payload.price is not None:
+        await db.execute(delete(PriceTier).where(PriceTier.product_id == product.id))
+        tier = PriceTier(
+            product_id=product.id,
+            min_qty=product.moq or 1,
+            max_qty=None,
+            unit_price=Decimal(str(payload.price)),
+            currency=product.currency or "USD",
+        )
+        db.add(tier)
         price_changed = True
 
     if price_changed:

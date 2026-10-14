@@ -17,6 +17,10 @@ import {
   Bot,
   Hexagon,
   Store,
+  ShieldCheck,
+  Award,
+  Layers,
+  Users,
 } from "lucide-react";
 import { useAuth } from "../../features/auth";
 
@@ -55,21 +59,33 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavClick, className = "" }) 
   const location = useLocation();
   const { user } = useAuth();
 
-  const isSupplierOrAdmin = user?.role === "supplier" || user?.role === "admin";
-  const navItems: NavItem[] = isSupplierOrAdmin
-    ? [
-        ...NAV_ITEMS.slice(0, 4),
-        {
-          id: "supplier-portal",
-          name: "Supplier Portal",
-          href: "/supplier",
-          icon: Store,
-          badge: "Portal",
-          badgeColor: "bg-emerald-600",
-        },
-        ...NAV_ITEMS.slice(4),
-      ]
-    : NAV_ITEMS;
+  const userRole = (user?.role || "buyer").toLowerCase();
+
+  let navItems: NavItem[] = NAV_ITEMS;
+  if (userRole === "admin") {
+    navItems = [
+      { id: "admin-overview", name: "Admin Console", href: "/admin", icon: ShieldCheck, badge: "Admin", badgeColor: "bg-purple-600" },
+      { id: "admin-users", name: "Users & Roles", href: "/admin?tab=users", icon: Users },
+      { id: "admin-products", name: "Product Approvals", href: "/admin?tab=moderation", icon: Package },
+      { id: "admin-verification", name: "Supplier Verification", href: "/admin?tab=verification", icon: Building2 },
+      { id: "admin-indexing", name: "Indexing Jobs", href: "/admin?tab=indexing", icon: Sparkles },
+      { id: "admin-audit", name: "Audit Logs", href: "/admin?tab=audit", icon: FileText },
+      { id: "admin-settings", name: "Platform Config", href: "/admin?tab=settings", icon: Settings },
+    ];
+  } else if (userRole === "supplier") {
+    navItems = [
+      { id: "supplier-portal", name: "Supplier Portal", href: "/supplier", icon: Store, badge: "Portal", badgeColor: "bg-emerald-600" },
+      { id: "supplier-products", name: "My Products", href: "/supplier?tab=products", icon: Package },
+      { id: "supplier-capacity", name: "Inventory & Capacity", href: "/supplier?tab=capacity", icon: Layers },
+      { id: "supplier-certs", name: "Certifications", href: "/supplier?tab=certifications", icon: Award },
+      { id: "rfq", name: "RFQ Opportunities", href: "/rfq", icon: FileText },
+      { id: "orders", name: "Orders", href: "/orders", icon: ShoppingCart },
+      { id: "shipments", name: "Shipments", href: "/shipments", icon: Truck },
+      { id: "messages", name: "Inquiries & Messages", href: "/messages", icon: MessageSquare, badge: 3, badgeColor: "bg-red-500" },
+      { id: "analytics", name: "Supplier Analytics", href: "/analytics", icon: BarChart3 },
+      { id: "settings", name: "Settings", href: "/settings", icon: Settings },
+    ];
+  }
 
   return (
     <aside

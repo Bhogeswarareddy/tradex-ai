@@ -306,6 +306,9 @@ async def ask_catalog_assistant(
                 })
 
         supplier_company = p.supplier.company if p.supplier else None
+        prices = [t["unit_price"] for t in tiers_data]
+        p_min = min(prices) if prices else 0.0
+        p_max = max(prices) if prices else 0.0
 
         product_cards.append({
             "id": str(p.id),
@@ -317,7 +320,9 @@ async def ask_catalog_assistant(
             "hs_code": p.hs_code,
             "moq": p.moq,
             "unit": p.unit,
-            "live_stock": p.stock_available,
+            "live_min_price": p_min,
+            "live_max_price": p_max,
+            "live_stock": p.available_quantity if p.available_quantity is not None else p.stock_available,
             "availability_status": p.availability_status,
             "lead_time_days": p.lead_time_days,
             "price_tiers": tiers_data,

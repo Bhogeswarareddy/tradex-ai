@@ -104,6 +104,7 @@ export interface PortalProductItem {
   inventory_confirmed_at?: string;
   price_badge?: string;
   availability_badge?: string;
+  index_status?: string;
   created_at?: string;
   updated_at?: string;
 }

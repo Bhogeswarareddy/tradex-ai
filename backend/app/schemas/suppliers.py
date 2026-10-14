@@ -257,6 +257,7 @@ class SupplierProductCreate(BaseModel):
     moq: int = Field(..., gt=0)
     unit: str = "kg"
     currency: str = "USD"
+    price: Optional[float] = None
     price_tiers: List[PriceTierCreate] = []
     price_valid_from: Optional[str] = None
     price_valid_until: Optional[str] = None
@@ -299,6 +300,7 @@ class SupplierProductUpdate(BaseModel):
     moq: Optional[int] = None
     unit: Optional[str] = None
     currency: Optional[str] = None
+    price: Optional[float] = None
     price_tiers: Optional[List[PriceTierCreate]] = None
     price_valid_from: Optional[str] = None
     price_valid_until: Optional[str] = None

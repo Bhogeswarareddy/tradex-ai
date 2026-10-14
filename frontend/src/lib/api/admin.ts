@@ -239,4 +239,31 @@ export const adminApi = {
     if (!r.ok) throw new Error(await r.text());
     return r.json();
   },
+
+  // Indexing Jobs & Vector Management
+  listIndexJobs: async (params?: { status?: string; entity_type?: string; limit?: number; offset?: number }): Promise<{ items: any[]; total: number }> => {
+    const q = new URLSearchParams(params as any).toString();
+    const r = await fetch(`/api/v1/admin/indexing/jobs${q ? `?${q}` : ""}`, { headers: authHeaders() });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+
+  retryIndexJob: async (id: string): Promise<any> => {
+    const r = await fetch(`/api/v1/admin/indexing/jobs/${id}/retry`, {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+
+  triggerReindex: async (): Promise<any> => {
+    const r = await fetch("/api/v1/admin/indexing/reindex", {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
 };
+
