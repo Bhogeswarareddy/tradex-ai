@@ -166,9 +166,19 @@ class SupplierDashboardMetricsResponse(BaseModel):
     revenue_this_month: float
     timeline_30d: List[Dict[str, Any]]
     opportunities: List[SupplierOpportunityItem]
+    products_count: int = 0
+    active_products_count: int = 0
+    published_products_count: int = 0
+    orders_count: int = 0
+    products_by_status: Dict[str, int] = {}
+    low_stock_alerts: List[Dict[str, Any]] = []
+    stale_price_alerts: List[Dict[str, Any]] = []
+    expiring_certificates: List[Dict[str, Any]] = []
 
 
 class StorefrontProfileUpdate(BaseModel):
+    company_name: Optional[str] = None
+    about: Optional[str] = None
     description: Optional[str] = None
     website: Optional[str] = None
     logo_url: Optional[str] = None
@@ -177,9 +187,13 @@ class StorefrontProfileUpdate(BaseModel):
     state: Optional[str] = None
     country: Optional[str] = None
     years_in_business: Optional[int] = None
+    year_founded: Optional[int] = None
+    employees: Optional[int] = None
     capacity_per_month: Optional[str] = None
     export_countries: Optional[List[str]] = None
+    export_markets: Optional[List[str]] = None
     languages: Optional[List[str]] = None
+    factory_photos: Optional[List[str]] = None
     factory_details: Optional[Dict[str, Any]] = None
 
 
@@ -187,6 +201,7 @@ class StorefrontProfileResponse(BaseModel):
     id: str
     company_id: str
     company_name: str
+    about: Optional[str] = None
     description: Optional[str] = None
     website: Optional[str] = None
     logo_url: Optional[str] = None
@@ -195,13 +210,18 @@ class StorefrontProfileResponse(BaseModel):
     state: Optional[str] = None
     country: str
     years_in_business: int
+    year_founded: Optional[int] = None
+    employees: Optional[int] = None
     verified_status: str
     capacity_per_month: str
     export_countries: List[str] = []
+    export_markets: List[str] = []
     languages: List[str] = []
+    factory_photos: List[str] = []
     factory_details: Optional[Dict[str, Any]] = None
     completeness_score: int
     completeness_tips: List[str] = []
+    public_storefront_url: str = ""
 
 
 class PriceTierCreate(BaseModel):
@@ -254,7 +274,7 @@ class SupplierProductCreate(BaseModel):
     origin_country: str = "India"
     production_region: Optional[str] = None
     hs_code: Optional[str] = None
-    moq: int = Field(..., gt=0)
+    moq: int = Field(default=1, ge=1)
     unit: str = "kg"
     currency: str = "USD"
     price: Optional[float] = None
@@ -394,14 +414,25 @@ class CapacityInventoryItem(BaseModel):
     product_name: str
     unit: str
     moq: int
-    monthly_capacity: str
-    stock_available: int
+    monthly_capacity: Optional[str] = None
+    available_quantity: int = 0
+    reserved_quantity: int = 0
+    stock_available: int = 0
+    availability_status: str = "in_stock"
     next_available_date: Optional[str] = None
-    lead_time_days: int
+    lead_time_days: int = 14
+    price_confirmed_at: Optional[str] = None
+    confirmed_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    is_stale: bool = False
 
 
 class CapacityInventoryUpdate(BaseModel):
-    stock_available: int = Field(..., ge=0)
+    stock_available: Optional[int] = None
+    available_quantity: Optional[int] = None
+    reserved_quantity: Optional[int] = None
+    availability_status: Optional[str] = None
+    monthly_capacity: Optional[str] = None
     next_available_date: Optional[str] = None
     lead_time_days: Optional[int] = None
 
@@ -412,6 +443,15 @@ class SupplierCertCreate(BaseModel):
     certificate_no: str
     issued_at: Optional[str] = None
     expires_at: Optional[str] = None
+
+
+class SupplierInquiryMessage(BaseModel):
+    id: str
+    sender_name: str
+    sender_role: str
+    body: str
+    created_at: str
+    is_mine: bool = False
 
 
 class SupplierInquiryItem(BaseModel):
@@ -425,3 +465,56 @@ class SupplierInquiryItem(BaseModel):
     created_at: str
     is_read: bool = False
     replied: bool = False
+    status: str = "open"
+    messages_count: int = 1
+    messages: List[SupplierInquiryMessage] = []
+
+
+class SupplierOrderItem(BaseModel):
+    id: str
+    product_name: str
+    quantity: int
+    unit: str
+    unit_price: float
+    total_price: float
+
+
+class SupplierOrderResponse(BaseModel):
+    id: str
+    order_number: str
+    buyer_name: str
+    buyer_company: str
+    buyer_country: str
+    total_amount: float
+    currency: str
+    status: str
+    incoterm: str
+    created_at: str
+    shipping_address: Optional[str] = None
+    items: List[SupplierOrderItem] = []
+
+
+class SupplierShipmentResponse(BaseModel):
+    id: str
+    shipment_number: str
+    order_id: str
+    order_number: str
+    carrier: str
+    tracking_number: str
+    origin: str
+    destination: str
+    status: str
+    eta: Optional[str] = None
+    current_location: str
+    created_at: str
+
+
+class SupplierQuoteSubmitRequest(BaseModel):
+    unit_price: float = Field(..., gt=0)
+    landed_cost: Optional[float] = None
+    moq: Optional[int] = None
+    lead_time_days: int = Field(default=14, ge=1)
+    valid_days: int = Field(default=30, ge=1)
+    payment_terms: str = "LC at sight"
+    notes: Optional[str] = None
+

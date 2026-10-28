@@ -239,6 +239,33 @@ async def update_user_settings(
     return current_user.settings
 
 
+@router.get("/exchange-rates", response_model=Dict[str, Any])
+async def get_exchange_rates(
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """Retrieves stored exchange rates for multi-currency display."""
+    from app.models.trade import SimulatedExchangeRate
+
+    rates_stmt = select(SimulatedExchangeRate).where(SimulatedExchangeRate.from_currency == "USD")
+    rows = (await db.execute(rates_stmt)).scalars().all()
+    rates: Dict[str, float] = {
+        "USD": 1.0,
+        "EUR": 0.92,
+        "INR": 83.50,
+        "GBP": 0.79,
+        "AED": 3.67,
+        "CNY": 7.23,
+    }
+    for r in rows:
+        rates[r.to_currency] = float(r.rate)
+
+    return {
+        "base": "USD",
+        "rates": rates,
+        "notice": "Simulated exchange rates",
+    }
+
+
 @router.get("/me/sessions", response_model=List[Dict[str, Any]])
 async def list_user_sessions(
     current_user: User = Depends(get_current_user),

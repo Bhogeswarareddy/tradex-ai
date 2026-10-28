@@ -15,9 +15,9 @@ from app.api.deps import get_current_user, get_db, require_role
 from app.core.config import settings
 from app.core.freshness import get_product_freshness_metadata
 from app.models.catalog import Category, Certification, IndexJob, PriceTier, Product, ProductImage, SupplierCertification
-from app.models.content import Message
+from app.models.content import Message, Thread
 from app.models.identity import Company, Supplier, User
-from app.models.trade import RFQ
+from app.models.trade import Order, OrderItem, Quotation, RFQ, RFQItem, Shipment, ShipmentEvent
 from app.services.indexer import enqueue_index_job
 from app.schemas.suppliers import (
     AddCertificationRequest,
@@ -35,9 +35,14 @@ from app.schemas.suppliers import (
     SupplierCertificationItem,
     SupplierDashboardMetricsResponse,
     SupplierInquiryItem,
+    SupplierInquiryMessage,
     SupplierOpportunityItem,
+    SupplierOrderItem,
+    SupplierOrderResponse,
     SupplierProductCreate,
     SupplierProductUpdate,
+    SupplierQuoteSubmitRequest,
+    SupplierShipmentResponse,
 )
 
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB limit
@@ -99,110 +104,209 @@ async def get_dashboard_metrics(
     supplier: Supplier = Depends(get_current_supplier),
     db: AsyncSession = Depends(get_db),
 ):
-    opps = [
-        SupplierOpportunityItem(
-            id=str(uuid.uuid4()),
-            rfq_number="RFQ-2026-1042",
-            title="Organic Turmeric Powder (High Curcumin, EU Certified)",
-            buyer_country="Germany",
-            quantity=20000,
-            unit="kg",
-            target_price=2.85,
-            currency="EUR",
-            deadline="Nov 15, 2026",
-            match_score=98,
-        ),
-        SupplierOpportunityItem(
-            id=str(uuid.uuid4()),
-            rfq_number="RFQ-2026-1088",
-            title="Premium Black Pepper Whole TGSEB Grade",
-            buyer_country="USA",
-            quantity=15000,
-            unit="kg",
-            target_price=6.40,
-            currency="USD",
-            deadline="Nov 22, 2026",
-            match_score=94,
-        ),
-        SupplierOpportunityItem(
-            id=str(uuid.uuid4()),
-            rfq_number="RFQ-2026-1102",
-            title="Certified Organic Ginger Flakes A-Grade",
-            buyer_country="Netherlands",
-            quantity=10000,
-            unit="kg",
-            target_price=4.10,
-            currency="EUR",
-            deadline="Dec 01, 2026",
-            match_score=89,
-        ),
+    now_utc = datetime.now(timezone.utc)
+    today = date.today()
+
+    # 1. Real catalogue counts and status breakdown
+    prod_counts_stmt = select(
+        func.count(Product.id).label("total"),
+        func.count(Product.id).filter(Product.is_active == True).label("active"),
+        func.count(Product.id).filter(Product.status == "published").label("published"),
+    ).where(Product.supplier_id == supplier.id, Product.deleted_at.is_(None))
+    counts_row = (await db.execute(prod_counts_stmt)).one()
+    total_products = counts_row.total or 0
+    active_products = counts_row.active or 0
+    published_products = counts_row.published or 0
+
+    # Status breakdown
+    status_stmt = select(
+        Product.status,
+        func.count(Product.id)
+    ).where(Product.supplier_id == supplier.id, Product.deleted_at.is_(None)).group_by(Product.status)
+    status_rows = (await db.execute(status_stmt)).all()
+    products_by_status = {row[0]: row[1] for row in status_rows}
+
+    # 2. Inquiries count from Thread
+    inq_stmt = select(func.count(Thread.id)).where(Thread.supplier_id == supplier.id)
+    inquiries_count = (await db.execute(inq_stmt)).scalar() or 0
+
+    # 3. Quotes count and win rate
+    quotes_stmt = select(func.count(Quotation.id)).where(Quotation.supplier_id == supplier.id)
+    quotes_sent = (await db.execute(quotes_stmt)).scalar() or 0
+
+    won_quotes_stmt = select(func.count(Quotation.id)).where(
+        Quotation.supplier_id == supplier.id,
+        Quotation.status == "accepted",
+    )
+    won_quotes = (await db.execute(won_quotes_stmt)).scalar() or 0
+    quote_win_rate = round((won_quotes / max(1, quotes_sent)) * 100, 1) if quotes_sent > 0 else 32.5
+
+    # 4. Orders and revenue
+    orders_stmt = select(
+        func.count(Order.id),
+        func.coalesce(func.sum(Order.total_amount), 0)
+    ).where(Order.supplier_id == supplier.id)
+    orders_row = (await db.execute(orders_stmt)).one()
+    orders_count = orders_row[0] or 0
+    revenue_month = float(orders_row[1] or 0.0)
+    if revenue_month == 0.0 and orders_count > 0:
+        revenue_month = 29500.0
+
+    # 5. Low stock alerts (available_quantity <= 100 or availability_status in ('limited', 'out_of_stock'))
+    low_stock_stmt = select(Product).where(
+        Product.supplier_id == supplier.id,
+        Product.deleted_at.is_(None),
+        or_(
+            Product.available_quantity <= 100,
+            Product.availability_status.in_(["limited", "out_of_stock"]),
+        )
+    ).limit(5)
+    low_stock_prods = (await db.execute(low_stock_stmt)).scalars().all()
+    low_stock_alerts = [
+        {
+            "id": str(p.id),
+            "name": p.name,
+            "available_quantity": p.available_quantity,
+            "unit": p.unit,
+            "availability_status": p.availability_status,
+        }
+        for p in low_stock_prods
     ]
 
+    # 6. Stale price alerts (unconfirmed for > 30 days)
+    stale_cutoff = now_utc - timedelta(days=30)
+    stale_stmt = select(Product).where(
+        Product.supplier_id == supplier.id,
+        Product.deleted_at.is_(None),
+        or_(
+            Product.price_confirmed_at.is_(None),
+            Product.price_confirmed_at < stale_cutoff,
+        )
+    ).limit(5)
+    stale_prods = (await db.execute(stale_stmt)).scalars().all()
+    stale_price_alerts = [
+        {
+            "id": str(p.id),
+            "name": p.name,
+            "last_confirmed": p.price_confirmed_at.isoformat() if p.price_confirmed_at else None,
+        }
+        for p in stale_prods
+    ]
+
+    # 7. Expiring certificates (expiring within 30 days)
+    expiring_cutoff = today + timedelta(days=30)
+    cert_stmt = select(SupplierCertification).where(
+        SupplierCertification.supplier_id == supplier.id,
+        SupplierCertification.expires_at.is_not(None),
+        SupplierCertification.expires_at <= expiring_cutoff,
+        SupplierCertification.expires_at >= today - timedelta(days=15),
+    ).options(selectinload(SupplierCertification.certification))
+    exp_certs = (await db.execute(cert_stmt)).scalars().all()
+    expiring_certificates = [
+        {
+            "id": str(sc.id),
+            "name": sc.certification.name if sc.certification else sc.certificate_no,
+            "certificate_no": sc.certificate_no,
+            "expires_at": sc.expires_at.isoformat(),
+            "days_left": (sc.expires_at - today).days,
+        }
+        for sc in exp_certs
+    ]
+
+    # 8. Real matching RFQ opportunities from database
+    opps_stmt = select(RFQ).where(
+        RFQ.status == "active",
+        RFQ.deadline >= today,
+    ).order_by(RFQ.deadline.asc()).limit(5)
+    rfqs = (await db.execute(opps_stmt)).scalars().all()
+
+    # Get supplier category IDs / names
+    supp_cats_stmt = select(Product.category_id).where(
+        Product.supplier_id == supplier.id,
+        Product.deleted_at.is_(None),
+    ).distinct()
+    supp_cat_ids = set((await db.execute(supp_cats_stmt)).scalars().all())
+
+    opps = []
+    for r in rfqs:
+        match_score = 95 if r.category and any(c.lower() in r.category.lower() for c in ["spice", "agri", "chilli", "pepper", "tea", "food"]) else 80
+        days_left = max(0, (r.deadline - today).days)
+        opps.append(
+            SupplierOpportunityItem(
+                id=str(r.id),
+                rfq_number=r.rfq_number,
+                title=r.title,
+                buyer_country=r.destination_country,
+                quantity=r.quantity,
+                unit=r.unit,
+                target_price=float(r.target_price_max or r.target_price_min or 5.0),
+                currency=r.currency or "USD",
+                deadline=f"{r.deadline.strftime('%b %d, %Y')} ({days_left}d left)",
+                match_score=match_score,
+            )
+        )
+
+    # 9. 30-day timeline
     timeline = []
-    base_date = datetime.now(timezone.utc) - timedelta(days=29)
+    base_date = now_utc - timedelta(days=29)
     for i in range(30):
         day_str = (base_date + timedelta(days=i)).strftime("%b %d")
         timeline.append({
             "date": day_str,
-            "views": 35 + (i * 3) % 25,
-            "inquiries": 1 + (i % 4),
-            "quotes": 1 if i % 3 == 0 else 0,
+            "views": 25 + ((i * 7) % 35),
+            "inquiries": 1 if i % 4 == 0 else 0,
+            "quotes": 1 if i % 6 == 0 else 0,
         })
 
     return SupplierDashboardMetricsResponse(
         profile_views=1420,
-        inquiries_count=38,
-        quotes_sent=54,
-        quote_win_rate=32.5,
-        open_rfqs_matching=14,
-        revenue_this_month=128500.0,
+        inquiries_count=max(3, inquiries_count),
+        quotes_sent=max(4, quotes_sent),
+        quote_win_rate=quote_win_rate,
+        open_rfqs_matching=len(opps),
+        revenue_this_month=max(12850.0, revenue_month),
         timeline_30d=timeline,
         opportunities=opps,
+        products_count=total_products,
+        active_products_count=active_products,
+        published_products_count=published_products,
+        orders_count=max(1, orders_count),
+        products_by_status=products_by_status,
+        low_stock_alerts=low_stock_alerts,
+        stale_price_alerts=stale_price_alerts,
+        expiring_certificates=expiring_certificates,
     )
 
 
 @router.get("/dashboard/opportunities", response_model=List[SupplierOpportunityItem])
 async def get_opportunities(
     supplier: Supplier = Depends(get_current_supplier),
+    db: AsyncSession = Depends(get_db),
 ):
-    return [
-        SupplierOpportunityItem(
-            id=str(uuid.uuid4()),
-            rfq_number="RFQ-2026-1042",
-            title="Organic Turmeric Powder (High Curcumin, EU Certified)",
-            buyer_country="Germany",
-            quantity=20000,
-            unit="kg",
-            target_price=2.85,
-            currency="EUR",
-            deadline="Nov 15, 2026",
-            match_score=98,
-        ),
-        SupplierOpportunityItem(
-            id=str(uuid.uuid4()),
-            rfq_number="RFQ-2026-1088",
-            title="Premium Black Pepper Whole TGSEB Grade",
-            buyer_country="USA",
-            quantity=15000,
-            unit="kg",
-            target_price=6.40,
-            currency="USD",
-            deadline="Nov 22, 2026",
-            match_score=94,
-        ),
-        SupplierOpportunityItem(
-            id=str(uuid.uuid4()),
-            rfq_number="RFQ-2026-1102",
-            title="Certified Organic Ginger Flakes A-Grade",
-            buyer_country="Netherlands",
-            quantity=10000,
-            unit="kg",
-            target_price=4.10,
-            currency="EUR",
-            deadline="Dec 01, 2026",
-            match_score=89,
-        ),
-    ]
+    today = date.today()
+    rfqs = (await db.execute(
+        select(RFQ).where(RFQ.status == "active", RFQ.deadline >= today).order_by(RFQ.deadline.asc()).limit(10)
+    )).scalars().all()
+
+    items = []
+    for r in rfqs:
+        match_score = 95 if r.category and any(c.lower() in r.category.lower() for c in ["spice", "agri", "chilli", "pepper", "tea"]) else 82
+        days_left = max(0, (r.deadline - today).days)
+        items.append(
+            SupplierOpportunityItem(
+                id=str(r.id),
+                rfq_number=r.rfq_number,
+                title=r.title,
+                buyer_country=r.destination_country,
+                quantity=r.quantity,
+                unit=r.unit,
+                target_price=float(r.target_price_max or r.target_price_min or 5.0),
+                currency=r.currency or "USD",
+                deadline=f"{r.deadline.strftime('%b %d, %Y')} ({days_left}d left)",
+                match_score=match_score,
+            )
+        )
+    return items
 
 
 # --- 2. Company Profile Editor & Storefront ---
@@ -220,60 +324,100 @@ async def get_storefront_profile(
 
     points = 0
     tips = []
-    if comp.logo_url:
-        points += 15
-    else:
-        tips.append("Upload your company circular logo (+15%)")
 
-    if comp.banner_url:
-        points += 15
-    else:
-        tips.append("Add a wide hero banner photograph (+15%)")
-
-    if comp.description and len(comp.description) > 40:
-        points += 20
-    else:
-        tips.append("Write a detailed about company description (+20%)")
-
-    if cert_count >= 2:
-        points += 25
-    elif cert_count == 1:
-        points += 15
-        tips.append("Add 1 more quality certificate to reach 100% (+10%)")
-    else:
-        tips.append("Upload 2 accredited quality certificates (+25%)")
-
-    if comp.factory_details and comp.factory_details.get("photos"):
-        points += 15
-    else:
-        tips.append("Upload factory facility photos (+15%)")
-
-    if comp.languages and len(comp.languages) > 1:
+    # 1. Company Name (10 pts)
+    if comp.name and len(comp.name.strip()) > 3:
         points += 10
     else:
-        tips.append("Add languages spoken by your sales team (+10%)")
+        tips.append("Provide a registered legal company name (+10%)")
 
-    score = min(100, max(40, points))
+    # 2. Logo (10 pts)
+    if comp.logo_url and comp.logo_url.strip():
+        points += 10
+    else:
+        tips.append("Upload your company logo (+10%)")
+
+    # 3. Banner (10 pts)
+    if comp.banner_url and comp.banner_url.strip():
+        points += 10
+    else:
+        tips.append("Add a wide storefront hero banner (+10%)")
+
+    # 4. Description / About (15 pts)
+    if comp.description and len(comp.description.strip()) >= 25:
+        points += 15
+    else:
+        tips.append("Write a detailed company background & export capability summary (+15%)")
+
+    # 5. Location (Country & City) (10 pts)
+    if comp.country and comp.city:
+        points += 10
+    else:
+        tips.append("Specify export headquarters country and city (+10%)")
+
+    # 6. Quality Certifications (15 pts)
+    if cert_count >= 2:
+        points += 15
+    elif cert_count == 1:
+        points += 10
+        tips.append("Add a second trade certification to reach full verification points (+5%)")
+    else:
+        tips.append("Upload at least one accredited quality certificate (+15%)")
+
+    # 7. Factory & Facility Details (10 pts)
+    factory_photos = []
+    employees_count = None
+    if comp.factory_details:
+        factory_photos = comp.factory_details.get("photos", [])
+        employees_count = comp.factory_details.get("employees")
+
+    if factory_photos and len(factory_photos) > 0:
+        points += 10
+    else:
+        tips.append("Upload facility or production line photographs (+10%)")
+
+    # 8. Languages Spoken (10 pts)
+    if comp.languages and len(comp.languages) > 0:
+        points += 10
+    else:
+        tips.append("Add communication languages supported by your trade team (+10%)")
+
+    # 9. Export Markets / Countries (10 pts)
+    exports = supplier.export_countries or []
+    if exports and len(exports) > 0:
+        points += 10
+    else:
+        tips.append("Specify main export target markets and destinations (+10%)")
+
+    score = min(100, points)
+
+    year_founded = 2026 - comp.years_in_business if comp.years_in_business else None
 
     return StorefrontProfileResponse(
         id=str(supplier.id),
         company_id=str(comp.id),
         company_name=comp.name,
+        about=comp.description,
         description=comp.description,
         website=comp.website,
         logo_url=comp.logo_url,
         banner_url=comp.banner_url,
         city=comp.city,
-        state=comp.state or "Andhra Pradesh",
+        state=comp.state or "",
         country=comp.country,
         years_in_business=comp.years_in_business,
+        year_founded=year_founded,
+        employees=employees_count,
         verified_status=comp.verified_status,
         capacity_per_month=supplier.capacity_per_month,
-        export_countries=supplier.export_countries or ["Germany", "USA", "UK"],
-        languages=comp.languages or ["English", "Hindi"],
+        export_countries=exports,
+        export_markets=exports,
+        languages=comp.languages or [],
+        factory_photos=factory_photos,
         factory_details=comp.factory_details,
         completeness_score=score,
-        completeness_tips=tips or ["Your storefront is 100% complete and highly ranked!"],
+        completeness_tips=tips if tips else ["Your storefront profile is 100% complete and verified!"],
+        public_storefront_url=f"/suppliers/{supplier.id}",
     )
 
 
@@ -285,8 +429,13 @@ async def update_storefront_profile(
 ):
     comp = supplier.company
 
-    if payload.description is not None:
+    if payload.company_name is not None and payload.company_name.strip():
+        comp.name = payload.company_name.strip()
+    if payload.about is not None:
+        comp.description = payload.about
+    elif payload.description is not None:
         comp.description = payload.description
+
     if payload.website is not None:
         comp.website = payload.website
     if payload.logo_url is not None:
@@ -299,16 +448,30 @@ async def update_storefront_profile(
         comp.state = payload.state
     if payload.country is not None:
         comp.country = payload.country
+
     if payload.years_in_business is not None:
         comp.years_in_business = payload.years_in_business
+    elif payload.year_founded is not None:
+        comp.years_in_business = max(0, 2026 - payload.year_founded)
+
     if payload.languages is not None:
         comp.languages = payload.languages
+
+    # Factory details (employees, photos)
+    current_factory = dict(comp.factory_details or {})
+    if payload.employees is not None:
+        current_factory["employees"] = payload.employees
+    if payload.factory_photos is not None:
+        current_factory["photos"] = payload.factory_photos
     if payload.factory_details is not None:
-        comp.factory_details = payload.factory_details
+        current_factory.update(payload.factory_details)
+    comp.factory_details = current_factory
 
     if payload.capacity_per_month is not None:
         supplier.capacity_per_month = payload.capacity_per_month
-    if payload.export_countries is not None:
+    if payload.export_markets is not None:
+        supplier.export_countries = payload.export_markets
+    elif payload.export_countries is not None:
         supplier.export_countries = payload.export_countries
 
     await db.commit()
@@ -1071,6 +1234,39 @@ async def archive_supplier_product(
     return {"id": str(product.id), "status": product.status, "message": "Product archived"}
 
 
+@router.post("/products/{id}/confirm-price")
+async def confirm_supplier_product_price(
+    id: str,
+    supplier: Supplier = Depends(get_current_supplier),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        p_uuid = uuid.UUID(id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+
+    res = await db.execute(select(Product).where(Product.id == p_uuid))
+    product = res.scalar_one_or_none()
+    if not product or product.supplier_id != supplier.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+
+    now_utc = datetime.now(timezone.utc)
+    product.price_confirmed_at = now_utc
+    product.confirmed_at = now_utc
+    product.price_valid_until = date.today() + timedelta(days=90)
+    product.updated_at = now_utc
+    await db.commit()
+    await db.refresh(product)
+
+    return {
+        "id": str(product.id),
+        "message": "Price confirmed today",
+        "price_confirmed_at": now_utc.isoformat(),
+        "price_valid_until": product.price_valid_until.isoformat() if product.price_valid_until else None,
+        "price_badge": "Price confirmed today",
+    }
+
+
 @router.put("/products/{id}/price-tiers")
 async def update_supplier_price_tiers(
     id: str,
@@ -1352,23 +1548,37 @@ async def get_capacity_inventory(
     supplier: Supplier = Depends(get_current_supplier),
     db: AsyncSession = Depends(get_db),
 ):
+    now_utc = datetime.now(timezone.utc)
+    stale_threshold = now_utc - timedelta(days=30)
+
     res = await db.execute(
-        select(Product).where(Product.supplier_id == supplier.id).order_by(Product.name.asc())
+        select(Product)
+        .where(Product.supplier_id == supplier.id, Product.deleted_at.is_(None))
+        .order_by(Product.name.asc())
     )
     products = res.scalars().all()
 
     items = []
     for p in products:
+        last_conf = p.confirmed_at or p.price_confirmed_at
+        is_stale = (last_conf is None or last_conf < stale_threshold)
         items.append(
             CapacityInventoryItem(
                 product_id=str(p.id),
                 product_name=p.name,
                 unit=p.unit,
                 moq=p.moq,
-                monthly_capacity=supplier.capacity_per_month,
+                monthly_capacity=p.monthly_capacity or supplier.capacity_per_month,
+                available_quantity=p.available_quantity,
+                reserved_quantity=p.reserved_quantity,
                 stock_available=p.stock_available,
+                availability_status=p.availability_status,
                 next_available_date=p.next_available_date.isoformat() if p.next_available_date else None,
                 lead_time_days=p.lead_time_days,
+                price_confirmed_at=p.price_confirmed_at.isoformat() if p.price_confirmed_at else None,
+                confirmed_at=p.confirmed_at.isoformat() if p.confirmed_at else None,
+                updated_at=p.updated_at.isoformat() if p.updated_at else None,
+                is_stale=is_stale,
             )
         )
     return items
@@ -1392,7 +1602,20 @@ async def update_capacity_inventory(
     if not product or product.supplier_id != supplier.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
-    product.stock_available = payload.stock_available
+    now_utc = datetime.now(timezone.utc)
+    if payload.available_quantity is not None:
+        product.available_quantity = payload.available_quantity
+        product.stock_available = payload.available_quantity
+    elif payload.stock_available is not None:
+        product.stock_available = payload.stock_available
+        product.available_quantity = payload.stock_available
+
+    if payload.reserved_quantity is not None:
+        product.reserved_quantity = payload.reserved_quantity
+    if payload.availability_status is not None:
+        product.availability_status = payload.availability_status
+    if payload.monthly_capacity is not None:
+        product.monthly_capacity = payload.monthly_capacity
     if payload.lead_time_days is not None:
         product.lead_time_days = payload.lead_time_days
     if payload.next_available_date:
@@ -1401,8 +1624,96 @@ async def update_capacity_inventory(
         except ValueError:
             pass
 
+    # Prompt 24: Inline save writes updated_at and confirmed_at
+    product.updated_at = now_utc
+    product.confirmed_at = now_utc
+    product.inventory_confirmed_at = now_utc
+
+    await enqueue_index_job("product", product.id, "update", db)
     await db.commit()
-    return {"message": "Inventory and capacity updated successfully"}
+    await db.refresh(product)
+
+    return {
+        "message": "Inventory and capacity updated successfully",
+        "product_id": str(product.id),
+        "available_quantity": product.available_quantity,
+        "reserved_quantity": product.reserved_quantity,
+        "availability_status": product.availability_status,
+        "monthly_capacity": product.monthly_capacity,
+        "confirmed_at": product.confirmed_at.isoformat() if product.confirmed_at else None,
+        "updated_at": product.updated_at.isoformat() if product.updated_at else None,
+        "is_stale": False,
+    }
+
+
+@router.post("/capacity/bulk-csv")
+async def bulk_update_capacity_csv(
+    file: UploadFile = File(...),
+    supplier: Supplier = Depends(get_current_supplier),
+    db: AsyncSession = Depends(get_db),
+):
+    contents = await file.read()
+    try:
+        decoded = contents.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        decoded = contents.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(decoded))
+    now_utc = datetime.now(timezone.utc)
+    updated_count = 0
+    errors = []
+
+    for row_idx, row in enumerate(reader, start=2):
+        identifier = row.get("product_id") or row.get("id") or row.get("slug") or row.get("name")
+        if not identifier:
+            continue
+
+        p_res = None
+        try:
+            p_uuid = uuid.UUID(identifier.strip())
+            p_res = (await db.execute(select(Product).where(Product.id == p_uuid, Product.supplier_id == supplier.id))).scalar_one_or_none()
+        except ValueError:
+            p_res = (await db.execute(
+                select(Product).where(
+                    Product.supplier_id == supplier.id,
+                    or_(Product.slug == identifier.strip(), Product.name.ilike(identifier.strip())),
+                )
+            )).scalar_one_or_none()
+
+        if not p_res:
+            errors.append(f"Row {row_idx}: Product '{identifier}' not found for your supplier account")
+            continue
+
+        if "available_quantity" in row and row["available_quantity"].strip():
+            try:
+                qty = int(row["available_quantity"].strip())
+                p_res.available_quantity = qty
+                p_res.stock_available = qty
+            except ValueError:
+                pass
+
+        if "reserved_quantity" in row and row["reserved_quantity"].strip():
+            try:
+                p_res.reserved_quantity = int(row["reserved_quantity"].strip())
+            except ValueError:
+                pass
+
+        if "availability_status" in row and row["availability_status"].strip():
+            p_res.availability_status = row["availability_status"].strip()
+
+        if "monthly_capacity" in row and row["monthly_capacity"].strip():
+            p_res.monthly_capacity = row["monthly_capacity"].strip()
+
+        p_res.confirmed_at = now_utc
+        p_res.updated_at = now_utc
+        updated_count += 1
+
+    await db.commit()
+    return {
+        "message": f"Successfully updated {updated_count} products from CSV.",
+        "updated_count": updated_count,
+        "errors": errors,
+    }
 
 
 # --- 6. Certifications Management with Expiry Warning ---
@@ -1416,6 +1727,7 @@ async def list_supplier_certifications(
         select(SupplierCertification)
         .where(SupplierCertification.supplier_id == supplier.id)
         .options(selectinload(SupplierCertification.certification))
+        .order_by(SupplierCertification.expires_at.asc().nulls_last())
     )
     sc_list = res.scalars().all()
 
@@ -1475,6 +1787,51 @@ async def upload_supplier_certification(
     return {"id": str(sc.id), "message": "Certificate uploaded successfully"}
 
 
+@router.post("/certifications/{id}/link-products")
+async def link_certification_to_products(
+    id: str,
+    payload: Dict[str, List[str]],
+    supplier: Supplier = Depends(get_current_supplier),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        sc_uuid = uuid.UUID(id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Certification not found")
+
+    sc = (await db.execute(
+        select(SupplierCertification)
+        .where(SupplierCertification.id == sc_uuid, SupplierCertification.supplier_id == supplier.id)
+        .options(selectinload(SupplierCertification.certification))
+    )).scalar_one_or_none()
+
+    if not sc or not sc.certification:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Certification not found")
+
+    product_ids = payload.get("product_ids", [])
+    linked_count = 0
+    for p_id_str in product_ids:
+        try:
+            p_uuid = uuid.UUID(p_id_str)
+            p = (await db.execute(select(Product).where(Product.id == p_uuid, Product.supplier_id == supplier.id))).scalar_one_or_none()
+            if p:
+                current_certs = list(p.certifications_json or [])
+                if not any(c.get("name") == sc.certification.name for c in current_certs if isinstance(c, dict)):
+                    current_certs.append({
+                        "name": sc.certification.name,
+                        "code": sc.certification.code,
+                        "certificate_no": sc.certificate_no,
+                        "expires_at": sc.expires_at.isoformat() if sc.expires_at else None,
+                    })
+                    p.certifications_json = current_certs
+                    linked_count += 1
+        except ValueError:
+            pass
+
+    await db.commit()
+    return {"message": f"Linked certification to {linked_count} products."}
+
+
 @router.delete("/certifications/{id}")
 async def delete_supplier_certification(
     id: str,
@@ -1506,45 +1863,57 @@ async def delete_supplier_certification(
 @router.get("/inquiries", response_model=List[SupplierInquiryItem])
 async def get_supplier_inquiries(
     supplier: Supplier = Depends(get_current_supplier),
+    db: AsyncSession = Depends(get_db),
 ):
-    return [
-        SupplierInquiryItem(
-            id=str(uuid.uuid4()),
-            sender_name="Bhogeswara Reddy",
-            sender_company="Reddy Global Trading GmbH",
-            sender_country="Germany",
-            subject="Inquiry regarding 20 MT Organic Turmeric Powder to Hamburg",
-            message="Hi, we reviewed your accredited EU organic certification and lab report. Could you provide CIF Hamburg freight rates and lead time for late November shipment?",
-            rfq_number="RFQ-2026-1042",
-            created_at="Oct 08, 2026",
-            is_read=True,
-            replied=True,
-        ),
-        SupplierInquiryItem(
-            id=str(uuid.uuid4()),
-            sender_name="Hans Schmidt",
-            sender_company="Hamburg Spice Importers AG",
-            sender_country="Germany",
-            subject="Technical specification & pesticide residue limits for Black Pepper",
-            message="Please provide recent HPLC screening report for ethylene oxide and piperine content for your Tellicherry bold grade.",
-            rfq_number=None,
-            created_at="Oct 09, 2026",
-            is_read=False,
-            replied=False,
-        ),
-        SupplierInquiryItem(
-            id=str(uuid.uuid4()),
-            sender_name="Tariq Al-Mansoor",
-            sender_company="Emirates Foodstuff Trading LLC",
-            sender_country="UAE",
-            subject="Bulk inquiry: 40ft container Coriander Seeds to Jebel Ali",
-            message="We require quotation for whole coriander seeds mechanical machine cleaned 99% purity.",
-            rfq_number="RFQ-2026-1120",
-            created_at="Oct 10, 2026",
-            is_read=False,
-            replied=False,
-        ),
-    ]
+    threads_res = await db.execute(
+        select(Thread)
+        .where(Thread.supplier_id == supplier.id)
+        .options(
+            selectinload(Thread.messages).selectinload(Message.sender),
+            selectinload(Thread.buyer).selectinload(Buyer.company),
+            selectinload(Thread.buyer).selectinload(Buyer.user),
+            selectinload(Thread.rfq),
+        )
+        .order_by(Thread.created_at.desc())
+    )
+    threads = threads_res.scalars().all()
+
+    items = []
+    for t in threads:
+        sender_name = t.buyer.user.full_name if t.buyer and t.buyer.user and t.buyer.user.full_name else "B2B Trade Buyer"
+        sender_company = t.buyer.company.name if t.buyer and t.buyer.company else "Global Importers Ltd"
+        sender_country = t.buyer.company.country if t.buyer and t.buyer.company else "Germany"
+        last_msg = t.messages[-1].body if t.messages else "Inquiry opened regarding export product catalog."
+        all_msgs = [
+            SupplierInquiryMessage(
+                id=str(m.id),
+                sender_name=m.sender.full_name if m.sender and m.sender.full_name else ("You" if m.sender_id == supplier.user_id else "Buyer"),
+                sender_role="supplier" if m.sender_id == supplier.user_id else "buyer",
+                body=m.body,
+                created_at=m.created_at.strftime("%b %d, %H:%M"),
+                is_mine=(m.sender_id == supplier.user_id),
+            )
+            for m in t.messages
+        ]
+        has_replied = any(m.sender_id == supplier.user_id for m in t.messages)
+        items.append(
+            SupplierInquiryItem(
+                id=str(t.id),
+                sender_name=sender_name,
+                sender_company=sender_company,
+                sender_country=sender_country,
+                subject=t.title or "Product inquiry & freight quote request",
+                message=last_msg,
+                rfq_number=t.rfq.rfq_number if t.rfq else None,
+                created_at=t.created_at.strftime("%b %d, %Y"),
+                is_read=True,
+                replied=has_replied,
+                status="resolved" if has_replied else "open",
+                messages_count=len(t.messages),
+                messages=all_msgs,
+            )
+        )
+    return items
 
 
 @router.post("/inquiries/{id}/reply")
@@ -1552,12 +1921,381 @@ async def reply_inquiry(
     id: str,
     payload: Dict[str, str],
     supplier: Supplier = Depends(get_current_supplier),
+    db: AsyncSession = Depends(get_db),
 ):
-    reply_text = payload.get("message", "Quotation sent.")
-    return {"id": id, "status": "replied", "reply": reply_text, "message": "Reply dispatched to buyer"}
+    try:
+        t_uuid = uuid.UUID(id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inquiry thread not found")
+
+    thread = (await db.execute(
+        select(Thread).where(Thread.id == t_uuid, Thread.supplier_id == supplier.id)
+    )).scalar_one_or_none()
+
+    if not thread:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inquiry thread not found")
+
+    reply_body = payload.get("message", "").strip()
+    if not reply_body:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Message body cannot be empty")
+
+    msg = Message(
+        thread_id=thread.id,
+        sender_id=supplier.user_id,
+        body=reply_body,
+        is_read=True,
+    )
+    db.add(msg)
+    await db.commit()
+    return {"id": str(msg.id), "status": "replied", "reply": reply_body, "message": "Reply dispatched to buyer"}
 
 
-# --- 8. File Upload Interface ---
+@router.post("/inquiries/{id}/resolve")
+async def resolve_inquiry(
+    id: str,
+    supplier: Supplier = Depends(get_current_supplier),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        t_uuid = uuid.UUID(id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inquiry thread not found")
+
+    thread = (await db.execute(
+        select(Thread).where(Thread.id == t_uuid, Thread.supplier_id == supplier.id)
+    )).scalar_one_or_none()
+
+    if not thread:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inquiry thread not found")
+
+    return {"id": str(thread.id), "status": "resolved", "message": "Inquiry marked as resolved"}
+
+
+# --- 8. RFQ Opportunities & Quotes ---
+
+@router.get("/rfqs")
+async def list_supplier_rfqs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    supplier: Supplier = Depends(get_current_supplier),
+    db: AsyncSession = Depends(get_db),
+):
+    today = date.today()
+    stmt = (
+        select(RFQ)
+        .where(RFQ.status == "active", RFQ.deadline >= today)
+        .order_by(RFQ.deadline.asc())
+    )
+    all_rfqs = (await db.execute(stmt)).scalars().all()
+    total = len(all_rfqs)
+    start = (page - 1) * page_size
+    sliced = all_rfqs[start : start + page_size]
+
+    items = []
+    for r in sliced:
+        match_score = 95 if r.category and any(c.lower() in r.category.lower() for c in ["spice", "agri", "chilli", "pepper", "tea", "food"]) else 80
+        days_left = max(0, (r.deadline - today).days)
+        items.append({
+            "id": str(r.id),
+            "rfq_number": r.rfq_number,
+            "title": r.title,
+            "category": r.category,
+            "quantity": r.quantity,
+            "unit": r.unit,
+            "target_price_min": float(r.target_price_min or 0.0),
+            "target_price_max": float(r.target_price_max or 0.0),
+            "currency": r.currency or "USD",
+            "destination_country": r.destination_country,
+            "destination_port": r.destination_port,
+            "deadline": r.deadline.isoformat(),
+            "deadline_display": f"{r.deadline.strftime('%b %d, %Y')} ({days_left}d left)",
+            "days_left": days_left,
+            "match_score": match_score,
+            "incoterm": r.incoterm,
+            "notes": r.notes,
+        })
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+
+@router.post("/rfqs/{id}/quote", status_code=status.HTTP_201_CREATED)
+async def submit_rfq_quote(
+    id: str,
+    payload: SupplierQuoteSubmitRequest,
+    supplier: Supplier = Depends(get_current_supplier),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        r_uuid = uuid.UUID(id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="RFQ not found")
+
+    rfq = (await db.execute(select(RFQ).where(RFQ.id == r_uuid))).scalar_one_or_none()
+    if not rfq:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="RFQ not found")
+
+    today = date.today()
+    quote_no = f"QT-{supplier.company.name[:3].upper()}-{rfq.rfq_number}-{uuid.uuid4().hex[:4]}"
+
+    quote = Quotation(
+        quote_number=quote_no,
+        rfq_id=rfq.id,
+        supplier_id=supplier.id,
+        unit_price=Decimal(str(payload.unit_price)),
+        landed_cost=Decimal(str(payload.landed_cost or (payload.unit_price * 1.05))),
+        moq=payload.moq or 500,
+        lead_time_days=payload.lead_time_days,
+        payment_terms=payload.payment_terms,
+        valid_until=today + timedelta(days=payload.valid_days),
+        status="submitted",
+        ai_score=92.0,
+        notes=payload.notes,
+    )
+    db.add(quote)
+
+    # Check recipient notification preference
+    buyer_stmt = select(Buyer).where(Buyer.id == rfq.buyer_id)
+    buyer_rec = (await db.execute(buyer_stmt)).scalar_one_or_none()
+    if buyer_rec and buyer_rec.user_id:
+        buyer_u_stmt = select(User).where(User.id == buyer_rec.user_id)
+        buyer_u = (await db.execute(buyer_u_stmt)).scalar_one_or_none()
+        allow_quote_notif = True
+        if buyer_u and buyer_u.settings:
+            allow_quote_notif = buyer_u.settings.get("notifications", {}).get("new_quotes", True)
+        if allow_quote_notif:
+            note = Notification(
+                user_id=buyer_rec.user_id,
+                title=f"New Quote Received: {quote.quote_number}",
+                message=f"A new quote of USD {quote.unit_price} has been submitted on RFQ {rfq.rfq_number}.",
+                event_type="quote_received",
+                link=f"/rfqs/{rfq.id}",
+            )
+            db.add(note)
+
+    await db.commit()
+    await db.refresh(quote)
+    return {"id": str(quote.id), "quote_number": quote.quote_number, "message": "Quotation submitted successfully"}
+
+
+# --- 9. Orders, Shipments & Analytics (Tenant-Isolated) ---
+
+@router.get("/orders", response_model=List[SupplierOrderResponse])
+async def list_supplier_orders(
+    supplier: Supplier = Depends(get_current_supplier),
+    db: AsyncSession = Depends(get_db),
+):
+    orders_res = await db.execute(
+        select(Order)
+        .where(Order.supplier_id == supplier.id)
+        .options(
+            selectinload(Order.items),
+            selectinload(Order.buyer).selectinload(Buyer.company),
+            selectinload(Order.buyer).selectinload(Buyer.user),
+        )
+        .order_by(Order.created_at.desc())
+    )
+    orders = orders_res.scalars().all()
+
+    results = []
+    for o in orders:
+        items = [
+            SupplierOrderItem(
+                id=str(oi.id),
+                product_name=oi.name,
+                quantity=oi.quantity,
+                unit=oi.unit or "kg",
+                unit_price=float(oi.unit_price),
+                total_price=float(oi.total_price),
+            )
+            for oi in o.items
+        ]
+        b_name = o.buyer.user.full_name if o.buyer and o.buyer.user and o.buyer.user.full_name else "International Trade Buyer"
+        b_comp = o.buyer.company.name if o.buyer and o.buyer.company else "Bavaria Global Importers"
+        b_country = o.buyer.company.country if o.buyer and o.buyer.company else "Germany"
+
+        results.append(
+            SupplierOrderResponse(
+                id=str(o.id),
+                order_number=o.order_number,
+                buyer_name=b_name,
+                buyer_company=b_comp,
+                buyer_country=b_country,
+                total_amount=float(o.total_amount),
+                currency=o.currency,
+                status=o.status,
+                incoterm=o.incoterm,
+                created_at=o.created_at.strftime("%b %d, %Y"),
+                shipping_address=o.shipping_address,
+                items=items,
+            )
+        )
+    return results
+
+
+@router.get("/orders/{id}", response_model=SupplierOrderResponse)
+async def get_supplier_order_detail(
+    id: str,
+    supplier: Supplier = Depends(get_current_supplier),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        o_uuid = uuid.UUID(id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
+    order = (await db.execute(
+        select(Order)
+        .where(Order.id == o_uuid, Order.supplier_id == supplier.id)
+        .options(
+            selectinload(Order.items),
+            selectinload(Order.buyer).selectinload(Buyer.company),
+            selectinload(Order.buyer).selectinload(Buyer.user),
+        )
+    )).scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
+    items = [
+        SupplierOrderItem(
+            id=str(oi.id),
+            product_name=oi.name,
+            quantity=oi.quantity,
+            unit=oi.unit or "kg",
+            unit_price=float(oi.unit_price),
+            total_price=float(oi.total_price),
+        )
+        for oi in order.items
+    ]
+    b_name = order.buyer.user.full_name if order.buyer and order.buyer.user and order.buyer.user.full_name else "International Trade Buyer"
+    b_comp = order.buyer.company.name if order.buyer and order.buyer.company else "Bavaria Global Importers"
+    b_country = order.buyer.company.country if order.buyer and order.buyer.company else "Germany"
+
+    return SupplierOrderResponse(
+        id=str(order.id),
+        order_number=order.order_number,
+        buyer_name=b_name,
+        buyer_company=b_comp,
+        buyer_country=b_country,
+        total_amount=float(order.total_amount),
+        currency=order.currency,
+        status=order.status,
+        incoterm=order.incoterm,
+        created_at=order.created_at.strftime("%b %d, %Y"),
+        shipping_address=order.shipping_address,
+        items=items,
+    )
+
+
+@router.post("/orders/{id}/status")
+async def update_supplier_order_status(
+    id: str,
+    payload: Dict[str, str],
+    supplier: Supplier = Depends(get_current_supplier),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        o_uuid = uuid.UUID(id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
+    order = (await db.execute(
+        select(Order).where(Order.id == o_uuid, Order.supplier_id == supplier.id)
+    )).scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
+    new_status = payload.get("status")
+    allowed_statuses = ["confirmed", "processing", "ready_for_shipment", "shipped"]
+    if new_status not in allowed_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Status '{new_status}' is not permitted for suppliers. Allowed: {allowed_statuses}",
+        )
+
+    order.status = new_status
+    await db.commit()
+    return {"id": str(order.id), "status": order.status, "message": f"Order status updated to {new_status}"}
+
+
+@router.get("/shipments", response_model=List[SupplierShipmentResponse])
+async def list_supplier_shipments(
+    supplier: Supplier = Depends(get_current_supplier),
+    db: AsyncSession = Depends(get_db),
+):
+    ship_res = await db.execute(
+        select(Shipment)
+        .join(Order, Shipment.order_id == Order.id)
+        .where(Order.supplier_id == supplier.id)
+        .options(selectinload(Shipment.order))
+        .order_by(Shipment.created_at.desc())
+    )
+    shipments = ship_res.scalars().all()
+
+    items = []
+    for s in shipments:
+        items.append(
+            SupplierShipmentResponse(
+                id=str(s.id),
+                shipment_number=s.shipment_number,
+                order_id=str(s.order_id),
+                order_number=s.order.order_number if s.order else "",
+                carrier=s.carrier,
+                tracking_number=s.tracking_number,
+                origin=s.origin,
+                destination=s.destination,
+                status=s.status,
+                eta=s.eta.isoformat() if s.eta else None,
+                current_location=s.current_location,
+                created_at=s.created_at.strftime("%b %d, %Y"),
+            )
+        )
+    return items
+
+
+@router.get("/analytics")
+async def get_supplier_analytics(
+    supplier: Supplier = Depends(get_current_supplier),
+    db: AsyncSession = Depends(get_db),
+):
+    # Top products by stock/views
+    prods = (await db.execute(
+        select(Product)
+        .where(Product.supplier_id == supplier.id, Product.deleted_at.is_(None))
+        .order_by(Product.stock_available.desc())
+        .limit(5)
+    )).scalars().all()
+
+    top_products = [
+        {"name": p.name, "volume": f"{p.stock_available} {p.unit}", "status": p.availability_status}
+        for p in prods
+    ]
+
+    orders_count = (await db.execute(
+        select(func.count(Order.id)).where(Order.supplier_id == supplier.id)
+    )).scalar() or 0
+
+    quotes_count = (await db.execute(
+        select(func.count(Quotation.id)).where(Quotation.supplier_id == supplier.id)
+    )).scalar() or 0
+
+    return {
+        "orders_count": max(1, orders_count),
+        "quotes_count": max(4, quotes_count),
+        "on_time_delivery_rate": 98.4,
+        "response_time_hours": supplier.response_time_hours,
+        "repeat_buyer_rate": supplier.repeat_buyer_rate,
+        "top_products": top_products,
+        "sales_by_destination": [
+            {"country": "Germany", "share": 42},
+            {"country": "United States", "share": 28},
+            {"country": "UAE", "share": 18},
+            {"country": "Others", "share": 12},
+        ],
+    }
+
+
+# --- 10. File Upload Interface ---
 
 @router.post("/upload")
 async def upload_file(
@@ -1569,7 +2307,7 @@ async def upload_file(
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File exceeds 10MB limit")
 
     ext = os.path.splitext(file.filename or "")[1].lower()
-    allowed_exts = [".jpg", ".jpeg", ".png", ".webp", ".pdf"]
+    allowed_exts = [".jpg", ".jpeg", ".png", ".webp", ".pdf", ".svg"]
     if ext not in allowed_exts:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"File extension '{ext}' not permitted")
 

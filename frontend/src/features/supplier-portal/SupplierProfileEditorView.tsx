@@ -7,9 +7,9 @@ import {
   Save,
   Factory,
   Globe,
-  Languages,
   Plus,
   Trash2,
+  ExternalLink,
 } from "lucide-react";
 import {
   StorefrontProfile,
@@ -37,20 +37,15 @@ export const SupplierProfileEditorView: React.FC<SupplierProfileEditorViewProps>
   // Export countries & languages tag management
   const [newCountry, setNewCountry] = useState("");
   const [newLang, setNewLang] = useState("");
+  const [newPhotoUrl, setNewPhotoUrl] = useState("");
 
   useEffect(() => {
     if (profile) {
       setForm({
         ...profile,
-        factory_details: {
-          facility_size: profile.factory_details?.facility_size || "45,000 sq ft",
-          annual_capacity: profile.factory_details?.annual_capacity || "12,000 MT",
-          production_lines: profile.factory_details?.production_lines || 6,
-          cleanrooms: profile.factory_details?.cleanrooms || "ISO Class 8 Cleanroom",
-          warehouse_capacity: profile.factory_details?.warehouse_capacity || "10,000 MT Climate Controlled",
-          testing_lab: profile.factory_details?.testing_lab || "In-house NABL Accredited HPLC / GC-MS",
-          photos: profile.factory_details?.photos || [],
-        },
+        year_founded: profile.year_founded || (profile.years_in_business ? 2026 - profile.years_in_business : 2015),
+        employees: profile.employees || (profile.factory_details as any)?.employees || 150,
+        factory_photos: profile.factory_photos || (profile.factory_details as any)?.photos || [],
       });
     }
   }, [profile]);
@@ -91,6 +86,18 @@ export const SupplierProfileEditorView: React.FC<SupplierProfileEditorViewProps>
     setForm({ ...form, languages: current.filter((x) => x !== l) });
   };
 
+  const handleAddPhoto = () => {
+    if (!newPhotoUrl.trim()) return;
+    const current = form.factory_photos || [];
+    setForm({ ...form, factory_photos: [...current, newPhotoUrl.trim()] });
+    setNewPhotoUrl("");
+  };
+
+  const handleRemovePhoto = (idx: number) => {
+    const current = form.factory_photos || [];
+    setForm({ ...form, factory_photos: current.filter((_, i) => i !== idx) });
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
@@ -98,10 +105,19 @@ export const SupplierProfileEditorView: React.FC<SupplierProfileEditorViewProps>
     setSaveSuccess(false);
 
     try {
-      const updated = await supplierPortalApi.updateProfile(form);
+      const payload: Partial<StorefrontProfile> = {
+        ...form,
+        export_markets: form.export_countries,
+        factory_details: {
+          ...(form.factory_details || {}),
+          employees: form.employees,
+          photos: form.factory_photos,
+        },
+      };
+      const updated = await supplierPortalApi.updateProfile(payload);
       setSaveSuccess(true);
       onProfileUpdated(updated);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      setTimeout(() => setSaveSuccess(false), 3500);
     } catch (err: any) {
       setSaveError(err.message || "Failed to update profile.");
     } finally {
@@ -109,14 +125,30 @@ export const SupplierProfileEditorView: React.FC<SupplierProfileEditorViewProps>
     }
   };
 
-  const completeness = profile.completeness_score || 80;
-  const tips = profile.completeness_tips || [
-    "Upload 2 additional factory inspection unit photos to reach 95%",
-    "Add Japanese or Arabic languages to attract Asian/Middle Eastern importers",
-  ];
+  const completeness = profile.completeness_score ?? 80;
+  const tips = profile.completeness_tips || [];
 
   return (
     <div className="space-y-6">
+      {/* Top Banner / Storefront Preview Link */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+        <div>
+          <h3 className="font-bold text-slate-900 text-sm">Storefront Management</h3>
+          <p className="text-xs text-slate-500">
+            Customize how verified global buyers see your manufacturing operations and export credentials
+          </p>
+        </div>
+        <a
+          href={profile.public_storefront_url || `/suppliers/${profile.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold text-xs border border-blue-200 transition-colors shrink-0"
+        >
+          View Public Storefront
+          <ExternalLink className="w-3.5 h-3.5" />
+        </a>
+      </div>
+
       {/* Profile Completeness Meter Card */}
       <div className="bg-gradient-to-r from-blue-900 via-slate-900 to-indigo-950 rounded-2xl p-6 text-white border border-slate-800 shadow-lg">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -124,14 +156,14 @@ export const SupplierProfileEditorView: React.FC<SupplierProfileEditorViewProps>
             <div className="flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-[#38BDF8]" />
               <h3 className="font-bold text-base text-white">
-                Storefront Profile Completeness
+                Storefront Completeness Meter
               </h3>
               <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-500/20 text-[#38BDF8] border border-blue-400/30">
                 {completeness}% Completed
               </span>
             </div>
             <p className="text-xs text-slate-300">
-              Profiles with 90%+ completeness receive 3.4x more RFQ inquiries and verified buyer engagements.
+              Profiles with 90%+ completeness receive 3.4x more verified buyer inquiries and top placement in AI search.
             </p>
 
             {/* Progress Bar */}
@@ -145,7 +177,7 @@ export const SupplierProfileEditorView: React.FC<SupplierProfileEditorViewProps>
 
           {/* Actionable Tips */}
           <div className="bg-white/5 border border-white/10 rounded-xl p-4 md:max-w-md space-y-2 text-xs">
-            <div className="font-bold text-white text-[11px] uppercase tracking-wider text-slate-300">
+            <div className="font-bold text-[11px] uppercase tracking-wider text-slate-300">
               Actionable Tips to Reach 100%:
             </div>
             {tips.map((tip, idx) => (
@@ -163,7 +195,7 @@ export const SupplierProfileEditorView: React.FC<SupplierProfileEditorViewProps>
         {saveSuccess && (
           <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>Storefront profile and factory details successfully saved and updated!</span>
+            <span>Storefront profile and facility credentials successfully saved and updated!</span>
           </div>
         )}
 
@@ -185,12 +217,12 @@ export const SupplierProfileEditorView: React.FC<SupplierProfileEditorViewProps>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">Company Legal Name</label>
+              <label className="text-xs font-bold text-slate-700">Company Legal Name *</label>
               <Input
                 value={form.company_name || ""}
                 onChange={(e) => setForm({ ...form, company_name: e.target.value })}
                 required
-                className="text-xs"
+                className="text-xs font-semibold"
               />
             </div>
 
@@ -199,72 +231,13 @@ export const SupplierProfileEditorView: React.FC<SupplierProfileEditorViewProps>
               <Input
                 value={form.website || ""}
                 onChange={(e) => setForm({ ...form, website: e.target.value })}
-                placeholder="https://..."
+                placeholder="https://company.com"
                 className="text-xs"
               />
             </div>
 
-            <div className="space-y-1 sm:col-span-2">
-              <label className="text-xs font-bold text-slate-700">Logo Image URL</label>
-              <Input
-                value={form.logo_url || ""}
-                onChange={(e) => setForm({ ...form, logo_url: e.target.value })}
-                placeholder="https://..."
-                className="text-xs"
-              />
-            </div>
-
-            <div className="space-y-1 sm:col-span-2">
-              <label className="text-xs font-bold text-slate-700">Banner Cover Image URL</label>
-              <Input
-                value={form.banner_url || ""}
-                onChange={(e) => setForm({ ...form, banner_url: e.target.value })}
-                placeholder="https://..."
-                className="text-xs"
-              />
-            </div>
-
-            <div className="space-y-1 sm:col-span-2">
-              <label className="text-xs font-bold text-slate-700">Full About Company Overview</label>
-              <textarea
-                value={form.description || ""}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                rows={4}
-                className="w-full text-xs font-medium rounded-xl border border-slate-200 p-3 focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Section 2: Location, Years & Capacity */}
-        <div className="bg-white p-6 sm:p-7 rounded-2xl border border-slate-200 shadow-sm space-y-5">
-          <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-            <Globe className="w-5 h-5 text-blue-600" />
-            <h3 className="font-bold text-base text-slate-900">
-              Operations, Location & Trade Markets
-            </h3>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">City / Port City</label>
-              <Input
-                value={form.city || ""}
-                onChange={(e) => setForm({ ...form, city: e.target.value })}
-                required
-                className="text-xs"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">State / Province</label>
-              <Input
-                value={form.state || ""}
-                onChange={(e) => setForm({ ...form, state: e.target.value })}
-                className="text-xs"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">Country</label>
+              <label className="text-xs font-bold text-slate-700">Headquarters Country *</label>
               <Input
                 value={form.country || ""}
                 onChange={(e) => setForm({ ...form, country: e.target.value })}
@@ -274,41 +247,90 @@ export const SupplierProfileEditorView: React.FC<SupplierProfileEditorViewProps>
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">Years in Business</label>
+              <label className="text-xs font-bold text-slate-700">City / Port City *</label>
               <Input
-                type="number"
-                value={form.years_in_business || 1}
-                onChange={(e) => setForm({ ...form, years_in_business: parseInt(e.target.value) || 1 })}
+                value={form.city || ""}
+                onChange={(e) => setForm({ ...form, city: e.target.value })}
+                required
                 className="text-xs"
               />
             </div>
 
-            <div className="space-y-1 sm:col-span-2">
-              <label className="text-xs font-bold text-slate-700">Monthly Processing Capacity</label>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700">Year Founded</label>
               <Input
-                value={form.capacity_per_month || ""}
-                onChange={(e) => setForm({ ...form, capacity_per_month: e.target.value })}
-                placeholder="e.g. 1,000 MT / Month"
+                type="number"
+                value={form.year_founded || ""}
+                onChange={(e) => setForm({ ...form, year_founded: parseInt(e.target.value) || 2015 })}
+                className="text-xs"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700">Number of Employees</label>
+              <Input
+                type="number"
+                value={form.employees || ""}
+                onChange={(e) => setForm({ ...form, employees: parseInt(e.target.value) || 100 })}
                 className="text-xs"
               />
             </div>
           </div>
 
-          {/* Export Countries Tags */}
-          <div className="space-y-2 pt-2 border-t border-slate-100">
-            <label className="text-xs font-bold text-slate-700">Primary Export Countries</label>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-slate-700">About Company & Export Capability *</label>
+            <textarea
+              rows={4}
+              value={form.about || form.description || ""}
+              onChange={(e) => setForm({ ...form, about: e.target.value, description: e.target.value })}
+              placeholder="Provide a comprehensive summary of your production facilities, testing capabilities, and export history..."
+              className="w-full text-xs p-3.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700">Logo Image URL</label>
+              <Input
+                value={form.logo_url || ""}
+                onChange={(e) => setForm({ ...form, logo_url: e.target.value })}
+                placeholder="https://images.unsplash.com/..."
+                className="text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700">Hero Banner Image URL</label>
+              <Input
+                value={form.banner_url || ""}
+                onChange={(e) => setForm({ ...form, banner_url: e.target.value })}
+                placeholder="https://images.unsplash.com/..."
+                className="text-xs"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Section 2: Global Export Markets & Languages */}
+        <div className="bg-white p-6 sm:p-7 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+            <Globe className="w-5 h-5 text-emerald-600" />
+            <h3 className="font-bold text-base text-slate-900">
+              Export Destinations & Supported Languages
+            </h3>
+          </div>
+
+          {/* Export Countries */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-700">Key Export Target Markets</label>
             <div className="flex flex-wrap gap-2 mb-2">
               {(form.export_countries || []).map((c) => (
                 <span
                   key={c}
-                  className="px-3 py-1 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-xs font-semibold flex items-center gap-1.5"
+                  className="px-3 py-1 rounded-full bg-slate-100 text-slate-800 text-xs font-semibold flex items-center gap-1.5"
                 >
                   {c}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveCountry(c)}
-                    className="hover:text-rose-500"
-                  >
+                  <button type="button" onClick={() => handleRemoveCountry(c)} className="text-slate-400 hover:text-rose-500">
                     <Trash2 className="w-3 h-3" />
                   </button>
                 </span>
@@ -327,24 +349,17 @@ export const SupplierProfileEditorView: React.FC<SupplierProfileEditorViewProps>
             </div>
           </div>
 
-          {/* Languages Spoken */}
+          {/* Languages */}
           <div className="space-y-2 pt-2 border-t border-slate-100">
-            <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-              <Languages className="w-4 h-4 text-slate-500" />
-              Business Negotiation Languages
-            </label>
+            <label className="text-xs font-bold text-slate-700">Sales Communication Languages</label>
             <div className="flex flex-wrap gap-2 mb-2">
               {(form.languages || []).map((l) => (
                 <span
                   key={l}
-                  className="px-3 py-1 rounded-xl bg-slate-100 border border-slate-200 text-slate-800 text-xs font-semibold flex items-center gap-1.5"
+                  className="px-3 py-1 rounded-full bg-blue-50 text-blue-800 text-xs font-semibold flex items-center gap-1.5"
                 >
                   {l}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveLang(l)}
-                    className="hover:text-rose-500"
-                  >
+                  <button type="button" onClick={() => handleRemoveLang(l)} className="text-blue-400 hover:text-rose-500">
                     <Trash2 className="w-3 h-3" />
                   </button>
                 </span>
@@ -354,7 +369,7 @@ export const SupplierProfileEditorView: React.FC<SupplierProfileEditorViewProps>
               <Input
                 value={newLang}
                 onChange={(e) => setNewLang(e.target.value)}
-                placeholder="Add language (e.g. German)"
+                placeholder="Add language (e.g. German, Arabic)"
                 className="text-xs"
               />
               <Button type="button" variant="outline" size="sm" onClick={handleAddLang}>
@@ -364,125 +379,56 @@ export const SupplierProfileEditorView: React.FC<SupplierProfileEditorViewProps>
           </div>
         </div>
 
-        {/* Section 3: Factory Specifications */}
+        {/* Section 3: Factory Photographs */}
         <div className="bg-white p-6 sm:p-7 rounded-2xl border border-slate-200 shadow-sm space-y-5">
           <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-            <Factory className="w-5 h-5 text-blue-600" />
+            <Factory className="w-5 h-5 text-purple-600" />
             <h3 className="font-bold text-base text-slate-900">
-              Factory Specifications & Inspection Data
+              Factory Facilities & Production Photos
             </h3>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">Facility Size</label>
-              <Input
-                value={form.factory_details?.facility_size || ""}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    factory_details: { ...form.factory_details, facility_size: e.target.value },
-                  })
-                }
-                placeholder="45,000 sq ft"
-                className="text-xs"
-              />
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {(form.factory_photos || []).map((photo, idx) => (
+                <div key={idx} className="relative group rounded-xl overflow-hidden border border-slate-200 aspect-video bg-slate-100">
+                  <img src={photo} alt={`Facility ${idx}`} className="w-full h-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => handleRemovePhoto(idx)}
+                    className="absolute top-1.5 right-1.5 p-1 rounded-md bg-rose-600 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">Annual Production Capacity</label>
+            <div className="flex gap-2 max-w-md pt-2">
               <Input
-                value={form.factory_details?.annual_capacity || ""}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    factory_details: { ...form.factory_details, annual_capacity: e.target.value },
-                  })
-                }
-                placeholder="12,000 MT"
+                value={newPhotoUrl}
+                onChange={(e) => setNewPhotoUrl(e.target.value)}
+                placeholder="Paste factory photo URL..."
                 className="text-xs"
               />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">Automated Production Lines</label>
-              <Input
-                type="number"
-                value={form.factory_details?.production_lines || 6}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    factory_details: {
-                      ...form.factory_details,
-                      production_lines: parseInt(e.target.value) || 1,
-                    },
-                  })
-                }
-                className="text-xs"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">Cleanroom Standard</label>
-              <Input
-                value={form.factory_details?.cleanrooms || ""}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    factory_details: { ...form.factory_details, cleanrooms: e.target.value },
-                  })
-                }
-                placeholder="ISO Class 8 Cleanroom"
-                className="text-xs"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">Warehouse & Climate Storage</label>
-              <Input
-                value={form.factory_details?.warehouse_capacity || ""}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    factory_details: {
-                      ...form.factory_details,
-                      warehouse_capacity: e.target.value,
-                    },
-                  })
-                }
-                placeholder="10,000 MT Climate Controlled"
-                className="text-xs"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">Testing Lab & Quality Assurance</label>
-              <Input
-                value={form.factory_details?.testing_lab || ""}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    factory_details: { ...form.factory_details, testing_lab: e.target.value },
-                  })
-                }
-                placeholder="In-house NABL Accredited HPLC / GC-MS"
-                className="text-xs"
-              />
+              <Button type="button" variant="outline" size="sm" onClick={handleAddPhoto}>
+                <Plus className="w-4 h-4 mr-1" /> Add Photo
+              </Button>
             </div>
           </div>
         </div>
 
-        {/* Submit Actions */}
+        {/* Form Actions */}
         <div className="flex items-center justify-end gap-3 pt-2">
           <Button
             type="submit"
             variant="primary"
-            size="lg"
-            isLoading={isSaving}
-            className="font-bold shadow-md shadow-blue-500/20 px-8"
+            size="md"
+            disabled={isSaving}
+            className="text-xs font-bold px-6 shadow-md shadow-blue-500/20"
           >
-            <Save className="w-4 h-4 mr-2" />
-            Save Storefront Profile
+            <Save className="w-4 h-4 mr-1.5" />
+            {isSaving ? "Saving Storefront..." : "Save Changes"}
           </Button>
         </div>
       </form>

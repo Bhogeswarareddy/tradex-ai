@@ -169,6 +169,10 @@ class AuthService {
     return this.client.get<UserSettings>("/users/me/settings");
   }
 
+  async getExchangeRates(): Promise<{ base: string; rates: Record<string, number>; notice: string }> {
+    return this.client.get<{ base: string; rates: Record<string, number>; notice: string }>("/users/exchange-rates");
+  }
+
   async updateSettings(data: UserSettings): Promise<UserSettings> {
     return this.client.patch<UserSettings>("/users/me/settings", data);
   }

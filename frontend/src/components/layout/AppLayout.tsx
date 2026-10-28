@@ -21,7 +21,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     location.pathname.startsWith("/trade-finance");
 
   return (
-    <div className="min-h-screen bg-[#F4F7FB] flex flex-row">
+    <div className="min-h-screen bg-[#F4F7FB] dark:bg-[#0B1120] text-slate-900 dark:text-slate-100 flex flex-row transition-colors">
       {/* Desktop Sidebar (hidden below 1024px) */}
       <div className="hidden lg:block shrink-0">
         <Sidebar className="sticky top-0 h-screen" />

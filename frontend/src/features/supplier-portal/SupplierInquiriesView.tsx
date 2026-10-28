@@ -6,7 +6,8 @@ import {
   CheckCircle2,
   Globe,
   X,
-  FileText,
+  Check,
+  AlertCircle,
 } from "lucide-react";
 import {
   SupplierInquiryItem,
@@ -17,12 +18,14 @@ import { Button } from "../../components/ui/Button";
 export const SupplierInquiriesView: React.FC = () => {
   const [inquiries, setInquiries] = useState<SupplierInquiryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedInquiry, setSelectedInquiry] = useState<SupplierInquiryItem | null>(null);
 
   // Quick reply drawer state
   const [replyText, setReplyText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [replySuccess, setReplySuccess] = useState(false);
+  const [isResolving, setIsResolving] = useState(false);
 
   useEffect(() => {
     loadInquiries();
@@ -30,11 +33,12 @@ export const SupplierInquiriesView: React.FC = () => {
 
   const loadInquiries = async () => {
     setIsLoading(true);
+    setError(null);
     try {
       const data = await supplierPortalApi.getInquiries();
       setInquiries(data);
-    } catch (err) {
-      console.error("Failed to load inquiries", err);
+    } catch (err: any) {
+      setError(err.message || "Failed to load buyer inquiries.");
     } finally {
       setIsLoading(false);
     }
@@ -49,7 +53,7 @@ export const SupplierInquiriesView: React.FC = () => {
   const handleAiDraftReply = () => {
     if (!selectedInquiry) return;
     setReplyText(
-      `Dear ${selectedInquiry.sender_name},\n\nThank you for reaching out to us regarding your inquiry "${selectedInquiry.subject}". We are pleased to confirm that we currently have active harvest capacity to fulfill your requested volume.\n\nOur current export quotation:\n• Unit Price: $3.45 / kg (FOB Nhava Sheva / JNPT)\n• Minimum Order Quantity (MOQ): 500 kg\n• Lead Time: 12-14 business days from LC confirmation\n• Certifications: USDA Organic NPOP, ISO 22000, HACCP\n\nPlease let us know if you would like us to prepare an official Proforma Invoice or dispatch test inspection lab samples.\n\nBest regards,\nExport Sales Department`
+      `Dear ${selectedInquiry.sender_name},\n\nThank you for reaching out to us regarding your inquiry "${selectedInquiry.subject}". We confirm active harvest capacity to fulfill your requested volume.\n\nOur current export terms:\n• Minimum Order Quantity (MOQ): 500 kg\n• Lead Time: 12-14 business days from LC confirmation\n• Certifications: ISO 9001, HACCP, EU Organic\n\nPlease let us know if you would like test samples or an official Proforma Invoice.\n\nBest regards,\nExport Sales Team`
     );
   };
 
@@ -61,14 +65,22 @@ export const SupplierInquiriesView: React.FC = () => {
       await supplierPortalApi.replyInquiry(selectedInquiry.id, replyText.trim());
       setReplySuccess(true);
       // update state locally
-      setInquiries(
-        inquiries.map((inq) =>
-          inq.id === selectedInquiry.id ? { ...inq, replied: true } : inq
-        )
-      );
-      setTimeout(() => {
-        setSelectedInquiry(null);
-      }, 1500);
+      const updatedMessages = [
+        ...(selectedInquiry.messages || []),
+        {
+          id: String(Date.now()),
+          sender_name: "You",
+          sender_role: "supplier",
+          body: replyText.trim(),
+          created_at: "Just now",
+          is_mine: true,
+        },
+      ];
+      const updatedInquiry = { ...selectedInquiry, replied: true, messages: updatedMessages };
+      setSelectedInquiry(updatedInquiry);
+      setInquiries(inquiries.map((inq) => (inq.id === selectedInquiry.id ? updatedInquiry : inq)));
+      setReplyText("");
+      setTimeout(() => setReplySuccess(false), 2500);
     } catch (err: any) {
       alert(err.message || "Failed to send reply");
     } finally {
@@ -76,211 +88,233 @@ export const SupplierInquiriesView: React.FC = () => {
     }
   };
 
+  const handleResolve = async () => {
+    if (!selectedInquiry) return;
+    setIsResolving(true);
+    try {
+      await supplierPortalApi.resolveInquiry(selectedInquiry.id);
+      const updatedInquiry = { ...selectedInquiry, status: "resolved" };
+      setSelectedInquiry(updatedInquiry);
+      setInquiries(inquiries.map((inq) => (inq.id === selectedInquiry.id ? updatedInquiry : inq)));
+    } catch (err: any) {
+      alert(err.message || "Failed to mark inquiry as resolved");
+    } finally {
+      setIsResolving(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4 animate-pulse">
+        <div className="h-10 w-48 bg-slate-200 rounded-lg" />
+        <div className="h-64 bg-slate-100 rounded-2xl border border-slate-200" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-8 rounded-2xl bg-rose-50 border border-rose-200 text-center space-y-3">
+        <AlertCircle className="w-8 h-8 text-rose-500 mx-auto" />
+        <p className="text-sm font-bold text-rose-800">{error}</p>
+        <Button variant="primary" size="sm" onClick={loadInquiries}>
+          Retry Loading Inquiries
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
         <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
           <MessageSquare className="w-5 h-5 text-blue-600" />
-          Buyer Inquiries & Quote Requests ({inquiries.length})
+          Buyer Inquiries & Quote Threads ({inquiries.length})
         </h3>
         <p className="text-xs text-slate-500">
           Direct messages and RFQ discussions from verified international importers
         </p>
       </div>
 
-      {/* Inquiries Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-600">
-            <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
-              <tr>
-                <th className="p-3 pl-5">Buyer</th>
-                <th className="p-3">Country</th>
-                <th className="p-3">Inquiry Subject</th>
-                <th className="p-3">RFQ Reference</th>
-                <th className="p-3">Status</th>
-                <th className="p-3">Received</th>
-                <th className="p-3 text-right pr-5">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {isLoading ? (
+      {inquiries.length === 0 ? (
+        <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 text-slate-400 space-y-3">
+          <MessageSquare className="w-12 h-12 text-slate-300 mx-auto" />
+          <h4 className="font-bold text-slate-700 text-sm">No Inquiries Found</h4>
+          <p className="text-xs text-slate-400 max-w-sm mx-auto">
+            You do not have any incoming inquiries or message threads yet.
+          </p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-600">
+              <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
                 <tr>
-                  <td colSpan={7} className="p-10 text-center text-slate-400">
-                    Loading inquiries...
-                  </td>
+                  <th className="p-3 pl-5">Buyer</th>
+                  <th className="p-3">Country</th>
+                  <th className="p-3">Subject / Request</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3">Date</th>
+                  <th className="p-3 text-right pr-5">Conversation</th>
                 </tr>
-              ) : inquiries.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="p-10 text-center text-slate-400">
-                    No buyer inquiries received yet.
-                  </td>
-                </tr>
-              ) : (
-                inquiries.map((inq) => (
-                  <tr
-                    key={inq.id}
-                    className={`hover:bg-slate-50 transition-colors cursor-pointer ${
-                      !inq.is_read ? "bg-blue-50/30 font-medium" : ""
-                    }`}
-                    onClick={() => handleOpenDrawer(inq)}
-                  >
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {inquiries.map((inq) => (
+                  <tr key={inq.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="p-3 pl-5">
-                      <div className="font-bold text-slate-900">{inq.sender_name}</div>
-                      <div className="text-[11px] text-slate-400">{inq.sender_company}</div>
+                      <span className="font-bold text-slate-900 block">{inq.sender_name}</span>
+                      <span className="text-slate-400 text-[11px]">{inq.sender_company}</span>
                     </td>
                     <td className="p-3">
-                      <span className="flex items-center gap-1 text-slate-700">
+                      <span className="flex items-center gap-1 font-semibold text-slate-700">
                         <Globe className="w-3.5 h-3.5 text-slate-400" />
                         {inq.sender_country}
                       </span>
                     </td>
-                    <td className="p-3 font-semibold text-slate-900">
-                      {inq.subject}
-                    </td>
-                    <td className="p-3 font-mono text-[11px] text-slate-500">
-                      {inq.rfq_number || "Direct Message"}
+                    <td className="p-3 max-w-sm">
+                      <span className="font-bold text-slate-800 block line-clamp-1">{inq.subject}</span>
+                      <span className="text-slate-500 text-[11px] line-clamp-1">{inq.message}</span>
                     </td>
                     <td className="p-3">
-                      {inq.replied ? (
-                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
-                          Replied
+                      {inq.status === "resolved" ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                          Resolved
+                        </span>
+                      ) : inq.replied ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1 w-fit">
+                          <Check className="w-3 h-3 text-emerald-600" /> Replied
                         </span>
                       ) : (
-                        <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
-                          New Inquiry
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                          Needs Reply
                         </span>
                       )}
                     </td>
-                    <td className="p-3 text-slate-400 text-[11px]">
-                      {inq.created_at}
-                    </td>
+                    <td className="p-3 text-slate-400">{inq.created_at}</td>
                     <td className="p-3 text-right pr-5">
                       <Button
+                        variant="primary"
                         size="sm"
-                        variant={inq.replied ? "outline" : "primary"}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpenDrawer(inq);
-                        }}
-                        className="text-xs font-semibold"
+                        onClick={() => handleOpenDrawer(inq)}
+                        className="text-xs font-bold"
                       >
-                        {inq.replied ? "View Thread" : "Reply"}
+                        Open Thread &rarr;
                       </Button>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Quick Reply Drawer Modal */}
+      {/* Thread & Reply Drawer Modal */}
       {selectedInquiry && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-end">
-          <div className="bg-white h-full max-w-xl w-full border-l border-slate-200 shadow-2xl p-6 sm:p-7 space-y-5 overflow-y-auto flex flex-col justify-between">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                    {selectedInquiry.sender_name.charAt(0)}
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900">
-                      Inquiry from {selectedInquiry.sender_name}
-                    </h3>
-                    <p className="text-xs text-slate-500">
-                      {selectedInquiry.sender_company} • {selectedInquiry.sender_country}
-                    </p>
-                  </div>
-                </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] flex flex-col justify-between">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="font-bold text-base text-slate-900">{selectedInquiry.subject}</h3>
+                <p className="text-xs text-slate-500">
+                  {selectedInquiry.sender_name} &bull; {selectedInquiry.sender_company} ({selectedInquiry.sender_country})
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {selectedInquiry.status !== "resolved" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isResolving}
+                    onClick={handleResolve}
+                    className="text-xs font-semibold text-slate-600"
+                  >
+                    Mark Resolved
+                  </Button>
+                )}
                 <button
                   onClick={() => setSelectedInquiry(null)}
-                  className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                  className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
+            </div>
 
-              {/* Inquiry Message Box */}
-              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-900">{selectedInquiry.subject}</span>
-                  <span className="text-[11px] text-slate-400">{selectedInquiry.created_at}</span>
-                </div>
-                <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
-                  {selectedInquiry.message}
-                </p>
-                {selectedInquiry.rfq_number && (
-                  <div className="pt-2 border-t border-slate-200 flex items-center gap-1.5 text-[11px] text-blue-600 font-semibold">
-                    <FileText className="w-3.5 h-3.5" />
-                    Reference RFQ #{selectedInquiry.rfq_number}
+            {/* Messages Thread Scroll Area */}
+            <div className="flex-1 overflow-y-auto space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-200 max-h-72">
+              {selectedInquiry.messages && selectedInquiry.messages.length > 0 ? (
+                selectedInquiry.messages.map((m) => (
+                  <div
+                    key={m.id}
+                    className={`p-3 rounded-xl max-w-[85%] text-xs space-y-1 ${
+                      m.is_mine
+                        ? "ml-auto bg-blue-600 text-white rounded-br-none"
+                        : "mr-auto bg-white text-slate-800 border border-slate-200 rounded-bl-none shadow-sm"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-4 font-bold text-[10px] opacity-80">
+                      <span>{m.sender_name}</span>
+                      <span>{m.created_at}</span>
+                    </div>
+                    <p className="whitespace-pre-line leading-relaxed">{m.body}</p>
                   </div>
-                )}
-              </div>
-
-              {/* AI Drafting Assistance Button */}
-              <div className="flex items-center justify-between p-3 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
-                <div className="flex items-center gap-2 text-xs font-bold text-blue-900">
-                  <Sparkles className="w-4 h-4 text-blue-600" />
-                  AI Quotation Assistant
+                ))
+              ) : (
+                <div className="p-3 bg-white rounded-xl border border-slate-200 text-xs text-slate-800">
+                  <div className="font-bold text-slate-900">{selectedInquiry.sender_name} ({selectedInquiry.sender_company}):</div>
+                  <p className="mt-1 whitespace-pre-line">{selectedInquiry.message}</p>
                 </div>
+              )}
+            </div>
+
+            {/* Reply Form */}
+            <form onSubmit={handleSendReply} className="space-y-3 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700">Your Reply</span>
                 <button
                   type="button"
                   onClick={handleAiDraftReply}
-                  className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 shadow-sm transition-colors flex items-center gap-1"
+                  className="text-[11px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
-                  Draft reply with price quote
+                  Generate AI Smart Draft
                 </button>
               </div>
 
-              {/* Reply Form */}
-              <form onSubmit={handleSendReply} className="space-y-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">
-                    Your Response
-                  </label>
-                  <textarea
-                    rows={8}
-                    value={replyText}
-                    onChange={(e) => setReplyText(e.target.value)}
-                    placeholder="Type quotation or click 'Draft reply with price quote' above..."
-                    className="w-full text-xs font-medium rounded-xl border border-slate-200 p-3.5 focus:border-blue-500 focus:outline-none"
-                    required
-                  />
-                </div>
+              <textarea
+                rows={4}
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                placeholder="Type your message, pricing proposal, or specification details..."
+                className="w-full text-xs p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                required
+              />
 
-                {replySuccess && (
-                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span>Quotation reply dispatched to buyer via encrypted message!</span>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-end gap-2.5 pt-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setSelectedInquiry(null)}
-                  >
-                    Close
-                  </Button>
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    isLoading={isSending}
-                    disabled={!replyText.trim() || replySuccess}
-                    className="font-bold text-xs"
-                  >
-                    <Send className="w-3.5 h-3.5 mr-1.5" />
-                    Send Reply
-                  </Button>
+              {replySuccess && (
+                <div className="p-2 rounded-lg bg-emerald-50 text-emerald-800 text-xs font-bold flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>Reply dispatched to buyer successfully!</span>
                 </div>
-              </form>
-            </div>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" size="sm" type="button" onClick={() => setSelectedInquiry(null)}>
+                  Close
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  type="submit"
+                  disabled={isSending || !replyText.trim()}
+                  className="font-bold text-xs"
+                >
+                  <Send className="w-3.5 h-3.5 mr-1" />
+                  {isSending ? "Sending..." : "Send Message"}
+                </Button>
+              </div>
+            </form>
           </div>
         </div>
       )}

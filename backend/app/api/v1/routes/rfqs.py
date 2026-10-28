@@ -763,13 +763,21 @@ async def submit_quote(
         buyer_user_id = buyer_rec.user_id
 
     if buyer_user_id:
-        note = Notification(
-            user_id=buyer_user_id,
-            title=f"New Quote Received: {q_number}",
-            message=f"A new quote of {quote.currency} {quote.unit_price} has been submitted on RFQ {rfq.rfq_number}.",
-            link=f"/rfqs/{rfq.id}",
-        )
-        db.add(note)
+        # Check recipient notification preference
+        buyer_u_stmt = select(User).where(User.id == buyer_user_id)
+        buyer_u = (await db.execute(buyer_u_stmt)).scalar_one_or_none()
+        allow_quote_notif = True
+        if buyer_u and buyer_u.settings:
+            allow_quote_notif = buyer_u.settings.get("notifications", {}).get("new_quotes", True)
+        if allow_quote_notif:
+            note = Notification(
+                user_id=buyer_user_id,
+                title=f"New Quote Received: {q_number}",
+                message=f"A new quote of {quote.currency} {quote.unit_price} has been submitted on RFQ {rfq.rfq_number}.",
+                event_type="quote_received",
+                link=f"/rfqs/{rfq.id}",
+            )
+            db.add(note)
 
     await db.commit()
     await db.refresh(quote)

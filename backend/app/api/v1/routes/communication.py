@@ -596,6 +596,18 @@ async def get_user_notifications(
     filtered_notifications = []
     for n in raw_notifications:
         pref_key = event_pref_map.get(n.event_type)
+        if not pref_key:
+            title_lower = (n.title or "").lower()
+            if "quote" in title_lower or "quotation" in title_lower:
+                pref_key = "new_quotes"
+            elif "rfq" in title_lower:
+                pref_key = "rfq_updates"
+            elif "order" in title_lower:
+                pref_key = "orders"
+            elif "shipment" in title_lower:
+                pref_key = "shipments"
+            elif "message" in title_lower:
+                pref_key = "messages"
         if pref_key and notif_prefs.get(pref_key) is False:
             continue
         filtered_notifications.append(n)

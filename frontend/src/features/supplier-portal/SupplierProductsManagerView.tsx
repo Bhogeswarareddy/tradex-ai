@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useCurrency } from "../settings/SettingsContext";
 import {
   Package,
   Plus,
@@ -64,6 +65,7 @@ const AVAILABILITY_STATUS_OPTIONS = [
 export const SupplierProductsManagerView: React.FC<SupplierProductsManagerViewProps> = ({
   onRefreshMetrics,
 }) => {
+  const { formatPrice } = useCurrency();
   const [products, setProducts] = useState<PortalProductItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page] = useState(1);
@@ -837,9 +839,23 @@ export const SupplierProductsManagerView: React.FC<SupplierProductsManagerViewPr
                         {p.hs_code || "—"}
                       </td>
                       <td className="p-3">
-                        <div className="font-bold text-slate-900">
-                          ${p.price_min?.toFixed(2)} - ${p.price_max?.toFixed(2)} / {p.unit}
-                        </div>
+                        {(() => {
+                          const pMin = formatPrice(p.price_min, p.currency || "USD");
+                          const pMax = formatPrice(p.price_max, p.currency || "USD");
+                          return (
+                            <div
+                              className="font-bold text-slate-900"
+                              title={pMin.approx ? `Original: $${p.price_min?.toFixed(2)} - $${p.price_max?.toFixed(2)} ${p.currency || "USD"}` : undefined}
+                            >
+                              {pMin.formatted} - {pMax.formatted} / {p.unit}
+                              {pMin.approx && (
+                                <span className="text-[10px] text-slate-400 block font-normal">
+                                  Orig: ${p.price_min?.toFixed(2)} - ${p.price_max?.toFixed(2)}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                         {p.price_badge && (
                           <div
                             className={`text-[10px] font-medium inline-block mt-0.5 px-1.5 py-0.2 rounded ${

@@ -1,5 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import { useCurrency } from "../settings/SettingsContext";
 import {
   Heart,
   Star,
@@ -31,7 +32,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   onToggleCompare,
   onToggleSave,
 }) => {
+  const { formatPrice } = useCurrency();
   const [saved, setSaved] = React.useState(product.is_saved);
+
+  const priceMinRes = formatPrice(product.price_min, product.currency || "USD");
+  const priceMaxRes = formatPrice(product.price_max, product.currency || "USD");
 
   const handleHeartClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -125,9 +130,17 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         {/* Pricing & CTA */}
         <div className="flex sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto shrink-0 pt-3 sm:pt-0 border-t sm:border-t-0 border-slate-100 gap-2">
           <div className="text-left sm:text-right">
-            <div className="text-lg font-black text-slate-900">
-              ${product.price_min.toFixed(2)} - ${product.price_max.toFixed(2)}{" "}
-              <span className="text-xs font-normal text-slate-500">/ {product.unit}</span>
+            <div
+              className="text-lg font-black text-slate-900 dark:text-slate-100"
+              title={priceMinRes.approx ? `Original: $${product.price_min.toFixed(2)} - $${product.price_max.toFixed(2)} ${product.currency || "USD"}` : undefined}
+            >
+              {priceMinRes.formatted} - {priceMaxRes.formatted}{" "}
+              <span className="text-xs font-normal text-slate-500 dark:text-slate-400">/ {product.unit}</span>
+              {priceMinRes.approx && (
+                <span className="text-[10px] text-slate-400 block font-normal">
+                  Orig: ${product.price_min.toFixed(2)} - ${product.price_max.toFixed(2)} {product.currency || "USD"}
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-400">
               MOQ: <strong className="text-slate-700">{product.moq.toLocaleString()} {product.unit}</strong>
@@ -248,10 +261,18 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           </div>
 
           {/* Pricing & MOQ Spec Box */}
-          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 space-y-1">
-            <div className="text-base font-black text-slate-900 leading-tight">
-              ${product.price_min.toFixed(2)} - ${product.price_max.toFixed(2)}{" "}
-              <span className="text-xs font-normal text-slate-500">/ {product.unit}</span>
+          <div className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 space-y-1">
+            <div
+              className="text-base font-black text-slate-900 dark:text-slate-100 leading-tight"
+              title={priceMinRes.approx ? `Original: $${product.price_min.toFixed(2)} - $${product.price_max.toFixed(2)} ${product.currency || "USD"}` : undefined}
+            >
+              {priceMinRes.formatted} - {priceMaxRes.formatted}{" "}
+              <span className="text-xs font-normal text-slate-500 dark:text-slate-400">/ {product.unit}</span>
+              {priceMinRes.approx && (
+                <span className="text-[10px] text-slate-400 block font-normal">
+                  Orig: ${product.price_min.toFixed(2)} - ${product.price_max.toFixed(2)} {product.currency || "USD"}
+                </span>
+              )}
             </div>
             <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
               <span>MOQ: <strong className="text-slate-800">{product.moq.toLocaleString()} {product.unit}</strong></span>

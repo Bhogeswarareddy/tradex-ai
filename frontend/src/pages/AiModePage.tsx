@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useCurrency } from "../features/settings/SettingsContext";
 import {
   Sparkles,
   Plus,
@@ -1303,6 +1304,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
   onNegotiate,
   chatFeedback,
 }) => {
+  const { formatPrice } = useCurrency();
+  const priceRes = formatPrice(card.unit_price, card.currency || "USD");
   return (
     <div
       className={`relative bg-white rounded-2xl border transition-all duration-150 flex flex-col overflow-hidden hover:shadow-md ${
@@ -1394,9 +1397,12 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
           {/* Price & MOQ */}
           <div className="mt-1.5">
-            <div className="flex items-baseline gap-1.5">
+            <div
+              className="flex items-baseline gap-1.5"
+              title={priceRes.approx ? `Original: ${card.currency} ${card.unit_price.toFixed(2)}` : undefined}
+            >
               <span className="font-bold text-sm sm:text-base text-slate-900">
-                {card.currency} {card.price_range || card.unit_price.toFixed(2)}
+                {priceRes.formatted}
               </span>
               <span
                 className={`text-[9px] font-semibold px-1 rounded ${
@@ -1408,6 +1414,11 @@ const ProductCard: React.FC<ProductCardProps> = ({
                 {card.price_status === "current" ? "confirmed" : card.price_status}
               </span>
             </div>
+            {priceRes.approx && (
+              <span className="text-[10px] text-slate-400 block font-normal">
+                Orig: {card.currency} {card.unit_price.toFixed(2)}
+              </span>
+            )}
             <div className="flex items-center justify-between text-[11px] text-slate-500 mt-1">
               <span>Min. order: {card.moq} units</span>
               {card.available_quantity !== undefined && card.available_quantity !== null && (

@@ -1,5 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   LayoutDashboard,
   Sparkles,
@@ -56,8 +57,29 @@ export interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ onNavClick, className = "" }) => {
+  const { t } = useTranslation();
   const location = useLocation();
   const { user } = useAuth();
+
+  const getTranslatedName = (id: string, fallback: string) => {
+    const map: Record<string, string> = {
+      home: t("nav.home"),
+      products: t("nav.products"),
+      suppliers: t("nav.suppliers"),
+      rfq: t("nav.rfqs"),
+      orders: t("nav.orders"),
+      shipments: t("nav.shipments"),
+      messages: t("nav.messages"),
+      analytics: t("nav.analytics"),
+      settings: t("nav.settings"),
+      "admin-settings": t("nav.settings"),
+      "supplier-portal": t("nav.dashboard"),
+      "supplier-products": t("nav.products"),
+      "supplier-capacity": t("nav.capacity"),
+      "supplier-certs": t("nav.certifications"),
+    };
+    return map[id] || fallback;
+  };
 
   const userRole = (user?.role || "buyer").toLowerCase();
 
@@ -158,7 +180,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavClick, className = "" }) 
                       isActive ? "text-white" : "text-slate-400 group-hover:text-slate-200"
                     }`}
                   />
-                  <span className="truncate">{item.name}</span>
+                  <span className="truncate">{getTranslatedName(item.id, item.name)}</span>
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0 ml-2">

@@ -4,3 +4,7 @@ export * from "./SupplierProductsManagerView";
 export * from "./SupplierCapacityView";
 export * from "./SupplierCertificationsView";
 export * from "./SupplierInquiriesView";
+export * from "./SupplierRfqsView";
+export * from "./SupplierOrdersView";
+export * from "./SupplierShipmentsView";
+export * from "./SupplierAnalyticsView";

@@ -5,6 +5,28 @@ function getAuthHeader(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+async function handleResponse<T>(res: Response, defaultMessage: string): Promise<T> {
+  if (!res.ok) {
+    let errorMsg = defaultMessage;
+    try {
+      const errJson = await res.json();
+      if (errJson.detail) {
+        if (typeof errJson.detail === "string") {
+          errorMsg = errJson.detail;
+        } else if (Array.isArray(errJson.detail)) {
+          errorMsg = errJson.detail.map((d: any) => `${d.loc ? d.loc.slice(-1) + ': ' : ''}${d.msg}`).join("; ");
+        }
+      } else if (errJson.message) {
+        errorMsg = errJson.message;
+      }
+    } catch {
+      errorMsg = `${defaultMessage} (${res.status} ${res.statusText || ""})`.trim();
+    }
+    throw new Error(errorMsg);
+  }
+  return res.json();
+}
+
 export interface SupplierOpportunityItem {
   id: string;
   rfq_number: string;
@@ -27,12 +49,21 @@ export interface SupplierDashboardMetrics {
   revenue_this_month: number;
   timeline_30d: Array<{ date: string; views: number; inquiries: number; quotes: number }>;
   opportunities: SupplierOpportunityItem[];
+  products_count?: number;
+  active_products_count?: number;
+  published_products_count?: number;
+  orders_count?: number;
+  products_by_status?: Record<string, number>;
+  low_stock_alerts?: Array<{ id: string; name: string; available_quantity: number; unit: string; availability_status?: string }>;
+  stale_price_alerts?: Array<{ id: string; name: string; last_confirmed?: string }>;
+  expiring_certificates?: Array<{ id: string; name: string; certificate_no?: string; expires_at: string; days_left: number }>;
 }
 
 export interface StorefrontProfile {
   id: string;
   company_id: string;
   company_name: string;
+  about?: string;
   description?: string;
   website?: string;
   logo_url?: string;
@@ -41,10 +72,14 @@ export interface StorefrontProfile {
   state?: string;
   country: string;
   years_in_business: number;
+  year_founded?: number;
+  employees?: number;
   verified_status: string;
   capacity_per_month: string;
   export_countries: string[];
+  export_markets?: string[];
   languages: string[];
+  factory_photos?: string[];
   factory_details?: {
     facility_size?: string;
     annual_capacity?: string;
@@ -53,9 +88,11 @@ export interface StorefrontProfile {
     warehouse_capacity?: string;
     testing_lab?: string;
     photos?: string[];
+    employees?: number;
   };
   completeness_score: number;
   completeness_tips: string[];
+  public_storefront_url?: string;
 }
 
 export interface PortalProductItem {
@@ -126,10 +163,26 @@ export interface CapacityInventoryItem {
   product_name: string;
   unit: string;
   moq: number;
-  monthly_capacity: string;
+  monthly_capacity?: string;
+  available_quantity: number;
+  reserved_quantity: number;
   stock_available: number;
+  availability_status: string;
   next_available_date?: string;
   lead_time_days: number;
+  price_confirmed_at?: string;
+  confirmed_at?: string;
+  updated_at?: string;
+  is_stale?: boolean;
+}
+
+export interface SupplierInquiryMessage {
+  id: string;
+  sender_name: string;
+  sender_role: string;
+  body: string;
+  created_at: string;
+  is_mine: boolean;
 }
 
 export interface SupplierInquiryItem {
@@ -143,6 +196,46 @@ export interface SupplierInquiryItem {
   created_at: string;
   is_read: boolean;
   replied: boolean;
+  status?: string;
+  messages_count?: number;
+  messages?: SupplierInquiryMessage[];
+}
+
+export interface SupplierOrderResponse {
+  id: string;
+  order_number: string;
+  buyer_name: string;
+  buyer_company: string;
+  buyer_country: string;
+  total_amount: number;
+  currency: string;
+  status: string;
+  incoterm: string;
+  created_at: string;
+  shipping_address?: string;
+  items: Array<{
+    id: string;
+    product_name: string;
+    quantity: number;
+    unit: string;
+    unit_price: number;
+    total_price: number;
+  }>;
+}
+
+export interface SupplierShipmentResponse {
+  id: string;
+  shipment_number: string;
+  order_id: string;
+  order_number: string;
+  carrier: string;
+  tracking_number: string;
+  origin: string;
+  destination: string;
+  status: string;
+  eta?: string;
+  current_location: string;
+  created_at: string;
 }
 
 export const supplierPortalApi = {
@@ -150,16 +243,14 @@ export const supplierPortalApi = {
     const res = await fetch(`${BASE_URL}/supplier/dashboard/metrics`, {
       headers: getAuthHeader(),
     });
-    if (!res.ok) throw new Error(`Failed to load metrics: ${res.statusText}`);
-    return res.json();
+    return handleResponse<SupplierDashboardMetrics>(res, "Failed to load metrics");
   },
 
   async getProfile(): Promise<StorefrontProfile> {
     const res = await fetch(`${BASE_URL}/supplier/profile`, {
       headers: getAuthHeader(),
     });
-    if (!res.ok) throw new Error(`Failed to load profile: ${res.statusText}`);
-    return res.json();
+    return handleResponse<StorefrontProfile>(res, "Failed to load profile");
   },
 
   async updateProfile(data: Partial<StorefrontProfile>): Promise<StorefrontProfile> {
@@ -168,8 +259,7 @@ export const supplierPortalApi = {
       headers: { "Content-Type": "application/json", ...getAuthHeader() },
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error(`Failed to update profile: ${res.statusText}`);
-    return res.json();
+    return handleResponse<StorefrontProfile>(res, "Failed to update profile");
   },
 
   async getProducts(params: { q?: string; status?: string; page?: number; page_size?: number } = {}): Promise<{
@@ -188,8 +278,7 @@ export const supplierPortalApi = {
     const res = await fetch(`${BASE_URL}/supplier/products?${qs.toString()}`, {
       headers: getAuthHeader(),
     });
-    if (!res.ok) throw new Error(`Failed to load products: ${res.statusText}`);
-    return res.json();
+    return handleResponse(res, "Failed to load products");
   },
 
   async createProduct(data: Record<string, any>): Promise<{ id: string; slug: string; message: string }> {
@@ -198,16 +287,14 @@ export const supplierPortalApi = {
       headers: { "Content-Type": "application/json", ...getAuthHeader() },
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error(`Failed to create product: ${res.statusText}`);
-    return res.json();
+    return handleResponse(res, "Failed to create product");
   },
 
   async getProduct(id: string): Promise<PortalProductItem> {
     const res = await fetch(`${BASE_URL}/supplier/products/${encodeURIComponent(id)}`, {
       headers: getAuthHeader(),
     });
-    if (!res.ok) throw new Error(`Failed to load product: ${res.statusText}`);
-    return res.json();
+    return handleResponse(res, "Failed to load product");
   },
 
   async patchProduct(id: string, data: Record<string, any>): Promise<{ message: string; product: PortalProductItem }> {
@@ -216,8 +303,15 @@ export const supplierPortalApi = {
       headers: { "Content-Type": "application/json", ...getAuthHeader() },
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error(`Failed to patch product: ${res.statusText}`);
-    return res.json();
+    return handleResponse(res, "Failed to patch product");
+  },
+
+  async confirmPrice(id: string): Promise<{ message: string; price_confirmed_at: string; price_badge: string }> {
+    const res = await fetch(`${BASE_URL}/supplier/products/${encodeURIComponent(id)}/confirm-price`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+    });
+    return handleResponse(res, "Failed to confirm product price");
   },
 
   async submitProduct(id: string): Promise<{ message: string; status: string }> {
@@ -225,8 +319,7 @@ export const supplierPortalApi = {
       method: "POST",
       headers: { "Content-Type": "application/json", ...getAuthHeader() },
     });
-    if (!res.ok) throw new Error(`Failed to submit product: ${res.statusText}`);
-    return res.json();
+    return handleResponse(res, "Failed to submit product");
   },
 
   async publishProduct(id: string): Promise<{ message: string; status: string }> {
@@ -234,8 +327,7 @@ export const supplierPortalApi = {
       method: "POST",
       headers: { "Content-Type": "application/json", ...getAuthHeader() },
     });
-    if (!res.ok) throw new Error(`Failed to publish product: ${res.statusText}`);
-    return res.json();
+    return handleResponse(res, "Failed to publish product");
   },
 
   async unpublishProduct(id: string): Promise<{ message: string; status: string }> {
@@ -243,8 +335,7 @@ export const supplierPortalApi = {
       method: "POST",
       headers: { "Content-Type": "application/json", ...getAuthHeader() },
     });
-    if (!res.ok) throw new Error(`Failed to unpublish product: ${res.statusText}`);
-    return res.json();
+    return handleResponse(res, "Failed to unpublish product");
   },
 
   async archiveProduct(id: string): Promise<{ message: string; status: string }> {
@@ -252,8 +343,7 @@ export const supplierPortalApi = {
       method: "POST",
       headers: { "Content-Type": "application/json", ...getAuthHeader() },
     });
-    if (!res.ok) throw new Error(`Failed to archive product: ${res.statusText}`);
-    return res.json();
+    return handleResponse(res, "Failed to archive product");
   },
 
   async updatePriceTiers(id: string, priceTiers: Array<{ min_qty: number; max_qty?: number; unit_price: number; currency?: string }>): Promise<any> {
@@ -262,8 +352,7 @@ export const supplierPortalApi = {
       headers: { "Content-Type": "application/json", ...getAuthHeader() },
       body: JSON.stringify({ price_tiers: priceTiers }),
     });
-    if (!res.ok) throw new Error(`Failed to update price tiers: ${res.statusText}`);
-    return res.json();
+    return handleResponse(res, "Failed to update price tiers");
   },
 
   async updateInventory(id: string, data: { available_quantity?: number; reserved_quantity?: number; availability_status?: string; monthly_capacity?: string; lead_time_days?: number }): Promise<any> {
@@ -272,8 +361,7 @@ export const supplierPortalApi = {
       headers: { "Content-Type": "application/json", ...getAuthHeader() },
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error(`Failed to update inventory: ${res.statusText}`);
-    return res.json();
+    return handleResponse(res, "Failed to update inventory");
   },
 
   async uploadProductImage(id: string, file: File): Promise<any> {
@@ -284,8 +372,7 @@ export const supplierPortalApi = {
       headers: getAuthHeader(),
       body: formData,
     });
-    if (!res.ok) throw new Error(`Failed to upload product image: ${res.statusText}`);
-    return res.json();
+    return handleResponse(res, "Failed to upload product image");
   },
 
   async uploadProductDocument(id: string, file: File, documentType?: string): Promise<any> {
@@ -297,8 +384,7 @@ export const supplierPortalApi = {
       headers: getAuthHeader(),
       body: formData,
     });
-    if (!res.ok) throw new Error(`Failed to upload product document: ${res.statusText}`);
-    return res.json();
+    return handleResponse(res, "Failed to upload product document");
   },
 
   async addProductCertification(id: string, data: { certification_name: string; certificate_no?: string; issuer?: string; issued_at?: string; expires_at?: string }): Promise<any> {
@@ -307,8 +393,7 @@ export const supplierPortalApi = {
       headers: { "Content-Type": "application/json", ...getAuthHeader() },
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error(`Failed to add product certification: ${res.statusText}`);
-    return res.json();
+    return handleResponse(res, "Failed to add product certification");
   },
 
   async updateProduct(id: string, data: Record<string, any>): Promise<{ message: string }> {
@@ -317,8 +402,7 @@ export const supplierPortalApi = {
       headers: { "Content-Type": "application/json", ...getAuthHeader() },
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error(`Failed to update product: ${res.statusText}`);
-    return res.json();
+    return handleResponse(res, "Failed to update product");
   },
 
   async deleteProduct(id: string): Promise<{ message: string }> {
@@ -326,8 +410,7 @@ export const supplierPortalApi = {
       method: "DELETE",
       headers: getAuthHeader(),
     });
-    if (!res.ok) throw new Error(`Failed to delete product: ${res.statusText}`);
-    return res.json();
+    return handleResponse(res, "Failed to delete product");
   },
 
   async bulkUpdateStatus(productIds: string[], isActive: boolean): Promise<{ updated_count: number }> {
@@ -336,33 +419,41 @@ export const supplierPortalApi = {
       headers: { "Content-Type": "application/json", ...getAuthHeader() },
       body: JSON.stringify({ product_ids: productIds, is_active: isActive }),
     });
-    if (!res.ok) throw new Error(`Bulk update failed: ${res.statusText}`);
-    return res.json();
+    return handleResponse(res, "Bulk update failed");
   },
 
   async getCapacity(): Promise<CapacityInventoryItem[]> {
     const res = await fetch(`${BASE_URL}/supplier/capacity`, {
       headers: getAuthHeader(),
     });
-    if (!res.ok) throw new Error(`Failed to load capacity: ${res.statusText}`);
-    return res.json();
+    return handleResponse<CapacityInventoryItem[]>(res, "Failed to load capacity");
   },
 
-  async updateCapacity(productId: string, data: { stock_available: number; next_available_date?: string; lead_time_days?: number }): Promise<void> {
+  async updateCapacity(productId: string, data: Partial<CapacityInventoryItem>): Promise<any> {
     const res = await fetch(`${BASE_URL}/supplier/capacity/${encodeURIComponent(productId)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json", ...getAuthHeader() },
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error(`Failed to update capacity: ${res.statusText}`);
+    return handleResponse(res, "Failed to update capacity");
+  },
+
+  async bulkUpdateCapacityCsv(file: File): Promise<{ message: string; updated_count: number; errors: string[] }> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`${BASE_URL}/supplier/capacity/bulk-csv`, {
+      method: "POST",
+      headers: getAuthHeader(),
+      body: formData,
+    });
+    return handleResponse(res, "Failed to bulk update capacity via CSV");
   },
 
   async getCertifications(): Promise<any[]> {
     const res = await fetch(`${BASE_URL}/supplier/certifications`, {
       headers: getAuthHeader(),
     });
-    if (!res.ok) throw new Error(`Failed to load certifications: ${res.statusText}`);
-    return res.json();
+    return handleResponse(res, "Failed to load certifications");
   },
 
   async uploadCertification(data: { certification_name: string; certificate_no: string; issued_at?: string; expires_at?: string }): Promise<void> {
@@ -371,7 +462,16 @@ export const supplierPortalApi = {
       headers: { "Content-Type": "application/json", ...getAuthHeader() },
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error(`Failed to upload certification: ${res.statusText}`);
+    return handleResponse(res, "Failed to upload certification");
+  },
+
+  async linkCertificationToProducts(certId: string, productIds: string[]): Promise<any> {
+    const res = await fetch(`${BASE_URL}/supplier/certifications/${encodeURIComponent(certId)}/link-products`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify({ product_ids: productIds }),
+    });
+    return handleResponse(res, "Failed to link certification to products");
   },
 
   async deleteCertification(id: string): Promise<void> {
@@ -379,15 +479,14 @@ export const supplierPortalApi = {
       method: "DELETE",
       headers: getAuthHeader(),
     });
-    if (!res.ok) throw new Error(`Failed to delete certification: ${res.statusText}`);
+    return handleResponse(res, "Failed to delete certification");
   },
 
   async getInquiries(): Promise<SupplierInquiryItem[]> {
     const res = await fetch(`${BASE_URL}/supplier/inquiries`, {
       headers: getAuthHeader(),
     });
-    if (!res.ok) throw new Error(`Failed to load inquiries: ${res.statusText}`);
-    return res.json();
+    return handleResponse<SupplierInquiryItem[]>(res, "Failed to load inquiries");
   },
 
   async replyInquiry(id: string, message: string): Promise<void> {
@@ -396,7 +495,62 @@ export const supplierPortalApi = {
       headers: { "Content-Type": "application/json", ...getAuthHeader() },
       body: JSON.stringify({ message }),
     });
-    if (!res.ok) throw new Error(`Failed to dispatch reply: ${res.statusText}`);
+    return handleResponse(res, "Failed to dispatch reply");
+  },
+
+  async resolveInquiry(id: string): Promise<void> {
+    const res = await fetch(`${BASE_URL}/supplier/inquiries/${encodeURIComponent(id)}/resolve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify({}),
+    });
+    return handleResponse(res, "Failed to resolve inquiry");
+  },
+
+  async getRfqs(page: number = 1, pageSize: number = 20): Promise<{ items: any[]; total: number; page: number; page_size: number }> {
+    const res = await fetch(`${BASE_URL}/supplier/rfqs?page=${page}&page_size=${pageSize}`, {
+      headers: getAuthHeader(),
+    });
+    return handleResponse(res, "Failed to load RFQ opportunities");
+  },
+
+  async submitQuote(rfqId: string, data: any): Promise<any> {
+    const res = await fetch(`${BASE_URL}/supplier/rfqs/${encodeURIComponent(rfqId)}/quote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify(data),
+    });
+    return handleResponse(res, "Failed to submit quote");
+  },
+
+  async getOrders(): Promise<SupplierOrderResponse[]> {
+    const res = await fetch(`${BASE_URL}/supplier/orders`, {
+      headers: getAuthHeader(),
+    });
+    return handleResponse<SupplierOrderResponse[]>(res, "Failed to load supplier orders");
+  },
+
+  async updateOrderStatus(orderId: string, newStatus: string): Promise<any> {
+    const res = await fetch(`${BASE_URL}/supplier/orders/${encodeURIComponent(orderId)}/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify({ status: newStatus }),
+    });
+    return handleResponse(res, "Failed to update order status");
+  },
+
+  async getShipments(): Promise<SupplierShipmentResponse[]> {
+    const res = await fetch(`${BASE_URL}/supplier/shipments`, {
+      headers: getAuthHeader(),
+    });
+    return handleResponse<SupplierShipmentResponse[]>(res, "Failed to load supplier shipments");
+  },
+
+  async getAnalytics(): Promise<any> {
+    const res = await fetch(`${BASE_URL}/supplier/analytics`, {
+      headers: getAuthHeader(),
+    });
+    return handleResponse(res, "Failed to load supplier analytics");
   },
 
   async importCsv(file: File): Promise<CsvImportResult> {
@@ -407,8 +561,7 @@ export const supplierPortalApi = {
       headers: getAuthHeader(),
       body: formData,
     });
-    if (!res.ok) throw new Error(`CSV import failed: ${res.statusText}`);
-    return res.json();
+    return handleResponse(res, "CSV import failed");
   },
 
   async downloadCsvTemplate(): Promise<string> {
