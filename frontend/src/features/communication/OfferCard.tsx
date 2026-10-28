@@ -56,41 +56,50 @@ export const OfferCard: React.FC<OfferCardProps> = ({
 
   const isPending = offer.status === "pending";
   const isAccepted = offer.status === "accepted";
-  const isRejected = offer.status === "rejected";
+  const isRejected = offer.status === "rejected" || (offer.status as string) === "declined";
+  const isSuperseded = (offer.status as string) === "superseded" || (offer.status as string) === "countered";
 
   return (
     <div
       className={`rounded-2xl border p-4 space-y-3.5 my-2 text-xs shadow-xs transition-all ${
         isAccepted
-          ? "bg-emerald-50/70 border-emerald-300"
+          ? "bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800"
           : isRejected
-          ? "bg-rose-50/50 border-rose-200 opacity-80"
-          : "bg-white border-blue-200 ring-1 ring-blue-500/10"
+          ? "bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900 opacity-80"
+          : isSuperseded
+          ? "bg-slate-50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 opacity-75"
+          : "bg-white dark:bg-slate-800 border-blue-200 dark:border-blue-800 ring-1 ring-blue-500/10"
       }`}
     >
       {/* Header with status badge */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 font-bold text-slate-800">
+        <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-200">
           <Tag className="w-4 h-4 text-blue-600" />
           <span>Formal Counter-Offer Proposal</span>
         </div>
 
         <div>
           {isAccepted && (
-            <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center gap-1 text-[11px]">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+            <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-bold flex items-center gap-1 text-[11px]">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               Accepted
             </span>
           )}
           {isRejected && (
-            <span className="px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 font-bold flex items-center gap-1 text-[11px]">
-              <XCircle className="w-3.5 h-3.5 text-rose-600" />
+            <span className="px-2.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 font-bold flex items-center gap-1 text-[11px]">
+              <XCircle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
               Declined
             </span>
           )}
+          {isSuperseded && (
+            <span className="px-2.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold flex items-center gap-1 text-[11px]">
+              <Clock className="w-3.5 h-3.5 text-slate-400" />
+              Superseded
+            </span>
+          )}
           {isPending && (
-            <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold flex items-center gap-1 text-[11px]">
-              <Clock className="w-3.5 h-3.5 text-amber-600" />
+            <span className="px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 font-bold flex items-center gap-1 text-[11px]">
+              <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
               Pending Response
             </span>
           )}

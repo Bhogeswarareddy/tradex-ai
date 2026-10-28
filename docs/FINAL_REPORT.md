@@ -284,3 +284,173 @@ Exit code: 0 (Zero errors)
 - [x] **Prompt 20**: AI Mode E2E Tests (12 Scenarios), Full Regression & Final Report — **Completed**
 
 **All 20 Prompts are fully completed with 0 blocked items and 0 failing tests.**
+
+
+---
+
+# Part 3: Supplier Portal & AI Mode Fixes (Prompts 21 to 27)
+
+Comprehensive verification and completion report for Prompts 21 through 27, establishing live LLM connectivity, grounded catalog intelligence, supplier portal completeness, multi-currency localization, structured messaging and complete end-to-end acceptance.
+
+---
+
+## 8. Prompts 21 to 27 Overview & Technical Implementations
+
+### Prompt 21: Connect a Real LLM and Fix the Session Error
+- **Problems Solved**:
+  1. AI Mode requests previously failed with `"Invalid or expired authentication token"` on streaming or background requests.
+  2. Replies were labeled `"Demo AI"` due to disconnected LLM providers.
+- **Key Changes**:
+  - Unified HTTP client in `frontend/src/lib/api/aiMode.ts` and `frontend/src/lib/api/auth.ts` ensuring token refresh (`POST /auth/refresh`) intercepts 401s transparently across all streaming and REST endpoints.
+  - Configured provider priority chain (`Groq`, `OpenRouter`, `Ollama`, `Gemini`) in `backend/app/ai/llm_provider.py` with circuit breaker and fallback.
+  - Connected live provider inference with `GET /api/v1/ai/status` reporting `mode: "live"`, latency, and active model.
+  - Added test `backend/app/tests/test_ai_provider.py` and `frontend/src/tests/auth_refresh.test.ts`.
+
+### Prompt 22: AI Mode Intelligence (Stop Dumping Products)
+- **Problems Solved**:
+  1. Sending `"hi"` previously dumped 10 random product cards with `"Found 10 matching suppliers"`.
+  2. Typo queries like `"what chils"` returned unrelated items like saffron and tea.
+  3. Product cards lacked live database images and current confirmed pricing.
+- **Key Changes**:
+  - Built 11-intent classifier (`greeting`, `small_talk`, `product_search`, `refine_search`, `compare`, `product_question`, `availability_or_price_question`, `supplier_question`, `negotiation_help`, `clear_restart`, `unclear`).
+  - Greeting & small-talk logic: outputs friendly response and 3 actionable prompt chips with 0 product cards.
+  - Typo normalizer using PostgreSQL `pg_trgm` similarity and agricultural synonym table (`chils` -> `chilli`). Clarifies or constrains results strictly to relevant products.
+  - Strict minimum relevance threshold preventing unrelated products from surfacing.
+  - PostgreSQL remains the single source of truth for stock, MOQ, price tiers, and validity status.
+  - Added test suite `backend/app/tests/test_ai_mode_intelligence.py`.
+
+### Prompt 23: Fix Add New Product and Clean the Catalogue
+- **Problems Solved**:
+  1. Product creation failed with blank `"Failed to create product:"`.
+  2. Database contained 764 junk rows named `"Product Row Item N"`.
+  3. Dashboard count showed 0 while products page showed 764.
+- **Key Changes**:
+  - Created structured 5-step Export Product Wizard (`Basic Info`, `Pricing & Tiers`, `Inventory & Logistics`, `Compliance & Certs`, `Review & Submit`).
+  - Field-level validation mapping backend errors to inputs with a summary alert on review.
+  - Automatic collision-free slug generation, multi-image upload with primary selector, certificate attachment with expiry.
+  - Cleaned all 764 junk draft rows from `products`, keeping only authentic catalog items.
+  - Recomputed real metrics so Dashboard and Products counts match accurately.
+  - Added CSV bulk import and price confirmation actions (`POST /supplier/products/{id}/confirm-price`).
+  - Added test suites `backend/app/tests/test_supplier_catalogue_workflow.py`.
+
+### Prompt 24: Make Every Supplier Portal Page Work
+- **Problems Solved**:
+  - Storefront Profile, Capacity & Inventory, Certifications, Inquiries, RFQs, Orders, Shipments and Analytics were empty or mocked.
+- **Key Changes**:
+  - **Dashboard**: Real database KPIs (quotes sent, win rate, orders, alerts for low stock, stale prices and expiring certs).
+  - **Storefront Profile**: Edit about, country, city, founded year, employees, export markets, photos. Calculated real completeness score (not hardcoded 100%).
+  - **Capacity & Inventory**: Editable stock, monthly capacity, next available date, and inline stale warning badges.
+  - **Certifications**: Document uploads with verification status, issuer, and 30-day expiry warnings.
+  - **Inquiries**: Buyer threads drawer with AI quick-reply drafting and resolve actions.
+  - **RFQ Opportunities**: Real matching algorithm with score, countdowns, quote submit modal, and buyer contact.
+  - **Orders & Shipments**: Status transition controls (`Confirmed` -> `Processing` -> `Ready to Ship` -> `Shipped`), container tracking waypoints, and carrier metadata.
+  - **Analytics**: 30-day export revenue, conversion funnel, inquiry trends and market share charts.
+  - Added test suite `backend/app/tests/test_suppliers_and_portal.py`.
+
+### Prompt 25: Fix Settings, Currency, Language and Theme
+- **Problems Solved**:
+  - Settings showed INR / German standard, but header stayed in USD / EN, and prices never converted. Dark navy theme had no visual effect.
+- **Key Changes**:
+  - Single source of truth: `SettingsContext` synced with backend `PATCH /api/v1/users/me/settings`.
+  - Multi-Currency Conversion: Simulated exchange rates table (`SimulatedExchangeRate`) supporting USD, EUR, INR, GBP, AED, CNY. Converted prices labeled with approx. indicators and original values.
+  - Multi-Language Localization (`react-i18next`): English (EN), German (DE), and Hindi (HI) translations covering navigation, cards, tables, headers, and alerts.
+  - Theme Engine: Full Light & Dark themes implemented with CSS custom properties across all pages, modals, and drawers with no flash on load.
+  - Added test suite `frontend/src/tests/settings_and_currency.test.ts` and `backend/app/tests/test_settings_and_preferences.py`.
+
+### Prompt 26: Messages (Start New Message, Templates, Negotiation Fixes)
+- **Problems Solved**:
+  - Header displayed leftover `"Prompt 15"` badge.
+  - No way to start a new conversation with a buyer.
+  - Multiple counter-offers in the same thread simultaneously showed `"Accepted"`.
+- **Key Changes**:
+  - Cleaned header, removing `"Prompt 15"` and developer badges.
+  - Built `+ New Message` modal (`NewMessageModal.tsx`) with searchable counterparty picker, trade context selector (`Inquiry`, `RFQ`, `Quote`, `Order`, `Product`), subject, and attachments.
+  - Export message templates: 7 built-in templates (`Inquiry Thank You`, `Quotation Attached`, `Details Request`, `Sample Availability`, `Price Validity`, `Delivery Update`, `Payment Terms`) with variable interpolation (`{buyer_name}`, `{product}`, etc.) and local custom template storage.
+  - Anti-spam permissions: backend enforces supplier-buyer relationship (`check_supplier_buyer_relationship`); messaging an unrelated buyer strictly returns **HTTP 403 Forbidden**.
+  - Negotiation Offer integrity: accepting an offer automatically marks all previous open offers as `"superseded"`, guaranteeing only one accepted contract in a thread.
+  - Inbox features: tabs (`All`, `Unread`, `RFQ`, `Orders`), 15s polling, message read status indicators (`Check` / `CheckCheck`), and enter-to-send.
+
+### Prompt 27: Supplier Portal Acceptance Tests & Verification
+- **Executed All 10 Scenarios against Real Services**:
+  1. *Scenario 1 (Registration & Storefront)*: Brand new supplier registered; storefront completed; completeness score verified.
+  2. *Scenario 2 (Catalogue Addition)*: 3 products added (1 draft, 2 submitted with tiers & certs).
+  3. *Scenario 3 (Admin Moderation & Discovery)*: Admin approved 2 products; buyer found them in marketplace; draft confirmed invisible.
+  4. *Scenario 4 (AI Mode Grounding)*: AI Mode returns approved product with quantity, quoting supplier, price tier, and stock from PostgreSQL.
+  5. *Scenario 5 (Zero-Reindexing Price Change)*: Price & stock edited in supplier portal; confirmed; immediate AI Mode query reflects updated values with no reindexing.
+  6. *Scenario 6 (Conversational Intelligence)*: `"hi"` returns friendly greeting with 0 product cards; typo `"what chils"` clarifies or constrains to chilli only.
+  7. *Scenario 7 (All Portal Pages & Isolation)*: Dashboard, Storefront, Capacity, Certifications, Inquiries, RFQs, Orders, Shipments, Analytics all verified with real data; Supplier B cannot access Supplier A records.
+  8. *Scenario 8 (Settings Synchronization)*: Currency EUR, Language DE, Theme Dark updated and persisted; header reflects DE and EUR immediately.
+  9. *Scenario 9 (Messages & Anti-Spam)*: Supplier messages related buyer using template; buyer replies; supplier messaging unrelated buyer returns HTTP 403 Forbidden.
+  10. *Scenario 10 (Zero Errors & Clean Headers)*: Confirmed zero console errors, zero leftover prompt labels, no expired token banners.
+
+---
+
+## 9. Verification & Test Commands with Real Outputs
+
+### 9.1 Backend Pytest Acceptance Suite (`pytest app/tests/test_prompt27_acceptance.py -v`)
+```
+============================= test session starts ==============================
+platform linux -- Python 3.12.15, pytest-8.4.2, pluggy-1.6.0
+rootdir: /app
+configfile: pyproject.toml
+plugins: asyncio-0.24.0, anyio-4.15.1
+asyncio: mode=Mode.AUTO, default_loop_scope=None
+collected 8 items
+
+app/tests/test_prompt27_acceptance.py::test_scenario_01_supplier_registration_and_storefront_completeness PASSED [ 12%]
+app/tests/test_prompt27_acceptance.py::test_scenario_02_and_03_products_draft_submit_approve_and_marketplace_visibility PASSED [ 25%]
+app/tests/test_prompt27_acceptance.py::test_scenario_04_and_05_ai_mode_indexing_and_immediate_db_price_update PASSED [ 37%]
+app/tests/test_prompt27_acceptance.py::test_scenario_06_ai_mode_greetings_and_typo_handling PASSED [ 50%]
+app/tests/test_prompt27_acceptance.py::test_scenario_07_all_supplier_pages_and_tenant_isolation PASSED [ 62%]
+app/tests/test_prompt27_acceptance.py::test_scenario_08_settings_currency_language_and_theme_sync PASSED [ 75%]
+app/tests/test_prompt27_acceptance.py::test_scenario_09_messages_start_new_conversation_and_anti_spam PASSED [ 87%]
+app/tests/test_prompt27_acceptance.py::test_scenario_10_clean_environment_no_developer_labels PASSED [100%]
+
+============================== 8 passed in 10.81s ==============================
+```
+
+### 9.2 Playwright Browser End-to-End Suite (`npx playwright test e2e/prompt27_supplier_portal_acceptance.spec.ts`)
+```
+Running 5 tests using 1 worker
+
+  ok 1 [Desktop Chrome] › e2e/prompt27_supplier_portal_acceptance.spec.ts:5:3 › Scenario 1: Register new supplier and storefront completeness meter (6.0s)
+  ok 2 [Desktop Chrome] › e2e/prompt27_supplier_portal_acceptance.spec.ts:60:3 › Scenario 6: AI Mode 'hi' has no product dump and live inference active (8.2s)
+  ok 3 [Desktop Chrome] › e2e/prompt27_supplier_portal_acceptance.spec.ts:95:3 › Scenario 7 & 10: Supplier portal pages work with real data and no leftover developer labels (4.5s)
+  ok 4 [Desktop Chrome] › e2e/prompt27_supplier_portal_acceptance.spec.ts:131:3 › Scenario 8: Settings changes header currency, language and dark mode (4.4s)
+  ok 5 [Desktop Chrome] › e2e/prompt27_supplier_portal_acceptance.spec.ts:165:3 › Scenario 9: Trade Messages has + New Message button and removes Prompt 15 label (5.7s)
+
+  5 passed (30.5s)
+```
+
+### 9.3 Frontend TypeScript Verification (`npx tsc --noEmit`)
+```
+Exit code: 0 (Zero errors)
+```
+
+### 9.4 Frontend Vitest Unit & Integration Suite (`npm test -- --run`)
+```
+ Test Files  15 passed (15)
+      Tests  82 passed (82)
+   Duration  2.85s
+```
+
+### 9.5 Full Backend Pytest Regression Suite (`pytest -v`)
+```
+=========================== short test summary info ============================
+============= 222 passed, 7 warnings in 82.50s (0:01:22) =============
+Exit code: 0 (Zero failures)
+```
+
+---
+
+## 10. Status Checklist (Prompts 21 to 27)
+
+- [x] **Prompt 21**: Real LLM Connection & AI Mode Session Fix — **Completed**
+- [x] **Prompt 22**: AI Mode Intelligence (Intent Classifier, Synonym Handling, Grounded DB Tiers) — **Completed**
+- [x] **Prompt 23**: Add New Product Wizard & 764 Junk Rows Cleanup — **Completed**
+- [x] **Prompt 24**: Make Every Supplier Portal Page Work (9 Views Scoped to Logged-in Supplier) — **Completed**
+- [x] **Prompt 25**: Settings, Currency Conversion, i18n Translations & Dark Theme — **Completed**
+- [x] **Prompt 26**: Messages (New Message Modal, Templates, Anti-Spam 403, Offer State Integrity) — **Completed**
+- [x] **Prompt 27**: Supplier Portal Acceptance Tests (10 Scenarios via Playwright & Pytest) — **Completed**
+
+**All 27 Prompts are 100% completed with zero failing tests, zero compiler errors, and fully operational services.**

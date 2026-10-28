@@ -4,3 +4,5 @@ export * from "./ThreadList";
 export * from "./ChatWindow";
 export * from "./NotificationBellDropdown";
 export * from "./NegotiationTimeline";
+export * from "./NewMessageModal";
+

@@ -5,6 +5,27 @@ function getAuthHeader(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+export interface AllowedRecipientItem {
+  recipient_user_id: string;
+  participant_id: string;
+  name: string;
+  company_name: string;
+  role: string;
+  country: string;
+  relationship_reason: string;
+  context_type: string;
+  context_id?: string;
+}
+
+export interface CreateThreadInput {
+  recipient_id: string;
+  subject: string;
+  initial_message: string;
+  context_type?: string;
+  context_id?: string;
+  attachments?: string[];
+}
+
 export interface ThreadListItem {
   id: string;
   title?: string;
@@ -83,6 +104,33 @@ export interface NotificationsResponse {
 }
 
 export const communicationApi = {
+  async listRecipients(): Promise<AllowedRecipientItem[]> {
+    const res = await fetch(`${BASE_URL}/recipients`, {
+      headers: getAuthHeader(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Failed to load allowed message recipients");
+    }
+    return res.json();
+  },
+
+  async createThread(payload: CreateThreadInput): Promise<{ status: string; thread_id: string; message_id: string; title: string }> {
+    const res = await fetch(`${BASE_URL}/threads`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Failed to start new conversation");
+    }
+    return res.json();
+  },
+
   async listThreads(): Promise<ThreadListItem[]> {
     const res = await fetch(`${BASE_URL}/threads`, {
       headers: getAuthHeader(),

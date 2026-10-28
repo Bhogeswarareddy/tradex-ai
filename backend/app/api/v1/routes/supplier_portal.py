@@ -16,7 +16,7 @@ from app.core.config import settings
 from app.core.freshness import get_product_freshness_metadata
 from app.models.catalog import Category, Certification, IndexJob, PriceTier, Product, ProductImage, SupplierCertification
 from app.models.content import Message, Thread
-from app.models.identity import Company, Supplier, User
+from app.models.identity import Buyer, Company, Supplier, User
 from app.models.trade import Order, OrderItem, Quotation, RFQ, RFQItem, Shipment, ShipmentEvent
 from app.services.indexer import enqueue_index_job
 from app.schemas.suppliers import (
@@ -1872,7 +1872,6 @@ async def get_supplier_inquiries(
             selectinload(Thread.messages).selectinload(Message.sender),
             selectinload(Thread.buyer).selectinload(Buyer.company),
             selectinload(Thread.buyer).selectinload(Buyer.user),
-            selectinload(Thread.rfq),
         )
         .order_by(Thread.created_at.desc())
     )
@@ -1904,7 +1903,7 @@ async def get_supplier_inquiries(
                 sender_country=sender_country,
                 subject=t.title or "Product inquiry & freight quote request",
                 message=last_msg,
-                rfq_number=t.rfq.rfq_number if t.rfq else None,
+                rfq_number=f"RFQ-{str(t.rfq_id)[:8]}" if t.rfq_id else None,
                 created_at=t.created_at.strftime("%b %d, %Y"),
                 is_read=True,
                 replied=has_replied,

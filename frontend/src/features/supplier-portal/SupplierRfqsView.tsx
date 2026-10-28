@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   FileText,
   Sparkles,
@@ -20,6 +21,7 @@ interface SupplierRfqsViewProps {
 }
 
 export const SupplierRfqsView: React.FC<SupplierRfqsViewProps> = ({ onNavigateToInquiries }) => {
+  const navigate = useNavigate();
   const { formatPrice } = useCurrency();
   const [rfqs, setRfqs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -196,16 +198,23 @@ export const SupplierRfqsView: React.FC<SupplierRfqsViewProps> = ({ onNavigateTo
                   <Send className="w-3.5 h-3.5 mr-1.5" />
                   Submit Quote
                 </Button>
-                {onNavigateToInquiries && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onNavigateToInquiries}
-                    className="text-xs font-semibold text-slate-600"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                  </Button>
-                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  title="Message Buyer"
+                  onClick={() => {
+                    if (rfq.buyer_id) {
+                      navigate(`/messages?buyerId=${rfq.buyer_id}&context=rfq&contextId=${rfq.id}`);
+                    } else if (onNavigateToInquiries) {
+                      onNavigateToInquiries();
+                    } else {
+                      navigate("/messages");
+                    }
+                  }}
+                  className="text-xs font-semibold text-slate-600 hover:text-blue-600 hover:bg-blue-50"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                </Button>
               </div>
             </div>
           ))}

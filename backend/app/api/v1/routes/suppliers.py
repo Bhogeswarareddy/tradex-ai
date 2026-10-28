@@ -670,8 +670,8 @@ async def inquire_supplier(
     t_stmt = select(Thread).where(
         Thread.buyer_id == buyer.id,
         Thread.supplier_id == supplier.id,
-    )
-    thread = (await db.execute(t_stmt)).scalar_one_or_none()
+    ).order_by(Thread.created_at.desc())
+    thread = (await db.execute(t_stmt)).scalars().first()
 
     if not thread:
         thread = Thread(

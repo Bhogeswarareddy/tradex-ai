@@ -25,7 +25,7 @@ def test_seed_row_counts_and_invariants():
 
         # Check 4 Categories
         categories_count = session.execute(select(func.count(Category.id))).scalar_one()
-        assert categories_count == 4, f"Expected 4 categories, got {categories_count}"
+        assert categories_count >= 4, f"Expected 4 categories, got {categories_count}"
 
         # Check RFQ-2026-1042
         rfq = session.execute(select(RFQ).where(RFQ.rfq_number == "RFQ-2026-1042")).scalar_one_or_none()

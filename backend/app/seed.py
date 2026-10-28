@@ -963,7 +963,7 @@ def seed():
                         "unit": "kg",
                         "lead_time_days": 25,
                         "currency": "EUR",
-                        "status": "countered",
+                        "status": "superseded",
                         "notes": "Target budget for recurring 20 MT volume",
                     },
                     is_read=True,

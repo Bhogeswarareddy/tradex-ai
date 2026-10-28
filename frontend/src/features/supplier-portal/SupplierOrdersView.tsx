@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   ShoppingCart,
   Globe,
   AlertCircle,
   X,
+  MessageSquare,
 } from "lucide-react";
 import {
   supplierPortalApi,
@@ -13,6 +15,7 @@ import { Button } from "../../components/ui/Button";
 import { useCurrency } from "../settings/SettingsContext";
 
 export const SupplierOrdersView: React.FC = () => {
+  const navigate = useNavigate();
   const { formatPrice } = useCurrency();
   const [orders, setOrders] = useState<SupplierOrderResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -261,7 +264,18 @@ export const SupplierOrdersView: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex justify-end pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  navigate(`/messages?buyerId=${selectedOrder.buyer_id}&context=order&contextId=${selectedOrder.id}`);
+                }}
+                className="flex items-center gap-1.5 text-xs font-bold text-blue-600 border-blue-200 hover:bg-blue-50"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>Message Buyer</span>
+              </Button>
               <Button variant="outline" size="sm" onClick={() => setSelectedOrder(null)}>
                 Close
               </Button>

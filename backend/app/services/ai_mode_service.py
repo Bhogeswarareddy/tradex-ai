@@ -331,15 +331,16 @@ def extract_criteria(content: str, current_state: Dict[str, Any], classification
     if qty_match:
         try:
             val = float(qty_match.group(1))
+            val_disp = f"{int(val)}" if val.is_integer() else f"{val}"
             unit_str = qty_match.group(2).lower()
             if unit_str in ["tonnes", "tonne", "tons", "ton", "mt"]:
                 criteria["quantity"] = val * 1000  # normalized to kg for spice queries
                 criteria["unit"] = "kg"
-                criteria["display_quantity"] = f"{val} tonnes"
+                criteria["display_quantity"] = f"{val_disp} tonnes"
             else:
                 criteria["quantity"] = val
                 criteria["unit"] = "kg" if "kg" in unit_str else unit_str
-                criteria["display_quantity"] = f"{val} {unit_str}"
+                criteria["display_quantity"] = f"{val_disp} {unit_str}"
         except ValueError:
             pass
 
@@ -1080,8 +1081,8 @@ async def create_or_reuse_chat_thread(
         Thread.buyer_id == buyer.id,
         Thread.supplier_id == product.supplier_id,
         or_(Thread.product_id == product.id, Thread.product_id.is_(None)),
-    )
-    existing_thread = (await db.execute(t_stmt)).scalar_one_or_none()
+    ).order_by(Thread.created_at.desc())
+    existing_thread = (await db.execute(t_stmt)).scalars().first()
     if existing_thread:
         return existing_thread
 

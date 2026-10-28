@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   MessageSquare,
   Sparkles,
@@ -16,6 +17,7 @@ import {
 import { Button } from "../../components/ui/Button";
 
 export const SupplierInquiriesView: React.FC = () => {
+  const navigate = useNavigate();
   const [inquiries, setInquiries] = useState<SupplierInquiryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -222,6 +224,17 @@ export const SupplierInquiriesView: React.FC = () => {
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    navigate(`/messages?buyerId=${selectedInquiry.buyer_id || ''}&context=inquiry&contextId=${selectedInquiry.id}`);
+                  }}
+                  className="text-xs font-semibold text-blue-600 border-blue-200 hover:bg-blue-50 flex items-center gap-1"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span>Open in Messages</span>
+                </Button>
                 {selectedInquiry.status !== "resolved" && (
                   <Button
                     variant="outline"

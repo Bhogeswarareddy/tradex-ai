@@ -16,8 +16,9 @@ from sqlalchemy.orm import selectinload
 
 from app.core.db import get_db
 from app.models.identity import Buyer, Company, Supplier, User
-from app.models.trade import Quotation, RFQ
-from app.models.content import Message, Notification, Thread
+from app.models.trade import Order, Quotation, RFQ
+from app.models.content import Message, Notification, SavedItem, Thread
+from app.models.catalog import Product
 from app.api.deps import get_current_user
 from app.services.websocket_manager import ws_manager
 from app.ai.structured import generate_structured
@@ -31,6 +32,27 @@ class SendMessageInput(BaseModel):
     message_type: str = Field(default="text", description="'text' or 'offer'")
     offer_data: Optional[Dict[str, Any]] = None
     attachments: Optional[List[str]] = None
+
+
+class CreateThreadInput(BaseModel):
+    recipient_id: uuid.UUID
+    subject: str = Field(..., min_length=1, max_length=255)
+    initial_message: str = Field(..., min_length=1)
+    context_type: str = Field(default="general")
+    context_id: Optional[str] = None
+    attachments: Optional[List[str]] = None
+
+
+class AllowedRecipientItem(BaseModel):
+    recipient_user_id: str
+    participant_id: str
+    name: str
+    company_name: str
+    role: str
+    country: str
+    relationship_reason: str
+    context_type: str
+    context_id: Optional[str] = None
 
 
 class CounterOfferInput(BaseModel):
@@ -100,7 +122,339 @@ async def verify_thread_participant(db: AsyncSession, thread_id: uuid.UUID, user
     return thread
 
 
+async def check_supplier_buyer_relationship(
+    db: AsyncSession, supplier_id: uuid.UUID, buyer_id: uuid.UUID
+) -> tuple[bool, str]:
+    """
+    Checks if a legitimate business relationship exists between supplier and buyer:
+    1. Existing thread
+    2. Quotation submitted by supplier on buyer's RFQ
+    3. Purchase order between them
+    4. Buyer saved one of supplier's products
+    5. Active RFQ posted by buyer
+    """
+    # 1. Existing Thread
+    th_stmt = select(Thread.id).where(
+        Thread.supplier_id == supplier_id,
+        Thread.buyer_id == buyer_id,
+    ).limit(1)
+    if (await db.execute(th_stmt)).scalar_one_or_none():
+        return True, "Existing conversation thread"
+
+    # 2. Quotation on buyer RFQ
+    q_stmt = (
+        select(Quotation.id)
+        .join(RFQ, Quotation.rfq_id == RFQ.id)
+        .where(Quotation.supplier_id == supplier_id, RFQ.buyer_id == buyer_id)
+        .limit(1)
+    )
+    if (await db.execute(q_stmt)).scalar_one_or_none():
+        return True, "Submitted quotation on buyer RFQ"
+
+    # 3. Order
+    ord_stmt = select(Order.id).where(
+        Order.supplier_id == supplier_id,
+        Order.buyer_id == buyer_id,
+    ).limit(1)
+    if (await db.execute(ord_stmt)).scalar_one_or_none():
+        return True, "Active trade order / contract"
+
+    # 4. Buyer saved supplier's product
+    saved_stmt = (
+        select(SavedItem.id)
+        .join(Buyer, SavedItem.user_id == Buyer.user_id)
+        .join(Product, SavedItem.item_id == Product.id)
+        .where(Buyer.id == buyer_id, Product.supplier_id == supplier_id)
+        .limit(1)
+    )
+    if (await db.execute(saved_stmt)).scalar_one_or_none():
+        return True, "Buyer saved your product"
+
+    # 5. Buyer open RFQ
+    rfq_stmt = select(RFQ.id).where(
+        RFQ.buyer_id == buyer_id,
+        RFQ.status.in_(["open", "published", "active", "submitted"])
+    ).limit(1)
+    if (await db.execute(rfq_stmt)).scalar_one_or_none():
+        return True, "Open RFQ Opportunity"
+
+    return False, "No verified trade relationship"
+
+
 # --- Threads & Messaging Endpoints ---
+
+@router.get("/recipients", response_model=List[AllowedRecipientItem])
+async def list_allowed_recipients(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> List[AllowedRecipientItem]:
+    """Lists verified allowed counterparties that the current user is permitted to message."""
+    buyer, supplier = await get_user_profiles(db, current_user)
+    recipients = []
+
+    if current_user.role == "supplier" and supplier:
+        # 1. Buyers with existing threads
+        threads = (
+            await db.execute(
+                select(Thread)
+                .where(Thread.supplier_id == supplier.id)
+                .options(selectinload(Thread.buyer).selectinload(Buyer.company), selectinload(Thread.buyer).selectinload(Buyer.user))
+            )
+        ).scalars().all()
+        seen_buyers = set()
+        for th in threads:
+            if th.buyer and th.buyer.id not in seen_buyers:
+                seen_buyers.add(th.buyer.id)
+                comp = th.buyer.company
+                user_obj = th.buyer.user
+                recipients.append(
+                    AllowedRecipientItem(
+                        recipient_user_id=str(user_obj.id if user_obj else th.buyer.user_id),
+                        participant_id=str(th.buyer.id),
+                        name=user_obj.full_name if user_obj else "Buyer Representative",
+                        company_name=comp.name if comp else "Trading Co",
+                        role="buyer",
+                        country=comp.country if comp else "Global",
+                        relationship_reason=f"Inquiry / thread: {th.title or 'Active inquiry'}",
+                        context_type="inquiry",
+                        context_id=str(th.id),
+                    )
+                )
+
+        # 2. Buyers with open RFQs
+        rfqs = (
+            await db.execute(
+                select(RFQ)
+                .where(RFQ.status.in_(["open", "published", "active"]))
+                .options(selectinload(RFQ.buyer).selectinload(Buyer.company), selectinload(RFQ.buyer).selectinload(Buyer.user))
+                .limit(20)
+            )
+        ).scalars().all()
+        for rfq in rfqs:
+            if rfq.buyer and rfq.buyer.id not in seen_buyers:
+                seen_buyers.add(rfq.buyer.id)
+                comp = rfq.buyer.company
+                user_obj = rfq.buyer.user
+                recipients.append(
+                    AllowedRecipientItem(
+                        recipient_user_id=str(user_obj.id if user_obj else rfq.buyer.user_id),
+                        participant_id=str(rfq.buyer.id),
+                        name=user_obj.full_name if user_obj else "Procurement Officer",
+                        company_name=comp.name if comp else "Import Corp",
+                        role="buyer",
+                        country=comp.country if comp else "Global",
+                        relationship_reason=f"Open RFQ: {rfq.title} ({rfq.rfq_number})",
+                        context_type="rfq",
+                        context_id=str(rfq.id),
+                    )
+                )
+
+        # 3. Buyers with orders
+        orders = (
+            await db.execute(
+                select(Order)
+                .where(Order.supplier_id == supplier.id)
+                .options(selectinload(Order.buyer).selectinload(Buyer.company), selectinload(Order.buyer).selectinload(Buyer.user))
+                .limit(20)
+            )
+        ).scalars().all()
+        for ord_obj in orders:
+            if ord_obj.buyer and ord_obj.buyer.id not in seen_buyers:
+                seen_buyers.add(ord_obj.buyer.id)
+                comp = ord_obj.buyer.company
+                user_obj = ord_obj.buyer.user
+                recipients.append(
+                    AllowedRecipientItem(
+                        recipient_user_id=str(user_obj.id if user_obj else ord_obj.buyer.user_id),
+                        participant_id=str(ord_obj.buyer.id),
+                        name=user_obj.full_name if user_obj else "Buyer Contact",
+                        company_name=comp.name if comp else "Commercial Buyer",
+                        role="buyer",
+                        country=comp.country if comp else "Global",
+                        relationship_reason=f"Order #{ord_obj.order_number}",
+                        context_type="order",
+                        context_id=str(ord_obj.id),
+                    )
+                )
+
+        # 4. Buyers who saved supplier's products (Buyer Leads)
+        saved_items = (
+            await db.execute(
+                select(SavedItem, Buyer, Product)
+                .join(Buyer, SavedItem.user_id == Buyer.user_id)
+                .join(Product, SavedItem.item_id == Product.id)
+                .where(Product.supplier_id == supplier.id)
+                .options(selectinload(Buyer.company), selectinload(Buyer.user))
+                .limit(20)
+            )
+        ).all()
+        for s_item, b_item, p_item in saved_items:
+            if b_item and b_item.id not in seen_buyers:
+                seen_buyers.add(b_item.id)
+                comp = b_item.company
+                user_obj = b_item.user
+                recipients.append(
+                    AllowedRecipientItem(
+                        recipient_user_id=str(user_obj.id if user_obj else b_item.user_id),
+                        participant_id=str(b_item.id),
+                        name=user_obj.full_name if user_obj else "Prospective Buyer",
+                        company_name=comp.name if comp else "Trade Partner",
+                        role="buyer",
+                        country=comp.country if comp else "Global",
+                        relationship_reason=f"Lead: Saved your product '{p_item.title}'",
+                        context_type="product",
+                        context_id=str(p_item.id),
+                    )
+                )
+
+    else:
+        # User is Buyer (or Admin): can message verified active suppliers
+        suppliers = (
+            await db.execute(
+                select(Supplier)
+                .options(selectinload(Supplier.company), selectinload(Supplier.user))
+                .limit(30)
+            )
+        ).scalars().all()
+        for sup in suppliers:
+            comp = sup.company
+            user_obj = sup.user
+            recipients.append(
+                AllowedRecipientItem(
+                    recipient_user_id=str(user_obj.id if user_obj else sup.user_id),
+                    participant_id=str(sup.id),
+                    name=user_obj.full_name if user_obj else "Sales Manager",
+                    company_name=comp.name if comp else "Export Supplier",
+                    role="supplier",
+                    country=comp.country if comp else "India",
+                    relationship_reason="Verified Export Supplier",
+                    context_type="general",
+                )
+            )
+
+    return recipients
+
+
+@router.post("/threads", status_code=status.HTTP_201_CREATED)
+async def create_new_thread(
+    payload: CreateThreadInput,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Starts a new conversation thread.
+    Validates anti-spam relationship rules:
+    Suppliers can only message buyers with a pre-existing relationship (inquiry, RFQ, quote, order, lead).
+    """
+    buyer, supplier = await get_user_profiles(db, current_user)
+
+    target_buyer_id = None
+    target_supplier_id = None
+    recipient_user_id = None
+
+    if current_user.role == "supplier" or (supplier and not buyer):
+        if not supplier:
+            raise HTTPException(status_code=400, detail="Supplier profile required to initiate supplier thread")
+        target_supplier_id = supplier.id
+
+        # Resolve target buyer from payload.recipient_id (either buyer.id or buyer.user_id)
+        b_stmt = (
+            select(Buyer)
+            .where((Buyer.id == payload.recipient_id) | (Buyer.user_id == payload.recipient_id))
+            .options(selectinload(Buyer.user))
+        )
+        target_buyer = (await db.execute(b_stmt)).scalar_one_or_none()
+        if not target_buyer:
+            raise HTTPException(status_code=404, detail="Recipient buyer not found")
+
+        # Anti-spam verification check
+        has_rel, reason = await check_supplier_buyer_relationship(db, supplier.id, target_buyer.id)
+        if not has_rel:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Supplier cannot message a buyer without an existing inquiry, RFQ, quote, or order relationship."
+            )
+
+        target_buyer_id = target_buyer.id
+        recipient_user_id = target_buyer.user_id
+
+    else:
+        # Current user is Buyer
+        if not buyer:
+            b_stmt = select(Buyer).where(Buyer.user_id == current_user.id)
+            buyer = (await db.execute(b_stmt)).scalar_one_or_none()
+            if not buyer:
+                raise HTTPException(status_code=400, detail="Buyer profile required to initiate buyer thread")
+        target_buyer_id = buyer.id
+
+        # Resolve target supplier
+        s_stmt = (
+            select(Supplier)
+            .where((Supplier.id == payload.recipient_id) | (Supplier.user_id == payload.recipient_id))
+            .options(selectinload(Supplier.user))
+        )
+        target_supplier = (await db.execute(s_stmt)).scalar_one_or_none()
+        if not target_supplier:
+            raise HTTPException(status_code=404, detail="Recipient supplier not found")
+
+        target_supplier_id = target_supplier.id
+        recipient_user_id = target_supplier.user_id
+
+    # Create thread
+    rfq_id_val = None
+    if payload.context_type == "rfq" and payload.context_id:
+        try:
+            rfq_id_val = uuid.UUID(payload.context_id)
+        except ValueError:
+            pass
+
+    thread = Thread(
+        title=payload.subject,
+        buyer_id=target_buyer_id,
+        supplier_id=target_supplier_id,
+        rfq_id=rfq_id_val,
+    )
+    db.add(thread)
+    await db.flush()
+
+    # Create first message
+    first_msg = Message(
+        thread_id=thread.id,
+        sender_id=current_user.id,
+        body=payload.initial_message,
+        message_type="text",
+        attachments=payload.attachments or [],
+        is_read=False,
+    )
+    db.add(first_msg)
+
+    # Dispatch notification respecting recipient user settings
+    if recipient_user_id:
+        recip_u = (await db.execute(select(User).where(User.id == recipient_user_id))).scalar_one_or_none()
+        allow_msg = True
+        if recip_u and recip_u.settings:
+            allow_msg = recip_u.settings.get("notifications", {}).get("messages", True)
+        if allow_msg:
+            notif = Notification(
+                user_id=recipient_user_id,
+                title=f"New message: {payload.subject}",
+                message=payload.initial_message[:120],
+                event_type="message",
+                is_read=False,
+                link=f"/messages?threadId={thread.id}",
+            )
+            db.add(notif)
+
+    await db.commit()
+    await db.refresh(thread)
+    await db.refresh(first_msg)
+
+    return {
+        "status": "created",
+        "thread_id": str(thread.id),
+        "message_id": str(first_msg.id),
+        "title": thread.title,
+    }
 
 @router.get("/threads", response_model=List[ThreadListItem])
 async def list_user_threads(
@@ -244,6 +598,22 @@ async def post_thread_message(
     """Posts a message to a thread and broadcasts live via WebSocket."""
     thread = await verify_thread_participant(db, thread_id, current_user)
 
+    # If this message is an offer, mark earlier pending offers in the thread as superseded
+    if payload.message_type == "offer":
+        prev_stmt = (
+            select(Message)
+            .where(
+                Message.thread_id == thread.id,
+                Message.message_type == "offer",
+            )
+        )
+        prev_offers = (await db.execute(prev_stmt)).scalars().all()
+        for po in prev_offers:
+            if po.offer_data and po.offer_data.get("status") in ["pending", "countered"]:
+                po_data = dict(po.offer_data)
+                po_data["status"] = "superseded"
+                po.offer_data = po_data
+
     msg = Message(
         thread_id=thread.id,
         sender_id=current_user.id,
@@ -254,6 +624,31 @@ async def post_thread_message(
         is_read=False,
     )
     db.add(msg)
+
+    # Determine recipient user and send notification
+    buyer_user_id = str(thread.buyer.user_id) if thread.buyer else ""
+    supplier_user_id = str(thread.supplier.user_id) if thread.supplier else ""
+    recip_uid_str = buyer_user_id if str(current_user.id) == supplier_user_id else supplier_user_id
+    if recip_uid_str:
+        try:
+            recip_uid = uuid.UUID(recip_uid_str)
+            recip_u = (await db.execute(select(User).where(User.id == recip_uid))).scalar_one_or_none()
+            allow_msg = True
+            if recip_u and recip_u.settings:
+                allow_msg = recip_u.settings.get("notifications", {}).get("messages", True)
+            if allow_msg:
+                notif = Notification(
+                    user_id=recip_uid,
+                    title=f"New message from {current_user.full_name or 'Trader'}",
+                    message=payload.body[:120],
+                    event_type="message",
+                    is_read=False,
+                    link=f"/messages?threadId={thread.id}",
+                )
+                db.add(notif)
+        except Exception:
+            pass
+
     await db.commit()
     await db.refresh(msg)
 
@@ -352,6 +747,18 @@ async def create_counter_offer(
         )
         db.add(thread)
         await db.flush()
+
+    # Mark any earlier open/pending counter-offers in this thread as 'superseded'
+    prev_offers_stmt = (
+        select(Message)
+        .where(Message.thread_id == thread.id, Message.message_type == "offer")
+    )
+    prev_offers = (await db.execute(prev_offers_stmt)).scalars().all()
+    for po in prev_offers:
+        if po.offer_data and po.offer_data.get("status") in ["pending", "countered"]:
+            po_data = dict(po.offer_data)
+            po_data["status"] = "superseded"
+            po.offer_data = po_data
 
     lead_days = payload.lead_time_days or quote.lead_time_days
     qty = payload.quantity or (rfq.quantity if rfq else 20000)
@@ -454,6 +861,23 @@ async def accept_counter_offer(
     curr_data = dict(msg.offer_data)
     curr_data["status"] = "accepted"
     msg.offer_data = curr_data
+
+    # Mark ALL other offers in this thread as declined / superseded
+    other_offers_stmt = (
+        select(Message)
+        .where(
+            Message.thread_id == thread.id,
+            Message.message_type == "offer",
+            Message.id != msg.id,
+        )
+    )
+    other_offers = (await db.execute(other_offers_stmt)).scalars().all()
+    for oo in other_offers:
+        if oo.offer_data:
+            oo_data = dict(oo.offer_data)
+            if oo_data.get("status") != "accepted":
+                oo_data["status"] = "superseded"
+                oo.offer_data = oo_data
 
     # Update quotation if linked
     if thread.quotation_id:

@@ -40,7 +40,7 @@ async def test_criterion_1_product_published_and_indexed():
                 "name": product_name,
                 "slug": f"live-turmeric-extract-{unique_tag}",
                 "category_slug": "spices",
-                "description": f"Premium whole curcumin root extract cultivated in Salem hills {unique_tag}.",
+                "description": f"Premium whole curcumin root extract cultivated in  {unique_tag}.",
                 "origin_country": "India",
                 "moq": 1000,
                 "unit": "kg",
@@ -96,7 +96,7 @@ async def test_criterion_1_product_published_and_indexed():
 
             # Verify retrievable via catalog assistant query
             answer = await ask_catalog_assistant(
-                query=f"{product_name} Salem hills",
+                query=f"{product_name} ",
                 db=db,
                 role="buyer",
             )

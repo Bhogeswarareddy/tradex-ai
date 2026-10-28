@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Search, Building2, User, MessageSquare } from "lucide-react";
+import { Search, Building2, User, MessageSquare, Plus } from "lucide-react";
 import { ThreadListItem } from "../../lib/api/communication";
 
 interface ThreadListProps {
@@ -7,17 +7,32 @@ interface ThreadListProps {
   selectedThreadId: string | null;
   onSelectThread: (threadId: string) => void;
   loading?: boolean;
+  onNewMessage?: () => void;
 }
+
+type TabType = "all" | "unread" | "rfq" | "orders";
 
 export const ThreadList: React.FC<ThreadListProps> = ({
   threads,
   selectedThreadId,
   onSelectThread,
   loading,
+  onNewMessage,
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
+  const [activeTab, setActiveTab] = useState<TabType>("all");
+
+  const unreadCount = threads.filter((t) => t.unread_count > 0).length;
+  const rfqCount = threads.filter((t) => Boolean(t.rfq_id) || Boolean(t.title && t.title.toLowerCase().includes("rfq"))).length;
+  const ordersCount = threads.filter((t) => Boolean(t.title && t.title.toLowerCase().includes("order"))).length;
 
   const filteredThreads = threads.filter((t) => {
+    // Tab filter
+    if (activeTab === "unread" && t.unread_count === 0) return false;
+    if (activeTab === "rfq" && !t.rfq_id && !(t.title && t.title.toLowerCase().includes("rfq"))) return false;
+    if (activeTab === "orders" && !(t.title && t.title.toLowerCase().includes("order"))) return false;
+
+    // Search filter
     const q = searchTerm.toLowerCase();
     return (
       t.counterparty_name.toLowerCase().includes(q) ||
@@ -31,17 +46,82 @@ export const ThreadList: React.FC<ThreadListProps> = ({
       {/* Top Search & Filter Bar */}
       <div className="p-4 border-b border-slate-100 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-bold text-slate-900">Conversations</h2>
-          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-            {threads.length} Threads
-          </span>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-bold text-slate-900">Conversations</h2>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+              {threads.length}
+            </span>
+          </div>
+          {onNewMessage && (
+            <button
+              type="button"
+              onClick={onNewMessage}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg bg-blue-600 text-white hover:bg-blue-700 shadow-2xs transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>New</span>
+            </button>
+          )}
+        </div>
+
+        {/* Filter Tabs */}
+        <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl text-xs font-semibold">
+          <button
+            type="button"
+            onClick={() => setActiveTab("all")}
+            className={`flex-1 py-1 rounded-lg text-center transition-all ${
+              activeTab === "all"
+                ? "bg-white text-blue-700 shadow-2xs font-bold"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            All ({threads.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("unread")}
+            className={`flex-1 py-1 rounded-lg text-center transition-all flex items-center justify-center gap-1 ${
+              activeTab === "unread"
+                ? "bg-white text-blue-700 shadow-2xs font-bold"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            Unread
+            {unreadCount > 0 && (
+              <span className="w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">
+                {unreadCount}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("rfq")}
+            className={`flex-1 py-1 rounded-lg text-center transition-all ${
+              activeTab === "rfq"
+                ? "bg-white text-blue-700 shadow-2xs font-bold"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            RFQ ({rfqCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("orders")}
+            className={`flex-1 py-1 rounded-lg text-center transition-all ${
+              activeTab === "orders"
+                ? "bg-white text-blue-700 shadow-2xs font-bold"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            Orders ({ordersCount})
+          </button>
         </div>
 
         <div className="relative">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
           <input
             type="text"
-            placeholder="Search supplier, trade title..."
+            placeholder="Search counterparties or trade titles..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl bg-slate-50 border border-slate-200 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all"

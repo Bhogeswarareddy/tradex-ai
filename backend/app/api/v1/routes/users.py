@@ -5,8 +5,9 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import flag_modified
 
-from app.api.deps import get_current_user, require_role
+from app.api.deps import get_current_user, get_current_user_optional, require_role
 from app.core.db import get_db
 from app.core.errors import AuthenticationError, NotFoundError, ValidationError
 from app.core.security import get_password_hash, verify_password
@@ -234,6 +235,7 @@ async def update_user_settings(
         existing["theme"] = payload.theme
 
     current_user.settings = dict(existing)
+    flag_modified(current_user, "settings")
     await db.commit()
     await db.refresh(current_user)
     return current_user.settings
@@ -242,6 +244,7 @@ async def update_user_settings(
 @router.get("/exchange-rates", response_model=Dict[str, Any])
 async def get_exchange_rates(
     db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ) -> Dict[str, Any]:
     """Retrieves stored exchange rates for multi-currency display."""
     from app.models.trade import SimulatedExchangeRate

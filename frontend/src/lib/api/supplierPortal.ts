@@ -187,6 +187,7 @@ export interface SupplierInquiryMessage {
 
 export interface SupplierInquiryItem {
   id: string;
+  buyer_id?: string;
   sender_name: string;
   sender_company: string;
   sender_country: string;
@@ -204,6 +205,7 @@ export interface SupplierInquiryItem {
 export interface SupplierOrderResponse {
   id: string;
   order_number: string;
+  buyer_id?: string;
   buyer_name: string;
   buyer_company: string;
   buyer_country: string;
