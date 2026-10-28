@@ -68,6 +68,12 @@ async def lifespan(app: FastAPI):
         start_scheduler()
     except Exception as e:
         logger.warning(f"Could not start scheduler: {e}")
+
+    try:
+        from app.ai.provider import startup_log_ai_provider
+        startup_log_ai_provider()
+    except Exception as e:
+        logger.warning(f"Could not log AI provider at startup: {e}")
     yield
     # Shutdown: Cleanly stop background jobs
     try:

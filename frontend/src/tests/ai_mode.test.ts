@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { aiModeApi } from "../lib/api/aiMode";
+import { api } from "../lib/api/client";
 
 const mockFetch = vi.fn();
 (globalThis as any).fetch = mockFetch;
@@ -22,10 +23,10 @@ globalThis.localStorage = {
 
 beforeEach(() => {
   mockFetch.mockReset();
-  globalThis.localStorage.setItem("tradex_access_token", "test-token");
+  api.setAccessToken("test-token");
 });
 
-describe("AI Mode API Client (Prompt 18 & Prompt 19)", () => {
+describe("AI Mode API Client (Prompt 18, 19 & 21)", () => {
   it("listConversations calls GET /api/v1/ai-mode/conversations", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -98,34 +99,35 @@ describe("AI Mode API Client (Prompt 18 & Prompt 19)", () => {
           conversation_id: "conv-1",
           role: "assistant",
           content: "Found 2 matching suppliers",
-          provider: "gemini",
-          is_demo: false,
           structured: {
-            follow_ups: ["Filter by USA delivery", "Compare specs"],
+            criteria: { product: "laptop", destination: "USA" },
+            product_ids: ["prod-1", "prod-2"],
+            classification: "new_search",
           },
+          provider: "openai",
+          is_demo: false,
           created_at: "2026-10-14T10:00:01Z",
         },
         classification: "new_search",
         product_cards: [
           {
             product_id: "prod-1",
-            title: "Enterprise Laptop 15",
-            supplier_id: "sup-1",
-            supplier_name: "Shenzhen Tech",
+            title: "ProBook Ultrathin 15.6",
+            supplier_name: "Shenzhen Horizon Tech",
             origin_country: "China",
-            unit_price: 450,
+            unit_price: 435,
             currency: "USD",
-            price_status: "CURRENT",
+            price_status: "current",
             moq: 50,
             supplier_verification: true,
             certifications: ["CE", "RoHS"],
-            lead_time_days: 14,
+            match_explanation: { matched: ["product", "low price"], unmatched: [] },
           },
         ],
       }),
     });
 
-    const res = await aiModeApi.sendMessage("conv-1", "Find affordable laptops");
+    const result = await aiModeApi.sendMessage("conv-1", "Find affordable laptops");
     expect(mockFetch).toHaveBeenCalledWith(
       "/api/v1/ai-mode/conversations/conv-1/messages",
       expect.objectContaining({
@@ -133,58 +135,56 @@ describe("AI Mode API Client (Prompt 18 & Prompt 19)", () => {
         body: JSON.stringify({ content: "Find affordable laptops" }),
       })
     );
-    expect(res.product_cards).toHaveLength(1);
-    expect(res.product_cards[0].price_status).toBe("CURRENT");
-    expect(res.assistant_reply.structured?.follow_ups).toContain("Filter by USA delivery");
+    expect(result.assistant_reply.content).toContain("Found 2 matching suppliers");
+    expect(result.product_cards).toHaveLength(1);
+    expect(result.product_cards[0].title).toBe("ProBook Ultrathin 15.6");
   });
 
-  it("toggleSelectProduct posts and deletes selection", async () => {
+  it("selectProduct and unselectProduct manage conversation product selection", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({
-        selected_product_ids: ["prod-1"],
-      }),
+      json: async () => ({ status: "selected", conversation_id: "conv-1", product_id: "prod-1" }),
     });
 
-    const res = await aiModeApi.selectProduct("conv-1", "prod-1");
+    const sel = await aiModeApi.selectProduct("conv-1", "prod-1");
     expect(mockFetch).toHaveBeenCalledWith(
       "/api/v1/ai-mode/conversations/conv-1/selection/prod-1",
       expect.objectContaining({ method: "POST" })
     );
-    expect((res as any).selected_product_ids).toContain("prod-1");
+    expect(sel.status).toBe("selected");
 
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({
-        selected_product_ids: [],
-      }),
+      json: async () => ({ status: "unselected", conversation_id: "conv-1", product_id: "prod-1" }),
     });
-    const resRemove = await aiModeApi.unselectProduct("conv-1", "prod-1");
+
+    const unsel = await aiModeApi.unselectProduct("conv-1", "prod-1");
     expect(mockFetch).toHaveBeenCalledWith(
       "/api/v1/ai-mode/conversations/conv-1/selection/prod-1",
       expect.objectContaining({ method: "DELETE" })
     );
-    expect((resRemove as any).selected_product_ids).toHaveLength(0);
+    expect(unsel.status).toBe("unselected");
   });
 
-  it("createOrReuseChat calls product chat endpoint idempotently", async () => {
+  it("chatNow initiates or resumes buyer-supplier thread through communication service", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
-        thread_id: "thread-xyz",
+        status: "created",
+        thread_id: "thread-abc-123",
+        title: "Product Inquiry: ProBook Ultrathin 15.6",
         product_id: "prod-1",
         supplier_id: "sup-1",
-        supplier_name: "Shenzhen Tech",
-        reused: false,
+        buyer_id: "buyer-1",
       }),
     });
 
-    const res = await aiModeApi.chatNow("conv-1", "prod-1");
+    const chat = await aiModeApi.chatNow("conv-1", "prod-1");
+    expect(chat.thread_id).toBe("thread-abc-123");
     expect(mockFetch).toHaveBeenCalledWith(
       "/api/v1/ai-mode/conversations/conv-1/products/prod-1/chat",
       expect.objectContaining({ method: "POST" })
     );
-    expect(res.thread_id).toBe("thread-xyz");
   });
 
   it("createNegotiationDraft generates initial AI message and sendNegotiationDraft confirms sending", async () => {
@@ -232,6 +232,83 @@ describe("AI Mode API Client (Prompt 18 & Prompt 19)", () => {
           final_message: "Customized offer text",
         }),
       })
+    );
+  });
+
+  it("handles 401 token expiry by transparently refreshing token and completing AI Mode request", async () => {
+    // 1st call fails with 401 Unauthorized
+    mockFetch.mockResolvedValueOnce({
+      status: 401,
+      ok: false,
+      json: async () => ({ detail: "Token expired" }),
+    });
+
+    // 2nd call to /auth/refresh succeeds and returns new token
+    mockFetch.mockResolvedValueOnce({
+      status: 200,
+      ok: true,
+      json: async () => ({ access_token: "refreshed-jwt-token-999" }),
+    });
+
+    // 3rd call (retry) succeeds with updated token
+    mockFetch.mockResolvedValueOnce({
+      status: 200,
+      ok: true,
+      json: async () => [
+        {
+          id: "conv-refreshed",
+          title: "Session Maintained Sourcing",
+          search_state: {},
+          created_at: "2026-10-28T10:00:00Z",
+          updated_at: "2026-10-28T10:00:00Z",
+          messages_count: 1,
+          selected_count: 0,
+        },
+      ],
+    });
+
+    const res = await aiModeApi.listConversations();
+    expect(res).toHaveLength(1);
+    expect(res[0].id).toBe("conv-refreshed");
+
+    // Verify /auth/refresh was called
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/v1/auth/refresh",
+      expect.objectContaining({ method: "POST" })
+    );
+
+    // Verify replayed request used the new refreshed token
+    expect(mockFetch).toHaveBeenLastCalledWith(
+      "/api/v1/ai-mode/conversations",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer refreshed-jwt-token-999",
+        }),
+      })
+    );
+  });
+
+  it("fetches AI provider status via getAiStatus", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        provider: "groq",
+        model: "llama-3.1-8b-instant",
+        reachable: true,
+        last_latency: 142.5,
+        mode: "live",
+        configured_providers: ["groq"],
+        priority: ["groq", "openrouter", "ollama"],
+      }),
+    });
+
+    const status = await aiModeApi.getAiStatus();
+    expect(status.provider).toBe("groq");
+    expect(status.mode).toBe("live");
+    expect(status.reachable).toBe(true);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/v1/ai/status",
+      expect.objectContaining({ method: "GET" })
     );
   });
 });

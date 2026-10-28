@@ -27,6 +27,7 @@ import {
   AIMessageData,
   ProductCardData,
   NegotiationDraftData,
+  AiStatusResponse,
 } from "../lib/api/aiMode";
 import { useAuth } from "../features/auth";
 
@@ -45,6 +46,7 @@ export const AiModePage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [aiStatus, setAiStatus] = useState<AiStatusResponse | null>(null);
 
   // UI state
   const [sidebarOpen, setSidebarOpen] = useState(false); // Mobile sidebar toggle
@@ -77,6 +79,20 @@ export const AiModePage: React.FC = () => {
   // 1. Initial Load: list conversations
   useEffect(() => {
     loadConversations();
+    aiModeApi
+      .getAiStatus()
+      .then(setAiStatus)
+      .catch(() =>
+        setAiStatus({
+          provider: "mock",
+          model: "rule-engine",
+          reachable: true,
+          last_latency: 0,
+          mode: "demo",
+          configured_providers: [],
+          priority: [],
+        })
+      );
   }, []);
 
   const loadConversations = async () => {
@@ -539,6 +555,28 @@ export const AiModePage: React.FC = () => {
 
           {/* Region, Currency & Deliver to selector stubs */}
           <div className="flex items-center gap-2 text-xs text-slate-600">
+            {/* Live AI / Demo AI Status Indicator (Prompt 21) */}
+            {aiStatus && (
+              aiStatus.mode === "live" ? (
+                <div
+                  data-testid="ai-status-live"
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full font-semibold shadow-xs"
+                  title={`Live inference active: ${aiStatus.provider} (${aiStatus.model}) | Latency: ${aiStatus.last_latency}ms`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                  <span>Live AI: {aiStatus.model}</span>
+                </div>
+              ) : (
+                <div
+                  data-testid="ai-status-demo"
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full font-semibold shadow-xs"
+                  title="No live LLM key connected; using deterministic trade rule engine"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Demo AI</span>
+                </div>
+              )
+            )}
             <div className="hidden lg:flex items-center gap-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded-md font-medium">
               <Globe className="w-3.5 h-3.5 text-slate-400" />
               <span>Deliver to: USA</span>

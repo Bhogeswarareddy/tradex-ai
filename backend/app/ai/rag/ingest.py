@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import AsyncSessionLocal
 from app.models.ai_ops import KnowledgeChunk
 from app.ai.rag.chunker import chunk_markdown_file
-from app.ai.providers import MockProvider
+from app.ai.provider import get_ai_provider
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ async def ingest_knowledge_base(db: AsyncSession) -> int:
         logger.warning(f"No markdown files found in {KNOWLEDGE_DIR}")
         return 0
 
-    mock_provider = MockProvider()
+    ai_provider = get_ai_provider()
     total_ingested = 0
 
     for file_path in md_files:
@@ -42,7 +42,7 @@ async def ingest_knowledge_base(db: AsyncSession) -> int:
 
         # Generate embeddings in batch
         texts = [c.content for c in chunks]
-        embeddings = await mock_provider.embed(texts)
+        embeddings = await ai_provider.embed(texts)
 
         for chunk_data, emb in zip(chunks, embeddings):
             # Pad or format embedding to 1536 float elements if needed by pgvector Vector(1536)

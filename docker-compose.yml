@@ -28,10 +28,27 @@ services:
       dockerfile: Dockerfile
     container_name: tradex_migrate
     command: ["/bin/bash", "/app/scripts/migrate-and-seed.sh"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       ENV: ${ENV:-production}
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://tradex_user:tradex_password@db:5432/tradex}
       SYNC_DATABASE_URL: ${SYNC_DATABASE_URL:-postgresql+psycopg2://tradex_user:tradex_password@db:5432/tradex}
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_PROVIDER_PRIORITY: ${AI_PROVIDER_PRIORITY:-groq,openrouter,ollama,gemini}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-8b-instant}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.1-8b-instruct:free}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-mock}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-1536}
       SECRET_KEY: ${SECRET_KEY:-production-secret-key-tradex-32bytes-secure}
     volumes:
       - ./scripts/migrate-and-seed.sh:/app/scripts/migrate-and-seed.sh:ro
@@ -48,15 +65,33 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: fastapi_app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
     environment:
       ENV: ${ENV:-production}
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://tradex_user:tradex_password@db:5432/tradex}
       SYNC_DATABASE_URL: ${SYNC_DATABASE_URL:-postgresql+psycopg2://tradex_user:tradex_password@db:5432/tradex}
-      AI_PROVIDER: ${AI_PROVIDER:-deterministic_fallback}
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_PROVIDER_PRIORITY: ${AI_PROVIDER_PRIORITY:-groq,openrouter,ollama,gemini}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-8b-instant}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.1-8b-instruct:free}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-mock}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-1536}
       SECRET_KEY: ${SECRET_KEY:-production-secret-key-tradex-32bytes-secure}
       LOCAL_STORAGE_PATH: /app/storage
     volumes:
+      - ./backend/app:/app/app
       - uploads:/app/storage
     networks:
       - frontend_net
@@ -85,13 +120,31 @@ services:
       dockerfile: Dockerfile
     container_name: tradex_worker
     command: ["python", "-m", "app.worker"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       ENV: ${ENV:-production}
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://tradex_user:tradex_password@db:5432/tradex}
       SYNC_DATABASE_URL: ${SYNC_DATABASE_URL:-postgresql+psycopg2://tradex_user:tradex_password@db:5432/tradex}
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_PROVIDER_PRIORITY: ${AI_PROVIDER_PRIORITY:-groq,openrouter,ollama,gemini}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-8b-instant}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.1-8b-instruct:free}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-mock}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-1536}
       SECRET_KEY: ${SECRET_KEY:-production-secret-key-tradex-32bytes-secure}
       LOCAL_STORAGE_PATH: /app/storage
     volumes:
+      - ./backend/app:/app/app
       - uploads:/app/storage
     networks:
       - backend_net

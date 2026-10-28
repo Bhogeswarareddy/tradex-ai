@@ -38,6 +38,7 @@ class InMemoryRateLimiter:
 
 
 import os
+import sys
 
 auth_limiter = InMemoryRateLimiter(max_requests=int(os.getenv("RATE_LIMIT_AUTH", "5")), window_seconds=60)
 ai_limiter = InMemoryRateLimiter(max_requests=int(os.getenv("RATE_LIMIT_AI", "10")), window_seconds=60)
@@ -52,9 +53,10 @@ def _get_client_ip(request: Request) -> str:
 
 
 def _is_local_dev(request: Request, ip: str) -> bool:
-    # If in development mode and coming from local development browser (not test suite ASGI client)
+    if "pytest" in sys.modules:
+        return False
     env = os.getenv("ENV", "development").lower()
-    if env == "development" and request.headers.get("user-agent") and "pytest" not in os.getenv("_", ""):
+    if env == "development" and request.headers.get("user-agent"):
         return True
     return False
 

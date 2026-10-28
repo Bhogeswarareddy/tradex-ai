@@ -1,16 +1,9 @@
 /**
- * TradeX AI - AI Mode Frontend API Client (Prompt 18 & 19)
+ * TradeX AI - AI Mode Frontend API Client (Prompt 18, 19 & 21)
+ * Routes all requests through the shared ApiClient (`api`) for automatic
+ * token injection, 401 interception, and seamless session refresh.
  */
-
-const API_BASE = "/api/v1/ai-mode";
-
-const getAuthHeaders = (): HeadersInit => {
-  const token = localStorage.getItem("tradex_access_token") || localStorage.getItem("token") || "";
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-};
+import { api } from "./client";
 
 export interface ProductCardData {
   product_id: string;
@@ -101,102 +94,57 @@ export interface NegotiationDraftData {
   created_at: string;
 }
 
+export interface AiStatusResponse {
+  provider: string;
+  model: string;
+  reachable: boolean;
+  last_latency: number;
+  mode: "live" | "demo";
+  configured_providers: string[];
+  priority: string[];
+  circuit_breaker?: Record<string, any>;
+}
+
+export interface AiTestResponse {
+  provider: string;
+  model: string;
+  latency_ms: number;
+  reply: string;
+  status: "success" | "error";
+  error?: string;
+}
+
 export const aiModeApi = {
   createConversation: async (title?: string): Promise<ConversationItem> => {
-    const res = await fetch(`${API_BASE}/conversations`, {
-      method: "POST",
-      headers: getAuthHeaders(),
-      body: JSON.stringify(title ? { title } : {}),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || err.detail || "Failed to create conversation");
-    }
-    return res.json();
+    return api.post<ConversationItem>("/ai-mode/conversations", title ? { title } : {});
   },
 
   listConversations: async (): Promise<ConversationItem[]> => {
-    const res = await fetch(`${API_BASE}/conversations`, {
-      headers: getAuthHeaders(),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || err.detail || "Failed to list conversations");
-    }
-    return res.json();
+    return api.get<ConversationItem[]>("/ai-mode/conversations");
   },
 
   getConversation: async (id: string): Promise<ConversationDetailData> => {
-    const res = await fetch(`${API_BASE}/conversations/${id}`, {
-      headers: getAuthHeaders(),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || err.detail || "Conversation not found");
-    }
-    return res.json();
+    return api.get<ConversationDetailData>(`/ai-mode/conversations/${id}`);
   },
 
   renameConversation: async (id: string, title: string): Promise<ConversationItem> => {
-    const res = await fetch(`${API_BASE}/conversations/${id}`, {
-      method: "PATCH",
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ title }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || err.detail || "Failed to rename conversation");
-    }
-    return res.json();
+    return api.patch<ConversationItem>(`/ai-mode/conversations/${id}`, { title });
   },
 
   deleteConversation: async (id: string): Promise<{ status: string; id: string }> => {
-    const res = await fetch(`${API_BASE}/conversations/${id}`, {
-      method: "DELETE",
-      headers: getAuthHeaders(),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || err.detail || "Failed to delete conversation");
-    }
-    return res.json();
+    return api.delete<{ status: string; id: string }>(`/ai-mode/conversations/${id}`);
   },
 
   sendMessage: async (id: string, content: string): Promise<MessageTurnResult> => {
-    const res = await fetch(`${API_BASE}/conversations/${id}/messages`, {
-      method: "POST",
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ content }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || err.detail || "Failed to send message");
-    }
-    return res.json();
+    return api.post<MessageTurnResult>(`/ai-mode/conversations/${id}/messages`, { content });
   },
 
   selectProduct: async (id: string, productId: string): Promise<{ status: string }> => {
-    const res = await fetch(`${API_BASE}/conversations/${id}/selection/${productId}`, {
-      method: "POST",
-      headers: getAuthHeaders(),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || err.detail || "Failed to select product");
-    }
-    return res.json();
+    return api.post<{ status: string }>(`/ai-mode/conversations/${id}/selection/${productId}`);
   },
 
   unselectProduct: async (id: string, productId: string): Promise<{ status: string }> => {
-    const res = await fetch(`${API_BASE}/conversations/${id}/selection/${productId}`, {
-      method: "DELETE",
-      headers: getAuthHeaders(),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || err.detail || "Failed to unselect product");
-    }
-    return res.json();
+    return api.delete<{ status: string }>(`/ai-mode/conversations/${id}/selection/${productId}`);
   },
 
   compareProducts: async (id: string): Promise<{
@@ -205,14 +153,12 @@ export const aiModeApi = {
     comparison_table: any[];
     recommendation?: string;
   }> => {
-    const res = await fetch(`${API_BASE}/conversations/${id}/compare`, {
-      headers: getAuthHeaders(),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || err.detail || "Failed to compare products");
-    }
-    return res.json();
+    return api.get<{
+      conversation_id: string;
+      products_count: number;
+      comparison_table: any[];
+      recommendation?: string;
+    }>(`/ai-mode/conversations/${id}/compare`);
   },
 
   chatNow: async (id: string, productId: string): Promise<{
@@ -223,15 +169,14 @@ export const aiModeApi = {
     supplier_id: string;
     buyer_id: string;
   }> => {
-    const res = await fetch(`${API_BASE}/conversations/${id}/products/${productId}/chat`, {
-      method: "POST",
-      headers: getAuthHeaders(),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || err.detail || "Failed to initiate chat");
-    }
-    return res.json();
+    return api.post<{
+      status: string;
+      thread_id: string;
+      title: string;
+      product_id: string;
+      supplier_id: string;
+      buyer_id: string;
+    }>(`/ai-mode/conversations/${id}/products/${productId}/chat`);
   },
 
   createNegotiationDraft: async (
@@ -239,31 +184,24 @@ export const aiModeApi = {
     productId: string,
     payload: { target_price: number; quantity: number; notes?: string }
   ): Promise<NegotiationDraftData> => {
-    const res = await fetch(`${API_BASE}/conversations/${id}/products/${productId}/negotiation-draft`, {
-      method: "POST",
-      headers: getAuthHeaders(),
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || err.detail || "Failed to generate negotiation draft");
-    }
-    return res.json();
+    return api.post<NegotiationDraftData>(
+      `/ai-mode/conversations/${id}/products/${productId}/negotiation-draft`,
+      payload
+    );
   },
 
   sendNegotiationDraft: async (
     draftId: string,
     payload: { confirm: boolean; final_message: string }
   ): Promise<NegotiationDraftData> => {
-    const res = await fetch(`${API_BASE}/negotiation-drafts/${draftId}/send`, {
-      method: "POST",
-      headers: getAuthHeaders(),
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || err.detail || "Failed to send negotiation message");
-    }
-    return res.json();
+    return api.post<NegotiationDraftData>(`/ai-mode/negotiation-drafts/${draftId}/send`, payload);
+  },
+
+  getAiStatus: async (): Promise<AiStatusResponse> => {
+    return api.get<AiStatusResponse>("/ai/status");
+  },
+
+  testAiConnection: async (prompt?: string): Promise<AiTestResponse> => {
+    return api.post<AiTestResponse>("/ai/test", { prompt });
   },
 };

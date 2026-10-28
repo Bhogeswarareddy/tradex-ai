@@ -54,9 +54,75 @@ GUIDE_SUMMARIES = [
 ]
 
 
-@router.get("/status")
-async def ai_status():
-    return {"module": "ai", "status": "initialized", "rag_enabled": True}
+class AiStatusResponseSchema(BaseModel):
+    provider: str
+    model: str
+    reachable: bool
+    last_latency: float
+    mode: str
+    configured_providers: List[str]
+    priority: List[str]
+    circuit_breaker: Optional[Dict[str, Any]] = None
+    status: str = "initialized"
+    module: str = "ai"
+
+
+class AiTestRequestSchema(BaseModel):
+    prompt: Optional[str] = "Hello TradeX AI! Verify international trade inference engine."
+
+
+class AiTestResponseSchema(BaseModel):
+    provider: str
+    model: str
+    latency_ms: float
+    reply: str
+    status: str
+    error: Optional[str] = None
+
+
+@router.get("/status", response_model=AiStatusResponseSchema, summary="Get AI provider health, model info and diagnostics")
+async def ai_status() -> AiStatusResponseSchema:
+    from app.ai.provider import get_ai_status
+    data = get_ai_status()
+    data["status"] = "initialized"
+    data["module"] = "ai"
+    return AiStatusResponseSchema(**data)
+
+
+@router.post("/test", response_model=AiTestResponseSchema, summary="Test AI provider connection with live prompt")
+async def ai_test_connection(
+    payload: Optional[AiTestRequestSchema] = None,
+    current_user: Optional[User] = Depends(get_current_user_optional),
+) -> AiTestResponseSchema:
+    from app.ai.provider import get_ai_provider, get_ai_status
+    test_prompt = payload.prompt if payload and payload.prompt else "Hello TradeX AI! Confirm live model connection."
+    chain = get_ai_provider()
+    t0 = time.time()
+    try:
+        resp = await chain.complete(
+            system="You are TradeX AI, a professional B2B international trade intelligence assistant.",
+            messages=[{"role": "user", "content": test_prompt}],
+            max_tokens=150,
+        )
+        latency = (time.time() - t0) * 1000
+        return AiTestResponseSchema(
+            provider=resp.provider,
+            model=resp.model,
+            latency_ms=round(latency, 2),
+            reply=resp.content.strip(),
+            status="success",
+        )
+    except Exception as exc:
+        latency = (time.time() - t0) * 1000
+        status_info = get_ai_status()
+        return AiTestResponseSchema(
+            provider=status_info["provider"],
+            model=status_info["model"],
+            latency_ms=round(latency, 2),
+            reply="",
+            status="error",
+            error=str(exc),
+        )
 
 
 @router.post("/copilot/suggested-prompts", response_model=List[SuggestedPrompt], summary="Get AI Trade Copilot suggested prompts")

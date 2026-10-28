@@ -112,3 +112,29 @@ Platform administrators can verify the live AI setup at \/admin\ under the **AI 
 - **Active Provider & Model**: Confirms runtime engine without leaking secrets.
 - **Circuit Breaker Telemetry**: Live tracker for success, failure, and HTTP 429 rate-limit counts.
 - **Live Ping Test**: Click **Test AI Connection** to test round-trip latency.
+
+---
+
+## 9. Multi-Provider Priority & Automatic Fallback (Prompt 21)
+
+TradeX AI supports automatic multi-provider fallback using AI_PROVIDER_PRIORITY. The system tries configured providers in order, handling timeouts, bounded retries (up to 2), rate limits (HTTP 429), and circuit breaker failures before falling back to next provider, and finally to mock (Demo AI):
+
+`env
+AI_PROVIDER_PRIORITY=groq,openrouter,ollama,gemini
+`
+
+### Docker Ollama Configuration
+When running backend inside Docker Compose and Ollama natively on Windows or macOS host:
+`env
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+`
+
+### Verification with make ai-check
+Test active provider connectivity and latency from the terminal:
+`ash
+make ai-check
+# or inside docker:
+docker compose exec backend python -m app.cli ai-check
+# or reindex RAG catalogue:
+make reindex
+`

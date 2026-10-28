@@ -40,6 +40,12 @@ def classify_user_message(content: str, current_state: Dict[str, Any]) -> str:
     """
     text = content.strip().lower()
 
+    # 0. Conversational greeting
+    greetings = {"hi", "hello", "hey", "greetings", "good morning", "good afternoon", "good evening", "howdy", "hi there", "hello there"}
+    clean_punct = re.sub(r"[^\w\s]", "", text).strip()
+    if clean_punct in greetings:
+        return "greeting"
+
     # 1. Clear and restart
     if text in ["clear", "restart", "reset", "start over", "clear all", "new search", "clear search"]:
         return "clear_and_restart"
@@ -378,10 +384,19 @@ async def handle_user_message(
 
     # Provider & Fallback status
     ai_provider = get_ai_provider()
-    provider_name = getattr(ai_provider, "provider_name", "deterministic_fallback")
-    is_demo = getattr(ai_provider, "is_mock", True) or "Mock" in type(ai_provider).__name__
+    active_name = getattr(ai_provider, "active_provider_name", getattr(ai_provider, "provider_name", "mock"))
+    provider_name = active_name if active_name != "mock" else "deterministic_fallback"
+    is_demo = active_name == "mock" or getattr(ai_provider, "is_mock", True) or "Mock" in type(ai_provider).__name__
 
-    if classification == "clear_and_restart":
+    if classification == "greeting":
+        cards = []
+        assistant_text = (
+            "Hello! I am TradeX AI Mode, your intelligent B2B global sourcing assistant. "
+            "How can I help you today? You can ask me to find products (e.g. 'Find high-curcumin organic turmeric from India with CIF Hamburg terms'), "
+            "compare verified suppliers, or draft terms for negotiation."
+        )
+
+    elif classification == "clear_and_restart":
         search_state = {}
         assistant_text = "Search criteria cleared. What product or supplier are you looking for today?"
 
