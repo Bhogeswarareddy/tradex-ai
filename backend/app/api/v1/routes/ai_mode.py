@@ -77,7 +77,14 @@ async def create_conversation(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> ConversationListItem:
-    """Creates a new AI Mode conversation."""
+    """Creates a new AI Mode conversation. Restricted to buyers & admins."""
+    if current_user.role and current_user.role.upper() == "SUPPLIER":
+        raise AppException(
+            message="AI Mode is exclusively available for buyers and administrators. Suppliers can manage their catalogue in the Supplier Portal.",
+            code="FORBIDDEN_SUPPLIER_ROLE",
+            status_code=403,
+            details={"portal_url": "/supplier-portal"},
+        )
     title = (payload.title if payload and payload.title else "New Conversation").strip()
     conv = AIConversation(
         user_id=current_user.id,
@@ -228,7 +235,18 @@ async def post_conversation_message(
 
     conv = await get_verified_conversation(id, current_user, db)
 
-    user_msg, assistant_msg, classification, cards, clarifying_question, comparison_data = await handle_user_message(
+    (
+        user_msg,
+        assistant_msg,
+        classification,
+        cards,
+        clarifying_question,
+        comparison_data,
+        has_more,
+        total_cards,
+        active_filters,
+        suggested_chips,
+    ) = await handle_user_message(
         conversation=conv,
         user_content=payload.content,
         db=db,
@@ -259,6 +277,10 @@ async def post_conversation_message(
         product_cards=cards,
         clarifying_question=clarifying_question,
         comparison_data=comparison_data,
+        has_more=has_more,
+        total_cards=total_cards,
+        active_filters=active_filters,
+        suggested_chips=suggested_chips,
     )
 
 

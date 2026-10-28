@@ -40,6 +40,9 @@ class ProductCardItem(BaseModel):
     lead_time: Optional[int] = None
     match_explanation: Dict[str, Any] = {}
     demo_data: bool = False
+    availability_status: str = "in_stock"  # in_stock, limited, made_to_order, out_of_stock
+    available_quantity: Optional[float] = None
+    is_alternative: bool = False
 
 
 class MessageInput(BaseModel):
@@ -64,6 +67,10 @@ class MessageTurnResponse(BaseModel):
     product_cards: List[ProductCardItem] = []
     clarifying_question: Optional[str] = None
     comparison_data: Optional[Dict[str, Any]] = None
+    has_more: bool = False
+    total_cards: int = 0
+    active_filters: List[Dict[str, str]] = []
+    suggested_chips: List[str] = []
 
 
 class ConversationDetail(BaseModel):

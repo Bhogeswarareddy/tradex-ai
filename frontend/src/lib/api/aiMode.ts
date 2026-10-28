@@ -24,6 +24,9 @@ export interface ProductCardData {
     unmatched?: string[];
   };
   demo_data?: boolean;
+  availability_status?: string;
+  available_quantity?: number | null;
+  is_alternative?: boolean;
 }
 
 export interface AIMessageData {
@@ -41,6 +44,8 @@ export interface AIMessageData {
     product_cards?: ProductCardData[];
     follow_ups?: string[];
     sources?: any[];
+    active_filters?: Array<{ label: string; value: string }>;
+    suggested_chips?: string[];
   } | null;
   provider: string;
   is_demo: boolean;
@@ -74,6 +79,10 @@ export interface MessageTurnResult {
   product_cards: ProductCardData[];
   clarifying_question?: string | null;
   comparison_data?: any;
+  has_more?: boolean;
+  total_cards?: number;
+  active_filters?: Array<{ label: string; value: string }>;
+  suggested_chips?: string[];
 }
 
 export interface NegotiationDraftData {

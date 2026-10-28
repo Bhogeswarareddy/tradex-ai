@@ -20,6 +20,7 @@ import {
   Menu,
   Clock,
   Package,
+  Store,
 } from "lucide-react";
 import {
   aiModeApi,
@@ -234,6 +235,10 @@ export const AiModePage: React.FC = () => {
           structured: {
             ...result.assistant_reply.structured,
             product_cards: result.product_cards,
+            active_filters: result.active_filters,
+            suggested_chips: result.suggested_chips,
+            has_more: result.has_more,
+            total_cards: result.total_cards,
           },
         },
       ]);
@@ -399,6 +404,34 @@ export const AiModePage: React.FC = () => {
   };
 
   const grouped = groupConversations();
+
+  if (user?.role && user.role.toUpperCase() === "SUPPLIER") {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-[#FAFAFA] px-4 text-center">
+        <div className="max-w-md w-full p-8 bg-white border border-slate-200 rounded-3xl shadow-lg space-y-4">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center">
+            <Store className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight">AI Mode is a Buyer Feature</h2>
+          <p className="text-sm text-slate-600 leading-relaxed">
+            AI Mode is built for enterprise buyers to discover verified suppliers, check live stock, and conduct negotiations.
+          </p>
+          <p className="text-xs text-slate-500">
+            As a TradeX Supplier, you can manage your catalogue, view incoming RFQs, and fulfill orders directly in the Supplier Portal.
+          </p>
+          <div className="pt-2">
+            <Link
+              to="/supplier-portal"
+              className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold text-sm rounded-xl transition shadow-xs"
+            >
+              Go to Supplier Portal
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen w-full bg-[#FAFAFA] text-slate-800 font-sans overflow-hidden">
@@ -690,6 +723,21 @@ export const AiModePage: React.FC = () => {
                       {m.content}
                     </div>
 
+                    {/* Active Filters as Chips in Thread */}
+                    {m.structured?.active_filters && m.structured.active_filters.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                        <span className="text-[11px] font-semibold text-slate-500 mr-1">Active Filters:</span>
+                        {m.structured.active_filters.map((f: { label: string; value: string }, idx: number) => (
+                          <span
+                            key={idx}
+                            className="px-2 py-0.5 bg-orange-50 text-orange-800 border border-orange-200 rounded-md text-[11px] font-medium"
+                          >
+                            {f.label}: <strong className="font-semibold">{f.value}</strong>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
                     {/* Clarifying question box if present */}
                     {m.structured?.clarifying_question && (
                       <div className="p-3 bg-amber-50/70 border border-amber-200/80 text-amber-900 text-xs rounded-xl flex items-start gap-2 max-w-3xl">
@@ -720,17 +768,18 @@ export const AiModePage: React.FC = () => {
 
                     {/* Suggested follow-up prompt chips */}
                     <div className="flex flex-wrap gap-1.5 pt-1">
-                      {["Only show suppliers from China", "Compare the first two", "What is the MOQ?", "Negotiate bulk rate"].map(
-                        (prompt) => (
-                          <button
-                            key={prompt}
-                            onClick={() => handleSendMessage(prompt)}
-                            className="px-2.5 py-1 bg-white hover:bg-orange-50 hover:text-orange-600 border border-slate-200 text-slate-600 rounded-lg text-[11px] font-medium transition-all"
-                          >
-                            + {prompt}
-                          </button>
-                        )
-                      )}
+                      {((m.structured?.suggested_chips && m.structured.suggested_chips.length > 0)
+                        ? m.structured.suggested_chips
+                        : ["Only show suppliers from China", "Compare the first two", "What is the MOQ?", "Negotiate bulk rate"]
+                      ).map((prompt: string) => (
+                        <button
+                          key={prompt}
+                          onClick={() => handleSendMessage(prompt)}
+                          className="px-2.5 py-1 bg-white hover:bg-orange-50 hover:text-orange-600 border border-slate-200 text-slate-600 rounded-lg text-[11px] font-medium transition-all"
+                        >
+                          + {prompt}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -1262,11 +1311,19 @@ const ProductCard: React.FC<ProductCardProps> = ({
     >
       {/* Product Image & Select Checkbox */}
       <div className="relative aspect-4/3 w-full bg-slate-50 flex items-center justify-center overflow-hidden border-b border-slate-100">
-        {card.image ? (
-          <img src={card.image} alt={card.title} className="w-full h-full object-contain p-2" />
-        ) : (
-          <Package className="w-12 h-12 text-slate-300" />
-        )}
+        <img
+          src={
+            card.image && card.image.trim() !== ""
+              ? card.image
+              : "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80"
+          }
+          alt={card.title}
+          className="w-full h-full object-cover"
+          onError={(e) => {
+            (e.target as HTMLImageElement).src =
+              "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80";
+          }}
+        />
 
         {/* Select checkbox in top-right corner matching Alibaba screenshot */}
         <button
@@ -1281,8 +1338,32 @@ const ProductCard: React.FC<ProductCardProps> = ({
           <span>{isSelected ? "Selected" : "Select"}</span>
         </button>
 
+        {card.availability_status && (
+          <span
+            className={`absolute bottom-2 left-2 text-[9px] font-bold px-1.5 py-0.5 rounded shadow-2xs ${
+              card.availability_status === "out_of_stock"
+                ? "bg-rose-600 text-white"
+                : card.availability_status === "limited"
+                ? "bg-amber-600 text-white"
+                : "bg-emerald-700 text-white"
+            }`}
+          >
+            {card.availability_status === "out_of_stock"
+              ? "Out of stock"
+              : card.availability_status === "limited"
+              ? "Limited stock"
+              : "In stock"}
+          </span>
+        )}
+
+        {card.is_alternative && (
+          <span className="absolute top-2.5 left-2.5 bg-indigo-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-2xs">
+            Alternative
+          </span>
+        )}
+
         {card.demo_data && (
-          <span className="absolute bottom-2 left-2 bg-slate-900/70 text-white text-[9px] px-1.5 py-0.5 rounded">
+          <span className="absolute bottom-2 right-2 bg-slate-900/70 text-white text-[9px] px-1.5 py-0.5 rounded">
             Demo Item
           </span>
         )}
@@ -1327,7 +1408,14 @@ const ProductCard: React.FC<ProductCardProps> = ({
                 {card.price_status === "current" ? "confirmed" : card.price_status}
               </span>
             </div>
-            <p className="text-[11px] text-slate-500">Min. order: {card.moq} units</p>
+            <div className="flex items-center justify-between text-[11px] text-slate-500 mt-1">
+              <span>Min. order: {card.moq} units</span>
+              {card.available_quantity !== undefined && card.available_quantity !== null && (
+                <span className="font-semibold text-slate-700">
+                  Stock: {card.available_quantity.toLocaleString()}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Supplier & Country */}
