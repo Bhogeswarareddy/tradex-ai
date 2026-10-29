@@ -1,5 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import { formatNumber, formatCurrency } from "../../lib/format";
 import {
   CheckCircle2,
   Building2,
@@ -352,14 +353,14 @@ export const AiSearchResultsTabs: React.FC<AiSearchResultsTabsProps> = ({
                         <div>
                           <span className="text-slate-400 block">Price:</span>
                           <span className="font-semibold text-slate-800">
-                            {p.currency} ${p.price_min?.toFixed(2)} - ${p.price_max?.toFixed(2)} /{" "}
+                            {formatCurrency(p.price_min, p.currency || "USD")} - {formatCurrency(p.price_max, p.currency || "USD")} /{" "}
                             {p.unit}
                           </span>
                         </div>
                         <div>
                           <span className="text-slate-400 block">MOQ:</span>
                           <span className="font-semibold text-slate-800">
-                            {p.moq?.toLocaleString()} {p.unit}
+                            {formatNumber(p.moq)} {p.unit}
                           </span>
                         </div>
                         <div>

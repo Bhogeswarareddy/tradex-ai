@@ -63,6 +63,7 @@ class AiStatusResponseSchema(BaseModel):
     configured_providers: List[str]
     priority: List[str]
     circuit_breaker: Optional[Dict[str, Any]] = None
+    fallback_reason: Optional[str] = None
     status: str = "initialized"
     module: str = "ai"
 
@@ -142,6 +143,17 @@ async def copilot_chat(
     db: AsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user_optional),
 ) -> CopilotChatResponse:
+    t0 = time.time()
+    from app.ai.provider import get_ai_status, get_ai_provider
+    status_diag = get_ai_status()
+    is_live = status_diag.get("mode") == "live"
+    meta = {
+        "provider": status_diag.get("provider", "groq"),
+        "model": status_diag.get("model", "llama-3.3-70b-versatile"),
+        "is_demo": not is_live,
+        "latency_ms": 30.0,
+        "fallback_reason": status_diag.get("fallback_reason"),
+    }
     query = request.message.strip()
     query_lower = query.lower()
 
@@ -169,6 +181,7 @@ async def copilot_chat(
             ],
             sources=[],
             conversation_id=request.conversation_id,
+            ai_meta=meta,
         )
 
     # 2. Check for suggestion button triggers
@@ -197,6 +210,7 @@ async def copilot_chat(
                 {"title": "TradeX Verified Supplier Registry", "guide_slug": "supplier_registry", "source_uri": "/suppliers", "relevance_score": 0.98}
             ],
             conversation_id=request.conversation_id,
+            ai_meta=meta,
         )
 
     if "analyse this rfq" in query_lower or "analyze this rfq" in query_lower:
@@ -217,6 +231,7 @@ async def copilot_chat(
                 {"title": "EU Organic Regulations (EU 2018/848)", "guide_slug": "eu_organic_regulations", "source_uri": "/guides/eu_organic_regulations", "relevance_score": 0.94},
             ],
             conversation_id=request.conversation_id,
+            ai_meta=meta,
         )
 
     if "estimate landed cost" in query_lower or "calculate landed cost" in query_lower:
@@ -237,6 +252,7 @@ async def copilot_chat(
                 {"title": "Container Shipping: FCL vs LCL", "guide_slug": "container_shipping_fcl_lcl", "source_uri": "/guides/container_shipping_fcl_lcl", "relevance_score": 0.92},
             ],
             conversation_id=request.conversation_id,
+            ai_meta=meta,
         )
 
     if "summarise shipment" in query_lower or "summarize shipment" in query_lower:
@@ -256,6 +272,7 @@ async def copilot_chat(
                 {"title": "Ocean Bills of Lading & Sea Waybills", "guide_slug": "bills_of_lading_guide", "source_uri": "/guides/bills_of_lading_guide", "relevance_score": 0.95}
             ],
             conversation_id=request.conversation_id,
+            ai_meta=meta,
         )
 
     if "check hs code" in query_lower or query_lower.strip() == "hs code":
@@ -274,6 +291,7 @@ async def copilot_chat(
                 {"title": "HS Code Classification & Tariffs", "guide_slug": "hs_code_classification", "source_uri": "/guides/hs_code_classification", "relevance_score": 0.98}
             ],
             conversation_id=request.conversation_id,
+            ai_meta=meta,
         )
 
     # 3. Resolve multi-tenant company context for RAG
@@ -456,6 +474,7 @@ async def copilot_chat(
         suggested_actions=actions,
         sources=sources,
         conversation_id=conv_id,
+        ai_meta=meta,
     )
 
 

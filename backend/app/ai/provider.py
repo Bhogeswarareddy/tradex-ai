@@ -91,6 +91,7 @@ class PriorityFallbackChainProvider(LLMProvider):
         self.last_latency_ms: float = 0.0
         self.active_provider_name: str = "mock"
         self.active_model_name: str = "demo-rule-engine"
+        self.last_fallback_reason: Optional[str] = None
         self._provider_cache: Dict[str, LLMProvider] = {}
 
     @property
@@ -123,7 +124,7 @@ class PriorityFallbackChainProvider(LLMProvider):
         if name == "groq" and settings.GROQ_API_KEY:
             instance = GroqProvider(
                 api_key=settings.GROQ_API_KEY,
-                model_name=settings.GROQ_MODEL or settings.AI_MODEL,
+                model_name=settings.AI_MODEL or settings.GROQ_MODEL or "llama-3.3-70b-versatile",
                 timeout_seconds=settings.AI_TIMEOUT_SECONDS,
             )
         elif name == "openrouter" and settings.OPENROUTER_API_KEY:
@@ -171,14 +172,19 @@ class PriorityFallbackChainProvider(LLMProvider):
             self.last_latency_ms = (time.time() - t0) * 1000
             self.active_provider_name = "mock"
             self.active_model_name = "demo-rule-engine"
+            self.last_fallback_reason = "Manual override (AI_PROVIDER=mock)"
+            resp.fallback = True
+            resp.fallback_reason = self.last_fallback_reason
             return resp
 
         # 2. Iterate through configured providers according to priority
         configured = self.get_configured_providers()
+        failure_reasons: List[str] = []
         for prov_name in configured:
             # Skip if circuit breaker is open for external providers
             if circuit_breaker.is_open():
                 logger.warning("Circuit breaker is OPEN. Bypassing external provider '%s'.", prov_name)
+                failure_reasons.append(f"{prov_name}: circuit breaker open")
                 continue
 
             provider = self._get_provider_instance(prov_name)
@@ -204,6 +210,8 @@ class PriorityFallbackChainProvider(LLMProvider):
                     self.last_latency_ms = latency
                     self.active_provider_name = prov_name
                     self.active_model_name = resp.model
+                    self.last_fallback_reason = None
+                    resp.fallback_reason = None
                     circuit_breaker.record_success(latency)
                     return resp
 
@@ -214,6 +222,8 @@ class PriorityFallbackChainProvider(LLMProvider):
                         "AI Provider '%s' attempt %d failed: %s",
                         prov_name, attempt, exc
                     )
+                    if attempt == 2 or is_rate_limit:
+                        failure_reasons.append(f"{prov_name}: {exc}")
                     # On rate limit, immediately fall through to next provider
                     if is_rate_limit:
                         break
@@ -221,13 +231,16 @@ class PriorityFallbackChainProvider(LLMProvider):
                         await asyncio.sleep(0.3)
 
         # 3. All configured providers failed or none configured -> Fall back to MockProvider
-        logger.info("All live AI providers exhausted or unconfigured. Falling back to Demo AI.")
+        fallback_msg = "; ".join(failure_reasons) if failure_reasons else ("No live AI providers configured" if not configured else "Provider unavailable")
+        logger.info("All live AI providers exhausted or unconfigured. Falling back to Demo AI. Reason: %s", fallback_msg)
         t0 = time.time()
         resp = await self.mock_fallback.complete(system, messages, json_schema, max_tokens, temperature)
         self.last_latency_ms = (time.time() - t0) * 1000
         self.active_provider_name = "mock"
         self.active_model_name = "demo-rule-engine"
+        self.last_fallback_reason = fallback_msg
         resp.fallback = True
+        resp.fallback_reason = fallback_msg
         return resp
 
     async def embed(self, texts: List[str]) -> List[List[float]]:
@@ -275,6 +288,7 @@ def get_ai_status() -> Dict[str, Any]:
         "configured_providers": configured,
         "priority": _ai_chain_singleton.priority_list,
         "circuit_breaker": cb_stats,
+        "fallback_reason": _ai_chain_singleton.last_fallback_reason,
     }
 
 

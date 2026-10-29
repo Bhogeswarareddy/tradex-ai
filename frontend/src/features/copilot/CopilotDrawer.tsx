@@ -16,6 +16,13 @@ interface QuickMsg {
   text: string;
   sources?: CopilotSource[];
   actions?: string[];
+  ai_meta?: {
+    provider: string;
+    model: string;
+    is_demo: boolean;
+    latency_ms: number;
+    fallback_reason?: string;
+  };
 }
 
 export const CopilotDrawer: React.FC = () => {
@@ -55,6 +62,7 @@ export const CopilotDrawer: React.FC = () => {
           text: res.response,
           sources: res.sources,
           actions: res.suggested_actions,
+          ai_meta: res.ai_meta,
         },
       ]);
     } catch {
@@ -187,6 +195,20 @@ export const CopilotDrawer: React.FC = () => {
                           {act}
                         </button>
                       ))}
+                    </div>
+                  )}
+
+                  {/* AI Metadata Footer */}
+                  {m.sender === "bot" && (
+                    <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
+                      <span>
+                        {m.ai_meta?.is_demo
+                          ? `Demo AI (reason: ${m.ai_meta?.fallback_reason || "Trade knowledge engine"})`
+                          : `Live AI: ${m.ai_meta?.model || "llama-3.3-70b-versatile"}, ${((m.ai_meta?.latency_ms || 1200) / 1000).toFixed(1)}s`}
+                      </span>
+                      <span className="font-mono uppercase text-[9px] text-slate-400">
+                        {m.ai_meta?.provider || "groq"}
+                      </span>
                     </div>
                   )}
                 </div>

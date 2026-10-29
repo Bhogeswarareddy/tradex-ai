@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
+import { formatNumber, formatCurrency } from "../../lib/format";
 import { ProductDetailResponse } from "../../lib/api/products";
 import {
   Star,
@@ -154,18 +155,18 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
                 >
                   <p className="text-[11px] text-slate-400 font-medium">
                     {tier.max_qty
-                      ? `${tier.min_qty.toLocaleString()} - ${tier.max_qty.toLocaleString()} ${product.unit}`
-                      : `${tier.min_qty.toLocaleString()}+ ${product.unit}`}
+                      ? `${formatNumber(tier.min_qty)} - ${formatNumber(tier.max_qty)} ${product.unit}`
+                      : `${formatNumber(tier.min_qty)}+ ${product.unit}`}
                   </p>
                   <p className="text-base sm:text-lg font-black text-emerald-700 mt-0.5">
-                    ${tier.unit_price.toFixed(2)}
+                    {formatCurrency(tier.unit_price, tier.currency || "USD")}
                   </p>
                   <p className="text-[10px] text-slate-400">{tier.currency} / {product.unit}</p>
                 </div>
               ))}
             </div>
             <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
-              <span>MOQ: <strong className="text-slate-800">{product.moq.toLocaleString()} {product.unit}</strong></span>
+              <span>MOQ: <strong className="text-slate-800">{formatNumber(product.moq)} {product.unit}</strong></span>
               <span className="text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-[11px]">
                 Incoterms: FOB / CIF / EXW Supported
               </span>

@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -69,4 +69,5 @@ class CopilotChatResponse(BaseModel):
     suggested_actions: List[str] = Field(default_factory=list)
     sources: Optional[List[dict]] = Field(default_factory=list)
     conversation_id: Optional[str] = None
+    ai_meta: Optional[Dict[str, Any]] = None
 

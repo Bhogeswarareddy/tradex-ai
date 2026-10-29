@@ -299,6 +299,13 @@ async def test_privilege_escalation_role_patch_blocked():
         )
         assert admin_patch_resp.status_code == 403
 
+        # Restore original buyer profile full_name
+        await client.patch(
+            "/api/v1/users/me",
+            json={"full_name": "Bhogeswara Reddy"},
+            headers={"Authorization": f"Bearer {buyer_token}"},
+        )
+
 
 @pytest.mark.asyncio
 async def test_sql_injection_defense():

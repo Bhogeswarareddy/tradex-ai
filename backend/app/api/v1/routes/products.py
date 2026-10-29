@@ -93,9 +93,12 @@ async def list_products(
     )
 
     # Full text & keyword search
+    COMMON_SEARCH_STOPWORDS = {"i", "want", "need", "to", "find", "show", "me", "a", "an", "the", "for", "in", "of", "some", "buy", "get", "looking"}
     if q and q.strip():
         search_term = q.strip()
-        words = [w for w in search_term.split() if w]
+        all_words = [w for w in search_term.split() if w]
+        meaningful_words = [w for w in all_words if w.lower() not in COMMON_SEARCH_STOPWORDS]
+        words = meaningful_words if meaningful_words else all_words
         for word in words:
             stmt = stmt.where(
                 or_(
@@ -170,7 +173,9 @@ async def list_products(
     )
     if q and q.strip():
         search_term = q.strip()
-        words = [w for w in search_term.split() if w]
+        all_words = [w for w in search_term.split() if w]
+        meaningful_words = [w for w in all_words if w.lower() not in COMMON_SEARCH_STOPWORDS]
+        words = meaningful_words if meaningful_words else all_words
         for word in words:
             base_filter_stmt = base_filter_stmt.where(
                 or_(

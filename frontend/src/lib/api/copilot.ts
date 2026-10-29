@@ -17,6 +17,13 @@ export interface CopilotChatResponse {
   suggested_actions: string[];
   sources?: CopilotSource[];
   conversation_id?: string;
+  ai_meta?: {
+    provider: string;
+    model: string;
+    is_demo: boolean;
+    latency_ms: number;
+    fallback_reason?: string;
+  };
 }
 
 export interface SuggestedPrompt {

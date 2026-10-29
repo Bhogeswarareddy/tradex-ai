@@ -1,47 +1,73 @@
 import React, { useEffect, useState } from "react";
 import { Sparkles, Brain, Search, CheckCircle2 } from "lucide-react";
 
+export type SearchStage = "understanding" | "searching" | "ranking";
+
 interface StreamingProgressLineProps {
   isLoading: boolean;
+  stage?: SearchStage;
 }
 
 const STEPS = [
-  { label: "Understanding requirement...", icon: Brain },
-  { label: "Searching verified suppliers & products...", icon: Search },
-  { label: "Ranking matches & evaluating logistics fit...", icon: Sparkles },
+  { id: "understanding", label: "Understanding requirement...", icon: Brain },
+  { id: "searching", label: "Searching verified suppliers & products...", icon: Search },
+  { id: "ranking", label: "Ranking matches & evaluating logistics fit...", icon: Sparkles },
 ];
 
-export const StreamingProgressLine: React.FC<StreamingProgressLineProps> = ({ isLoading }) => {
+export const StreamingProgressLine: React.FC<StreamingProgressLineProps> = ({ isLoading, stage }) => {
   const [currentStep, setCurrentStep] = useState(0);
-  const [progress, setProgress] = useState(15);
+  const [progress, setProgress] = useState(20);
 
   useEffect(() => {
     if (!isLoading) {
       setCurrentStep(0);
-      setProgress(15);
+      setProgress(20);
       return;
     }
 
+    if (stage) {
+      if (stage === "understanding") {
+        setCurrentStep(0);
+        setProgress(30);
+      } else if (stage === "searching") {
+        setCurrentStep(1);
+        setProgress(65);
+      } else if (stage === "ranking") {
+        setCurrentStep(2);
+        setProgress(92);
+      }
+      return;
+    }
+
+    // Dynamic progression while waiting for server response
     const t1 = setTimeout(() => {
       setCurrentStep(1);
       setProgress(60);
-    }, 600);
+    }, 800);
 
     const t2 = setTimeout(() => {
       setCurrentStep(2);
       setProgress(90);
-    }, 1400);
+    }, 2000);
+
+    const t3 = setTimeout(() => {
+      setProgress(96);
+    }, 5000);
 
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
+      clearTimeout(t3);
     };
-  }, [isLoading]);
+  }, [isLoading, stage]);
 
   if (!isLoading) return null;
 
   return (
-    <div className="w-full max-w-4xl mx-auto my-6 p-4 rounded-2xl bg-slate-900/90 border border-blue-500/30 shadow-xl backdrop-blur-md text-white">
+    <div
+      data-testid="streaming-progress-line"
+      className="w-full max-w-4xl mx-auto my-6 p-4 rounded-2xl bg-slate-900/90 border border-blue-500/30 shadow-xl backdrop-blur-md text-white"
+    >
       <div className="flex items-center justify-between mb-3 text-xs sm:text-sm">
         <div className="flex items-center gap-2 text-blue-400 font-medium">
           <Sparkles className="w-4 h-4 animate-spin text-blue-400" />

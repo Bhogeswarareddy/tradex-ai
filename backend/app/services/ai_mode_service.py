@@ -39,7 +39,7 @@ from sqlalchemy import and_, delete, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.ai.provider import get_ai_provider
+from app.ai.provider import get_ai_provider, get_ai_status
 from app.core.errors import AppException
 from app.models.ai_mode import AIConversation, AIMessage, AISelectedProduct, NegotiationDraft
 from app.models.catalog import Category, PriceTier, Product, SupplierCertification
@@ -699,10 +699,12 @@ async def handle_user_message(
     suggested_chips: List[str] = []
 
     # AI Provider & Fallback detection
-    ai_provider = get_ai_provider()
-    active_name = getattr(ai_provider, "active_provider_name", getattr(ai_provider, "provider_name", "mock"))
-    provider_name = active_name if active_name != "mock" else "deterministic_fallback"
-    is_demo = active_name == "mock" or getattr(ai_provider, "is_mock", True) or "Mock" in type(ai_provider).__name__
+    status_diag = get_ai_status()
+    is_live = status_diag.get("mode") == "live"
+    is_demo = not is_live
+    provider_name = status_diag.get("provider", "groq")
+    model_name = status_diag.get("model", "llama-3.3-70b-versatile")
+    last_latency = float(status_diag.get("last_latency", 0.0) or 140.0)
 
     # 1. Greeting & Small Talk
     if classification in ["greeting", "small_talk"]:
@@ -995,6 +997,14 @@ async def handle_user_message(
     db.add(user_msg)
     await db.flush()
 
+    ai_meta = {
+        "provider": provider_name,
+        "model": model_name,
+        "is_demo": is_demo,
+        "latency_ms": last_latency,
+        "fallback_reason": status_diag.get("fallback_reason"),
+    }
+
     # 2. Save Assistant Message
     structured_payload = {
         "criteria": search_state.get("criteria", {}),
@@ -1004,6 +1014,7 @@ async def handle_user_message(
         "comparison_data": comparison_data,
         "active_filters": active_filters,
         "demo_ai": is_demo,
+        "ai_meta": ai_meta,
     }
 
     assistant_msg = AIMessage(

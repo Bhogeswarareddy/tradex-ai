@@ -721,7 +721,18 @@ export const AiModePage: React.FC = () => {
 
                     {/* AI Reply Text */}
                     <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs max-w-3xl text-xs sm:text-sm text-slate-800 leading-relaxed">
-                      {m.content}
+                      <div>{m.content}</div>
+                      {/* AI Reply Footer: provider, model, latency, fallback reason */}
+                      <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+                        <span>
+                          {m.is_demo
+                            ? `Demo AI (reason: ${(m.structured as any)?.ai_meta?.fallback_reason || "Deterministic catalogue engine"})`
+                            : `Live AI: ${(m.structured as any)?.ai_meta?.model || aiStatus?.model || "llama-3.3-70b-versatile"}, ${(((m.structured as any)?.ai_meta?.latency_ms || aiStatus?.last_latency || 1200) / 1000).toFixed(1)}s`}
+                        </span>
+                        <span className="text-[10px] font-mono uppercase text-slate-400">
+                          {(m.structured as any)?.ai_meta?.provider || (m.is_demo ? "demo" : "groq")}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Active Filters as Chips in Thread */}

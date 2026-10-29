@@ -77,6 +77,14 @@ export interface AiSearchResponse {
   relaxation_suggestions: string[];
   execution_time_ms: number;
   is_mock: boolean;
+  ai_meta?: {
+    provider: string;
+    model: string;
+    is_demo: boolean;
+    latency_ms: number;
+    fallback_reason?: string;
+  };
+  status?: string;
 }
 
 export interface AiSearchHistoryItem {

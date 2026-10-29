@@ -15,6 +15,7 @@ class LLMResponse:
     provider: str = ""
     fallback: bool = False
     is_mock: bool = False
+    fallback_reason: Optional[str] = None
 
 
 class SearchRequirement(BaseModel):

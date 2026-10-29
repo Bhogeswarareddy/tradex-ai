@@ -17,6 +17,7 @@ import {
   ScoreBreakdownDrawer,
 } from "../features/ai-search";
 import { ErrorState } from "../components/ErrorState";
+import { ErrorBoundary } from "../components/common/ErrorBoundary";
 
 export const AiSearchPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -82,6 +83,9 @@ export const AiSearchPage: React.FC = () => {
 
       // 2. Increment request ID to ensure out-of-order responses are rejected
       const requestId = ++latestRequestIdRef.current;
+      const timeoutId = setTimeout(() => {
+        controller.abort("Search request timed out after 30 seconds");
+      }, 30000);
 
       setIsLoading(true);
       setError(null);
@@ -105,14 +109,18 @@ export const AiSearchPage: React.FC = () => {
         // Check if this search was already saved in user's savedSearches
         loadHistoryAndSaved();
       } catch (err: any) {
-        if (err.name === "AbortError") {
+        if (err.name === "AbortError" && !String(err.message || "").includes("timed out")) {
           // Request was aborted by newer search, do not set error state
           return;
         }
         if (requestId === latestRequestIdRef.current) {
-          setError(err.message || "Failed to parse trade search query. Please try again.");
+          const msg = String(err.message || "").includes("timed out")
+            ? "Search request timed out after 30 seconds. Please try again or refine your query."
+            : (err.message || "Failed to parse trade search query. Please try again.");
+          setError(msg);
         }
       } finally {
+        clearTimeout(timeoutId);
         if (requestId === latestRequestIdRef.current) {
           setIsLoading(false);
         }
@@ -322,17 +330,20 @@ export const AiSearchPage: React.FC = () => {
         <div className="space-y-6">
           {/* Understood Requirement Card */}
           {editedRequirement && (
-            <UnderstoodRequirementCard
-              requirement={editedRequirement}
-              missingFields={searchResponse.missing_fields}
-              clarifyingQuestions={searchResponse.clarifying_questions}
-              executionTimeMs={searchResponse.execution_time_ms}
-              isMock={searchResponse.is_mock}
-              onRequirementChange={handleRequirementChange}
-              onCreateRfq={handleCreateRfq}
-              onSaveSearch={handleSaveSearch}
-              isSaved={isSaved}
-            />
+            <ErrorBoundary level="widget" fallbackTitle="Requirement details display encountered an issue">
+              <UnderstoodRequirementCard
+                requirement={editedRequirement}
+                missingFields={searchResponse.missing_fields}
+                clarifyingQuestions={searchResponse.clarifying_questions}
+                executionTimeMs={searchResponse.execution_time_ms}
+                isMock={searchResponse.is_mock}
+                aiMeta={searchResponse.ai_meta}
+                onRequirementChange={handleRequirementChange}
+                onCreateRfq={handleCreateRfq}
+                onSaveSearch={handleSaveSearch}
+                isSaved={isSaved}
+              />
+            </ErrorBoundary>
           )}
 
           {/* Filter Relaxation Suggestions if matches are scarce */}
@@ -346,14 +357,16 @@ export const AiSearchPage: React.FC = () => {
             )}
 
           {/* Results Tabs: Suppliers & Products */}
-          <AiSearchResultsTabs
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-            suppliers={filteredSuppliers}
-            products={filteredProducts}
-            onRequestQuote={handleRequestQuote}
-            onOpenBreakdown={setBreakdownSupplier}
-          />
+          <ErrorBoundary level="widget" fallbackTitle="Marketplace search matches encountered an issue">
+            <AiSearchResultsTabs
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              suppliers={filteredSuppliers}
+              products={filteredProducts}
+              onRequestQuote={handleRequestQuote}
+              onOpenBreakdown={setBreakdownSupplier}
+            />
+          </ErrorBoundary>
         </div>
       )}
 

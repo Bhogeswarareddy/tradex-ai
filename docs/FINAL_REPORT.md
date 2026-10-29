@@ -452,5 +452,50 @@ Exit code: 0 (Zero failures)
 - [x] **Prompt 25**: Settings, Currency Conversion, i18n Translations & Dark Theme — **Completed**
 - [x] **Prompt 26**: Messages (New Message Modal, Templates, Anti-Spam 403, Offer State Integrity) — **Completed**
 - [x] **Prompt 27**: Supplier Portal Acceptance Tests (10 Scenarios via Playwright & Pytest) — **Completed**
+- [x] **Unified Groq AI Layer**: Shared Groq provider across AI Search, AI Mode, and Copilot with live telemetry — **Completed**
+- [x] **Prompt 28**: Stop the Crashes and Endless 'Processing...' (Null-safe formatters, 30s search lifecycle, error boundaries) — **Completed**
 
-**All 27 Prompts are 100% completed with zero failing tests, zero compiler errors, and fully operational services.**
+**All 28 Prompts are 100% completed with zero failing tests, zero compiler errors, and fully operational services.**
+
+---
+
+## 11. Prompt 28: Stop the Crashes and the Endless 'Processing...'
+
+### 11.1 Problem & Root Cause Analysis
+1. **Crash on `/search?q=i+want+laptop`**:
+   - `ProductCard.tsx`, `ProductDetailView.tsx`, and `SearchResultItem.tsx` made direct `.toFixed(2)` and `.toLocaleString()` calls on `product.moq`, `product.price_min`, and `product.price_max`. When a product in the catalogue had unconfirmed pricing or null MOQ, JavaScript threw an uncaught `TypeError: Cannot read properties of null (reading 'toLocaleString')`.
+   - Additionally, `products.py` split search terms by whitespace and chained mandatory `.where(...)` queries across all words without filtering conversational stop words ("i", "want", "to"), causing zero matches and unhandled exceptions on null-tier results.
+2. **Hanging on `/ai-search?q=i+want+to+tractors` at 60% 'Processing...'**:
+   - The query extracted trade specifications with `quantity=null`.
+   - `UnderstoodRequirementCard.tsx` evaluated `{requirement.quantity.toLocaleString()}`, crashing React render and leaving `StreamingProgressLine.tsx` indefinitely frozen at 60%.
+   - In-flight network requests lacked a hard 30-second abort guard, causing long-pending backend LLM calls to keep `isLoading` active.
+
+### 11.2 Fixes Implemented
+1. **Enterprise Format Helpers (`frontend/src/lib/format.ts`)**:
+   - `formatNumber(val, options, fallback = "Not available")`: strictly checks `Number.isFinite(val)` and returns fallback for `null`, `undefined`, `NaN`, and `Infinity`.
+   - `formatCurrency(val, currency, fallback = "Not available")`: maps currency codes (USD, EUR, INR, GBP, AED, CNY) with 2-decimal localized formatting.
+   - `formatDate(val, options, fallback = "Not available")`: safe date parsing avoiding invalid date crashes.
+   - `formatPercent(val, decimals, fallback = "Not available")`: safe percentage representation.
+   - Replaced all unsafe direct calls across `ProductCard.tsx`, `ProductDetailView.tsx`, `UnderstoodRequirementCard.tsx`, and `AiSearchResultsTabs.tsx`.
+2. **Search Lifecycle Management**:
+   - Added 30-second `AbortController` timeout on all client search requests with sequential `requestId` tracking.
+   - Ensured `isLoading` termination is wrapped in a `finally` block so the UI never hangs indefinitely.
+   - Enhanced `StreamingProgressLine.tsx` with dynamic progression through `understanding`, `searching`, and `ranking` stages.
+3. **Route & Widget Error Boundaries (`frontend/src/components/common/ErrorBoundary.tsx`)**:
+   - Extended `ErrorBoundary` to support `level="widget"` for compact, inline component error handling with retry buttons and generated Request ID tracking.
+   - Wrapped `AppLayout` with `<ErrorBoundary level="route">` and wrapped AI search cards with `<ErrorBoundary level="widget">`.
+4. **Backend Safe Schemas & Stopword Handling**:
+   - Updated `ProductListItem` in `products.py` to make `moq`, `price_min`, and `price_max` null-safe (`Optional`).
+   - Implemented `COMMON_SEARCH_STOPWORDS` filter in `products.py` so conversational phrases like `"i want laptop"` isolate `"laptop"` and correctly match catalogue items.
+   - Added timeout catch block in `perform_ai_search` returning catalogue matches with `status="unavailable"` when external inference is degraded.
+5. **Unified Groq Provider Layer & Telemetry**:
+   - Wired AI Search, AI Mode, and Copilot to `get_ai_provider()` in `backend/app/ai/provider.py`.
+   - Returned `ai_meta` (`provider`, `model`, `is_demo`, `latency_ms`, `fallback_reason`) on all replies.
+   - Added real health probe badge to `TopBar.tsx` and AI reply footers (e.g. `'Live AI: llama-3.3-70b-versatile, 1.4s'`).
+   - Reset buyer profile full_name back to `"Bhogeswara Reddy"`.
+
+### 11.3 Verification Results
+- **Frontend Type Check (`npx tsc --noEmit`)**: 0 errors
+- **Frontend Unit Suite (`npx vitest run`)**: 16 test files passed, 94 tests passed
+- **Backend Test Suite (`pytest app/tests/test_prompt28_safe_search.py`)**: 5 passed in 2.93s
+- **Full Backend Pytest Regression**: 17 passed in 16.78s

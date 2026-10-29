@@ -83,6 +83,45 @@ export const TopBar: React.FC<TopBarProps> = ({
     };
   }, []);
 
+  const [aiStatus, setAiStatus] = useState<{
+    mode: string;
+    provider: string;
+    model: string;
+    last_latency: number;
+    reachable: boolean;
+    fallback_reason?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch("/api/v1/ai/status");
+        if (res.ok && mounted) {
+          const data = await res.json();
+          setAiStatus(data);
+        }
+      } catch {
+        if (mounted) {
+          setAiStatus({
+            mode: "demo",
+            provider: "mock",
+            model: "demo-rule-engine",
+            last_latency: 0,
+            reachable: false,
+            fallback_reason: "Offline",
+          });
+        }
+      }
+    };
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 30000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchValue.trim()) {
@@ -145,6 +184,30 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       {/* Right: Actions, Language, Currency, Theme, Notifications, Profile */}
       <div className="flex items-center gap-1.5 sm:gap-3">
+        {/* Real AI Health Probe Header Badge */}
+        {aiStatus && (
+          <div
+            data-testid="header-ai-status-badge"
+            className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all ${
+              aiStatus.mode === "live"
+                ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800"
+                : "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800"
+            }`}
+            title={
+              aiStatus.mode === "live"
+                ? `Live AI Probe: ${aiStatus.provider} (${aiStatus.model}) | Latency: ${aiStatus.last_latency}ms`
+                : `Demo AI (reason: ${aiStatus.fallback_reason || "Simulated inference"})`
+            }
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                aiStatus.mode === "live" ? "bg-emerald-500 animate-pulse" : "bg-amber-500"
+              }`}
+            />
+            <span>{aiStatus.mode === "live" ? `Live AI: ${aiStatus.provider}` : "Demo AI"}</span>
+          </div>
+        )}
+
         {/* AI Mode quick launcher pill */}
         <Link
           to="/ai-mode"

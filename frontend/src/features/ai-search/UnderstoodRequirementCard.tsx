@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { formatNumber } from "../../lib/format";
 import {
   Sparkles,
   Check,
@@ -29,6 +30,13 @@ interface UnderstoodRequirementCardProps {
   onCreateRfq: () => void;
   onSaveSearch: () => void;
   isSaved?: boolean;
+  aiMeta?: {
+    provider: string;
+    model: string;
+    is_demo: boolean;
+    latency_ms: number;
+    fallback_reason?: string;
+  };
 }
 
 export const UnderstoodRequirementCard: React.FC<UnderstoodRequirementCardProps> = ({
@@ -41,6 +49,7 @@ export const UnderstoodRequirementCard: React.FC<UnderstoodRequirementCardProps>
   onCreateRfq,
   onSaveSearch,
   isSaved = false,
+  aiMeta,
 }) => {
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -198,7 +207,7 @@ export const UnderstoodRequirementCard: React.FC<UnderstoodRequirementCardProps>
                 </div>
               ) : (
                 <span className="font-semibold">
-                  {requirement.quantity.toLocaleString()} {requirement.unit || "units"}
+                  {formatNumber(requirement.quantity)} {requirement.unit || "units"}
                 </span>
               )}
               {editingField !== "quantity" && (
@@ -470,6 +479,18 @@ export const UnderstoodRequirementCard: React.FC<UnderstoodRequirementCardProps>
             <span>Create RFQ from this requirement</span>
           </Button>
         </div>
+      </div>
+
+      {/* AI Reply Footer: provider, model, latency, fallback reason */}
+      <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+        <span>
+          {aiMeta?.is_demo || isMock
+            ? `Demo AI (reason: ${aiMeta?.fallback_reason || "Deterministic requirement extractor"})`
+            : `Live AI: ${aiMeta?.model || "llama-3.3-70b-versatile"}, ${((aiMeta?.latency_ms || executionTimeMs || 1200) / 1000).toFixed(1)}s`}
+        </span>
+        <span className="text-[10px] font-mono uppercase text-slate-400">
+          {aiMeta?.provider || (isMock ? "demo" : "groq")}
+        </span>
       </div>
     </div>
   );

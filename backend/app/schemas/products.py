@@ -33,12 +33,12 @@ class ProductListItem(BaseModel):
     category_name: str
     category_slug: str
     hs_code: Optional[str] = None
-    moq: int
-    unit: str
-    origin_country: str
-    lead_time_days: int
-    price_min: float
-    price_max: float
+    moq: Optional[int] = 1
+    unit: str = "unit"
+    origin_country: Optional[str] = "Global"
+    lead_time_days: Optional[int] = 14
+    price_min: Optional[float] = None
+    price_max: Optional[float] = None
     currency: str = "USD"
     image_url: Optional[str] = None
     supplier_id: str

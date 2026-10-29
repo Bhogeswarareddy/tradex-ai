@@ -1,6 +1,10 @@
+import asyncio
+import logging
 import time
 from typing import Any, Dict, List, Optional
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -49,6 +53,8 @@ class AISearchResponse(BaseModel):
     relaxation_suggestions: List[str]
     execution_time_ms: float
     is_mock: bool = False
+    ai_meta: Optional[Dict[str, Any]] = None
+    status: str = "success"
 
 
 async def _execute_search_and_matching(
@@ -58,6 +64,8 @@ async def _execute_search_and_matching(
     t0: float,
     current_user: Optional[User] = None,
     persist_history: bool = True,
+    search_status: str = "success",
+    fallback_reason: Optional[str] = None,
 ) -> AISearchResponse:
     filters = requirement.to_filters()
     missing_fields = requirement.get_missing_fields()
@@ -261,6 +269,17 @@ async def _execute_search_and_matching(
         except Exception:
             pass
 
+    from app.ai.provider import get_ai_status
+    status_diag = get_ai_status()
+    is_demo = status_diag.get("mode") == "demo" or search_status != "success"
+    ai_meta = {
+        "provider": status_diag.get("provider", "groq"),
+        "model": status_diag.get("model", "llama-3.3-70b-versatile"),
+        "is_demo": is_demo,
+        "latency_ms": elapsed_ms,
+        "fallback_reason": fallback_reason or status_diag.get("fallback_reason"),
+    }
+
     return AISearchResponse(
         query=clean_query,
         requirement=requirement,
@@ -271,7 +290,9 @@ async def _execute_search_and_matching(
         suppliers=top_suppliers,
         relaxation_suggestions=relaxation_suggestions,
         execution_time_ms=elapsed_ms,
-        is_mock=True,
+        is_mock=is_demo,
+        ai_meta=ai_meta,
+        status=search_status,
     )
 
 
@@ -288,15 +309,33 @@ async def perform_ai_search(
     """
     t0 = time.time()
     clean_query = req.query.strip()
+    search_status = "success"
+    fallback_reason = None
 
-    # 1. Structured Requirement Extraction via AI Service Layer
-    requirement: SearchRequirement = await generate_structured(
-        prompt_name="search_extract.v1",
-        variables={"query": clean_query},
-        pydantic_model=SearchRequirement,
-        session=db,
-        feature_name="ai_search",
-    )
+    # 1. Structured Requirement Extraction via AI Service Layer with 25s timeout guard
+    try:
+        requirement: SearchRequirement = await asyncio.wait_for(
+            generate_structured(
+                prompt_name="search_extract.v1",
+                variables={"query": clean_query},
+                pydantic_model=SearchRequirement,
+                session=db,
+                feature_name="ai_search",
+            ),
+            timeout=25.0,
+        )
+    except Exception as exc:
+        logger.warning(f"AI Search extraction degraded: {exc}. Returning catalogue matches directly.")
+        search_status = "unavailable"
+        fallback_reason = f"Extraction timeout or error: {str(exc)[:100]}"
+        words = [w for w in clean_query.split() if w.lower() not in {"i", "want", "to", "find", "show", "me", "buy"}]
+        keyword = " ".join(words) if words else clean_query
+        requirement = SearchRequirement(
+            product=keyword,
+            category="General Trade",
+            unit="units",
+            currency="USD",
+        )
 
     return await _execute_search_and_matching(
         db=db,
@@ -305,6 +344,8 @@ async def perform_ai_search(
         t0=t0,
         current_user=current_user,
         persist_history=True,
+        search_status=search_status,
+        fallback_reason=fallback_reason,
     )
 
 

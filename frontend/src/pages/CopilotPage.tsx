@@ -28,6 +28,13 @@ interface ChatMessage {
   sources?: CopilotSource[];
   suggested_actions?: string[];
   created_at?: string;
+  ai_meta?: {
+    provider: string;
+    model: string;
+    is_demo: boolean;
+    latency_ms: number;
+    fallback_reason?: string;
+  };
 }
 
 export const CopilotPage: React.FC = () => {
@@ -115,6 +122,7 @@ export const CopilotPage: React.FC = () => {
         sources: res.sources,
         suggested_actions: res.suggested_actions,
         created_at: new Date().toISOString(),
+        ai_meta: res.ai_meta,
       };
 
       setMessages((prev) => [...prev, botMsg]);
@@ -415,6 +423,20 @@ export const CopilotPage: React.FC = () => {
                           <ArrowRight className="w-3 h-3" />
                         </button>
                       ))}
+                    </div>
+                  )}
+
+                  {/* AI Metadata Footer */}
+                  {m.role === "assistant" && (
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+                      <span>
+                        {m.ai_meta?.is_demo
+                          ? `Demo AI (reason: ${m.ai_meta?.fallback_reason || "Trade knowledge engine"})`
+                          : `Live AI: ${m.ai_meta?.model || "llama-3.3-70b-versatile"}, ${((m.ai_meta?.latency_ms || 1200) / 1000).toFixed(1)}s`}
+                      </span>
+                      <span className="font-mono uppercase text-[9px] text-slate-400">
+                        {m.ai_meta?.provider || "groq"}
+                      </span>
                     </div>
                   )}
                 </div>

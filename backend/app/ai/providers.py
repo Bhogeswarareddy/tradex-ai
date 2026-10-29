@@ -933,7 +933,7 @@ class GroqProvider(LLMProvider):
             completion_tokens=completion_tokens,
             total_tokens=prompt_tokens + completion_tokens,
             latency_ms=latency,
-            model=f"Groq ({self.model_name})",
+            model=self.model_name,
             provider="groq",
             fallback=False,
             is_mock=False,
