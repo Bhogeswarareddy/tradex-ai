@@ -1,6 +1,22 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { execSync } from "child_process";
+
+function getBackendUrl(): string {
+  if (process.env.VITE_BACKEND_URL) return process.env.VITE_BACKEND_URL;
+  try {
+    const ip = execSync("wsl hostname -I", { encoding: "utf8" }).trim().split(/\s+/)[0];
+    if (ip && /^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
+      return `http://${ip}:8000`;
+    }
+  } catch {
+    // ignore
+  }
+  return "http://127.0.0.1:8000";
+}
+
+const backendUrl = getBackendUrl();
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -15,7 +31,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": {
-        target: process.env.VITE_BACKEND_URL || "http://127.0.0.1:8000",
+        target: backendUrl,
         changeOrigin: true,
       },
     },
