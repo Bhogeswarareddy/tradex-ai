@@ -13,10 +13,12 @@ export const MessagesPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isNewMessageOpen, setIsNewMessageOpen] = useState(false);
 
-  const initialBuyerId = searchParams.get("buyerId") || undefined;
-  const initialContextType = (searchParams.get("context") as any) || undefined;
-  const initialContextId = searchParams.get("contextId") || undefined;
-  const requestedThreadId = searchParams.get("threadId");
+  const initialRecipientId = searchParams.get("recipientId") || searchParams.get("supplierId") || searchParams.get("buyerId") || undefined;
+  const initialContextType = (searchParams.get("context") as any) || "product";
+  const initialContextId = searchParams.get("contextId") || searchParams.get("productId") || undefined;
+  const initialProductName = searchParams.get("productName") || undefined;
+  const initialSubject = searchParams.get("subject") || undefined;
+  const requestedThreadId = searchParams.get("threadId") || searchParams.get("thread");
 
   const loadThreads = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -46,12 +48,12 @@ export const MessagesPage: React.FC = () => {
     return () => clearInterval(timer);
   }, [loadThreads]);
 
-  // Open new message modal if buyerId is in URL query
+  // Open new message modal if recipientId / buyerId is in URL query
   useEffect(() => {
-    if (initialBuyerId || searchParams.get("new") === "1") {
+    if (initialRecipientId || searchParams.get("new") === "1") {
       setIsNewMessageOpen(true);
     }
-  }, [initialBuyerId, searchParams]);
+  }, [initialRecipientId, searchParams]);
 
   const handleThreadCreated = (newThreadId: string) => {
     // Clear query params
@@ -152,9 +154,11 @@ export const MessagesPage: React.FC = () => {
         isOpen={isNewMessageOpen}
         onClose={() => setIsNewMessageOpen(false)}
         onThreadCreated={handleThreadCreated}
-        initialRecipientId={initialBuyerId}
+        initialRecipientId={initialRecipientId}
         initialContextType={initialContextType}
         initialContextId={initialContextId}
+        initialSubject={initialSubject}
+        initialProductName={initialProductName}
       />
     </div>
   );

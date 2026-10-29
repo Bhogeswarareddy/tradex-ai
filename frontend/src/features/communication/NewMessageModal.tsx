@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import {
   X,
   Search,
-  Building,
   Paperclip,
   Send,
   FileText,
   Sparkles,
   ChevronDown,
+  CheckCircle2,
 } from "lucide-react";
 import {
   communicationApi,
@@ -18,6 +19,7 @@ import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { Select } from "../../components/ui/Select";
 import { Modal } from "../../components/ui/Modal";
+import { useAuth } from "../../features/auth/AuthContext";
 
 interface NewMessageModalProps {
   isOpen: boolean;
@@ -26,6 +28,9 @@ interface NewMessageModalProps {
   initialRecipientId?: string;
   initialContextType?: string;
   initialContextId?: string;
+  initialSubject?: string;
+  initialProductName?: string;
+  initialSupplierName?: string;
 }
 
 interface MessageTemplate {
@@ -34,7 +39,8 @@ interface MessageTemplate {
   text: string;
 }
 
-const BUILTIN_TEMPLATES: MessageTemplate[] = [
+// Supplier-only templates (Quotation & Order Updates)
+const SUPPLIER_TEMPLATES: MessageTemplate[] = [
   {
     id: "thank_you",
     name: "Thank you for your inquiry",
@@ -72,23 +78,66 @@ const BUILTIN_TEMPLATES: MessageTemplate[] = [
   },
 ];
 
+// Buyer-only templates (Prompt 33)
+const BUYER_TEMPLATES: MessageTemplate[] = [
+  {
+    id: "buyer_quote",
+    name: "Request a quotation",
+    text: "Dear {supplier_name},\n\nWe are interested in sourcing {product} for our commercial operations. Could you please provide your formal FOB/CIF quotation, including current pricing tiers, lead time, and packing details?\n\nLooking forward to your response,\nProcurement Team",
+  },
+  {
+    id: "buyer_moq",
+    name: "Ask for MOQ and price tiers",
+    text: "Dear {supplier_name},\n\nCould you please share your minimum order quantity (MOQ) and tiered volume pricing for {product}? We are evaluating trial batch quantities and recurring monthly shipments.\n\nBest regards,\nProcurement Team",
+  },
+  {
+    id: "buyer_samples",
+    name: "Ask for samples",
+    text: "Dear {supplier_name},\n\nWe would like to request product evaluation samples of {product} to verify technical specifications and quality compliance before placing our purchase order. Please advise on sample availability and dispatch timeline.\n\nThank you,\nQuality & Procurement Team",
+  },
+  {
+    id: "buyer_certificates",
+    name: "Request certificates",
+    text: "Dear {supplier_name},\n\nBefore initiating commercial procurement for {product}, could you please share your latest compliance certificates (such as ISO, HACCP, CE, GMP, or Organic NPOP/NOP) along with an authoritative Certificate of Analysis (COA)?\n\nBest regards,\nCompliance & Sourcing Team",
+  },
+  {
+    id: "buyer_lead_time",
+    name: "Ask for lead time",
+    text: "Dear {supplier_name},\n\nWhat is your current production and export shipping lead time for an order of {product}? We are finalizing container logistics schedules and require confirmed dispatch windows.\n\nThank you,\nSupply Chain Team",
+  },
+  {
+    id: "buyer_negotiation",
+    name: "Negotiation opener",
+    text: "Dear {supplier_name},\n\nWe have reviewed your catalogue listing for {product} and are keen to move forward with a substantial recurring trade order. We would like to discuss targeted pricing and escrow payment terms that align with our volume expectations.\n\nBest regards,\nCommercial Procurement Director",
+  },
+];
+
 export const NewMessageModal: React.FC<NewMessageModalProps> = ({
   isOpen,
   onClose,
   onThreadCreated,
   initialRecipientId,
-  initialContextType = "general",
+  initialContextType = "product",
   initialContextId,
+  initialSubject,
+  initialProductName,
+  initialSupplierName,
 }) => {
+  const { user } = useAuth();
+  const isSupplier = user?.role === "supplier";
+  const activeTemplates = isSupplier ? SUPPLIER_TEMPLATES : BUYER_TEMPLATES;
+
   const [recipients, setRecipients] = useState<AllowedRecipientItem[]>([]);
   const [loadingRecipients, setLoadingRecipients] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRecipient, setSelectedRecipient] = useState<AllowedRecipientItem | null>(null);
 
-  // Form states
+  // Form states - Prompt 33: default context is 'Product inquiry'
   const [contextType, setContextType] = useState(initialContextType);
   const [contextId, setContextId] = useState(initialContextId || "");
-  const [subject, setSubject] = useState("");
+  const [subject, setSubject] = useState(
+    initialSubject || (initialProductName ? `Inquiry regarding ${initialProductName}` : "")
+  );
   const [messageBody, setMessageBody] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -105,52 +154,49 @@ export const NewMessageModal: React.FC<NewMessageModalProps> = ({
     }
   });
 
-  // Fetch recipients on mount
+  // Debounced search for recipients
   useEffect(() => {
-    if (isOpen) {
-      loadRecipients();
-    }
-  }, [isOpen]);
+    if (!isOpen) return;
+    const timer = setTimeout(() => {
+      loadRecipients(searchQuery.trim());
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery, isOpen]);
 
-  const loadRecipients = async () => {
+  const loadRecipients = async (q?: string) => {
     setLoadingRecipients(true);
     try {
-      const list = await communicationApi.listRecipients();
+      const list = await communicationApi.listRecipients(q || undefined);
       setRecipients(list);
-      if (initialRecipientId) {
+      if (initialRecipientId && !selectedRecipient) {
         const found = list.find(
-          (r) => r.participant_id === initialRecipientId || r.recipient_user_id === initialRecipientId
+          (r) =>
+            r.participant_id === initialRecipientId ||
+            r.recipient_user_id === initialRecipientId ||
+            r.company_id === initialRecipientId
         );
         if (found) {
           setSelectedRecipient(found);
           if (found.context_type) setContextType(found.context_type);
           if (found.context_id) setContextId(found.context_id);
-          setSubject(`Discussion: ${found.company_name} - ${found.relationship_reason}`);
+          if (!subject) {
+            setSubject(`Inquiry regarding ${initialProductName || found.company_name}`);
+          }
         }
       }
     } catch (err: unknown) {
       console.error("Failed to load recipients", err);
+      // Non-blocking: Page/modal never breaks even if search query fails
+      setRecipients([]);
     } finally {
       setLoadingRecipients(false);
     }
   };
 
-  const filteredRecipients = useMemo(() => {
-    if (!searchQuery.trim()) return recipients;
-    const q = searchQuery.toLowerCase();
-    return recipients.filter(
-      (r) =>
-        r.name.toLowerCase().includes(q) ||
-        r.company_name.toLowerCase().includes(q) ||
-        r.relationship_reason.toLowerCase().includes(q) ||
-        r.country.toLowerCase().includes(q)
-    );
-  }, [recipients, searchQuery]);
-
   const handleSelectRecipient = (recip: AllowedRecipientItem) => {
     setSelectedRecipient(recip);
     if (!subject) {
-      setSubject(`Inquiry: ${recip.relationship_reason}`);
+      setSubject(`Inquiry regarding ${initialProductName || recip.company_name}`);
     }
     if (recip.context_type) {
       setContextType(recip.context_type);
@@ -162,10 +208,21 @@ export const NewMessageModal: React.FC<NewMessageModalProps> = ({
 
   const handleApplyTemplate = (tmpl: MessageTemplate) => {
     let replaced = tmpl.text;
-    const buyerName = selectedRecipient?.name || "Trade Partner";
-    const productName = "Export Commodity";
+    const supplierName =
+      selectedRecipient?.company_name ||
+      initialSupplierName ||
+      selectedRecipient?.name ||
+      "Supplier";
+    const buyerName = user?.full_name || "Procurement Officer";
+    const productName =
+      initialProductName ||
+      (subject
+        ? subject.replace(/^Inquiry regarding\s*/i, "").replace(/^Discussion:\s*/i, "")
+        : "Product");
+
+    replaced = replaced.replace(/{supplier_name}/g, supplierName);
     replaced = replaced.replace(/{buyer_name}/g, buyerName);
-    replaced = replaced.replace(/{product}/g, productName);
+    replaced = replaced.replace(/{product}/g, productName || "Commercial Product");
     replaced = replaced.replace(/{destination}/g, "Hamburg, Germany");
     replaced = replaced.replace(/{lead_time}/g, "25");
     replaced = replaced.replace(/{order_number}/g, contextId || "PO-2026-001");
@@ -211,6 +268,7 @@ export const NewMessageModal: React.FC<NewMessageModalProps> = ({
         initial_message: messageBody.trim(),
         context_type: contextType,
         context_id: contextId || undefined,
+        product_id: contextType === "product" && contextId ? contextId : undefined,
         attachments: attachments.length > 0 ? attachments : undefined,
       };
 
@@ -252,23 +310,42 @@ export const NewMessageModal: React.FC<NewMessageModalProps> = ({
           {selectedRecipient ? (
             <div className="flex items-center justify-between p-3 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/20">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs">
-                  {selectedRecipient.company_name.charAt(0)}
-                </div>
+                {selectedRecipient.logo_url ? (
+                  <img
+                    src={selectedRecipient.logo_url}
+                    alt={selectedRecipient.company_name}
+                    className="w-9 h-9 rounded-full object-cover border border-blue-200"
+                  />
+                ) : (
+                  <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs">
+                    {selectedRecipient.company_name.charAt(0)}
+                  </div>
+                )}
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                      {selectedRecipient.name}
+                      {selectedRecipient.company_name}
                     </span>
-                    <span className="text-[11px] text-slate-500">
-                      • {selectedRecipient.company_name}
-                    </span>
+                    {selectedRecipient.verified && (
+                      <span title="Verified">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                      </span>
+                    )}
                     <span className="px-1.5 py-0.2 rounded text-[9px] uppercase font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
                       {selectedRecipient.role}
                     </span>
                   </div>
+                  <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                    <span>{selectedRecipient.country}</span>
+                    {selectedRecipient.categories && selectedRecipient.categories.length > 0 && (
+                      <>
+                        <span>•</span>
+                        <span>{selectedRecipient.categories.slice(0, 3).join(", ")}</span>
+                      </>
+                    )}
+                  </div>
                   <span className="text-[10px] text-blue-700 dark:text-blue-300 font-semibold block">
-                    Relationship: {selectedRecipient.relationship_reason}
+                    {selectedRecipient.relationship_reason}
                   </span>
                 </div>
               </div>
@@ -288,39 +365,86 @@ export const NewMessageModal: React.FC<NewMessageModalProps> = ({
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="Search authorized buyers or suppliers by name, company, or reason..."
+                  placeholder="Search by company name, contact, product, category, or country..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
                 />
               </div>
 
-              <div className="max-h-48 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl">
+              <div className="max-h-52 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl">
                 {loadingRecipients ? (
                   <div className="p-4 text-center text-xs text-slate-400">Loading authorized counterparties...</div>
-                ) : filteredRecipients.length === 0 ? (
-                  <div className="p-4 text-center text-xs text-slate-400">
-                    No authorized recipients match your search.
+                ) : recipients.length === 0 ? (
+                  <div className="p-4 text-center space-y-2">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      No authorized recipients match your search.
+                    </p>
+                    <div className="flex items-center justify-center gap-2 pt-1">
+                      <Link
+                        to="/rfqs"
+                        onClick={onClose}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs font-semibold transition-colors"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>Create an RFQ</span>
+                      </Link>
+                      {searchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setSearchQuery("")}
+                          className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 text-xs font-semibold transition-colors"
+                        >
+                          Clear search
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ) : (
-                  filteredRecipients.map((r) => (
+                  recipients.map((r) => (
                     <div
                       key={r.participant_id}
                       onClick={() => handleSelectRecipient(r)}
                       className="p-2.5 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors text-xs"
                     >
-                      <div className="flex items-center gap-2.5">
-                        <Building className="w-4 h-4 text-slate-400 shrink-0" />
+                      <div className="flex items-center gap-3">
+                        {r.logo_url ? (
+                          <img
+                            src={r.logo_url}
+                            alt={r.company_name}
+                            className="w-8 h-8 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700"
+                          />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
+                            {r.company_name.charAt(0)}
+                          </div>
+                        )}
                         <div>
-                          <div className="font-semibold text-slate-800 dark:text-slate-200">
-                            {r.name} <span className="font-normal text-slate-500">• {r.company_name} ({r.country})</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-slate-900 dark:text-slate-100">
+                              {r.company_name}
+                            </span>
+                            {r.verified && (
+                              <span title="Verified Exporter">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 flex-wrap">
+                            <span>{r.country}</span>
+                            {r.categories && r.categories.length > 0 && (
+                              <>
+                                <span>•</span>
+                                <span>{r.categories.slice(0, 3).join(", ")}</span>
+                              </>
+                            )}
                           </div>
                           <div className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">
                             {r.relationship_reason}
                           </div>
                         </div>
                       </div>
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 uppercase">
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 uppercase shrink-0">
                         {r.role}
                       </span>
                     </div>
@@ -339,11 +463,11 @@ export const NewMessageModal: React.FC<NewMessageModalProps> = ({
               value={contextType}
               onChange={(e) => setContextType(e.target.value)}
               options={[
-                { value: "general", label: "General Inquiry" },
+                { value: "product", label: "Product inquiry" },
+                { value: "general", label: "General inquiry" },
                 { value: "rfq", label: "RFQ Opportunity" },
                 { value: "quote", label: "Quotation" },
                 { value: "order", label: "Order / Contract" },
-                { value: "product", label: "Product Listing" },
               ]}
             />
           </div>
@@ -380,9 +504,9 @@ export const NewMessageModal: React.FC<NewMessageModalProps> = ({
               {templateMenuOpen && (
                 <div className="absolute right-0 mt-1 w-72 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 z-50 animate-in fade-in text-xs max-h-60 overflow-y-auto">
                   <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
-                    Standard Export Templates
+                    {isSupplier ? "Supplier Export Templates" : "Buyer Inquiry Templates"}
                   </div>
-                  {BUILTIN_TEMPLATES.map((t) => (
+                  {activeTemplates.map((t) => (
                     <button
                       key={t.id}
                       type="button"
@@ -422,7 +546,11 @@ export const NewMessageModal: React.FC<NewMessageModalProps> = ({
             rows={5}
             value={messageBody}
             onChange={(e) => setMessageBody(e.target.value)}
-            placeholder="Type your trade message or pick a pre-written export template above..."
+            placeholder={
+              isSupplier
+                ? "Type your trade message or pick a pre-written supplier template above..."
+                : "Type your product inquiry or select a buyer template above..."
+            }
             className="w-full p-3 text-xs sm:text-sm bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#2563EB] transition-colors"
             required
           />

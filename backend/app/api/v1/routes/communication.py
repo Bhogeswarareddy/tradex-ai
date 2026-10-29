@@ -4,13 +4,13 @@ Buyer-supplier chat threads, counter-offers, AI negotiation deal assistance,
 and real-time notification dispatch.
 """
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import desc, func, select, update
+from sqlalchemy import case, desc, exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -18,7 +18,7 @@ from app.core.db import get_db
 from app.models.identity import Buyer, Company, Supplier, User
 from app.models.trade import Order, Quotation, RFQ
 from app.models.content import Message, Notification, SavedItem, Thread
-from app.models.catalog import Product
+from app.models.catalog import Category, Product, SupplierCategory
 from app.api.deps import get_current_user
 from app.services.websocket_manager import ws_manager
 from app.ai.structured import generate_structured
@@ -36,22 +36,27 @@ class SendMessageInput(BaseModel):
 
 class CreateThreadInput(BaseModel):
     recipient_id: uuid.UUID
-    subject: str = Field(..., min_length=1, max_length=255)
+    subject: str = Field(default="Trade Inquiry", min_length=1, max_length=255)
     initial_message: str = Field(..., min_length=1)
-    context_type: str = Field(default="general")
+    context_type: str = Field(default="product")
     context_id: Optional[str] = None
+    product_id: Optional[uuid.UUID] = None
     attachments: Optional[List[str]] = None
 
 
 class AllowedRecipientItem(BaseModel):
     recipient_user_id: str
     participant_id: str
+    company_id: Optional[str] = None
     name: str
     company_name: str
+    logo_url: Optional[str] = None
     role: str
     country: str
+    verified: bool = False
+    categories: List[str] = Field(default_factory=list)
     relationship_reason: str
-    context_type: str
+    context_type: str = "product"
     context_id: Optional[str] = None
 
 
@@ -185,14 +190,22 @@ async def check_supplier_buyer_relationship(
 
 @router.get("/recipients", response_model=List[AllowedRecipientItem])
 async def list_allowed_recipients(
+    q: Optional[str] = Query(None, description="Search term for company, contact, product, category, country"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> List[AllowedRecipientItem]:
-    """Lists verified allowed counterparties that the current user is permitted to message."""
+    """Lists verified allowed counterparties that the current user is permitted to message.
+    For Buyers: returns active published/verified suppliers with published products, searchable by company, contact, product, category, or country.
+    For Suppliers: returns only buyers with existing business relationship (Prompt 26 anti-spam).
+    Privacy rule: NEVER returns emails or phone numbers.
+    """
     buyer, supplier = await get_user_profiles(db, current_user)
     recipients = []
 
     if current_user.role == "supplier" and supplier:
+        # Supplier side: Retain relationship requirement from Prompt 26
+        seen_buyers = set()
+
         # 1. Buyers with existing threads
         threads = (
             await db.execute(
@@ -201,7 +214,6 @@ async def list_allowed_recipients(
                 .options(selectinload(Thread.buyer).selectinload(Buyer.company), selectinload(Thread.buyer).selectinload(Buyer.user))
             )
         ).scalars().all()
-        seen_buyers = set()
         for th in threads:
             if th.buyer and th.buyer.id not in seen_buyers:
                 seen_buyers.add(th.buyer.id)
@@ -211,10 +223,13 @@ async def list_allowed_recipients(
                     AllowedRecipientItem(
                         recipient_user_id=str(user_obj.id if user_obj else th.buyer.user_id),
                         participant_id=str(th.buyer.id),
-                        name=user_obj.full_name if user_obj else "Buyer Representative",
+                        company_id=str(comp.id) if comp else None,
+                        name=user_obj.full_name if user_obj and user_obj.full_name else "Buyer Representative",
                         company_name=comp.name if comp else "Trading Co",
+                        logo_url=comp.logo_url if comp else None,
                         role="buyer",
                         country=comp.country if comp else "Global",
+                        verified=comp.verified_status in ["verified", "published"] if comp else False,
                         relationship_reason=f"Inquiry / thread: {th.title or 'Active inquiry'}",
                         context_type="inquiry",
                         context_id=str(th.id),
@@ -239,10 +254,13 @@ async def list_allowed_recipients(
                     AllowedRecipientItem(
                         recipient_user_id=str(user_obj.id if user_obj else rfq.buyer.user_id),
                         participant_id=str(rfq.buyer.id),
-                        name=user_obj.full_name if user_obj else "Procurement Officer",
+                        company_id=str(comp.id) if comp else None,
+                        name=user_obj.full_name if user_obj and user_obj.full_name else "Procurement Officer",
                         company_name=comp.name if comp else "Import Corp",
+                        logo_url=comp.logo_url if comp else None,
                         role="buyer",
                         country=comp.country if comp else "Global",
+                        verified=comp.verified_status in ["verified", "published"] if comp else False,
                         relationship_reason=f"Open RFQ: {rfq.title} ({rfq.rfq_number})",
                         context_type="rfq",
                         context_id=str(rfq.id),
@@ -267,10 +285,13 @@ async def list_allowed_recipients(
                     AllowedRecipientItem(
                         recipient_user_id=str(user_obj.id if user_obj else ord_obj.buyer.user_id),
                         participant_id=str(ord_obj.buyer.id),
-                        name=user_obj.full_name if user_obj else "Buyer Contact",
+                        company_id=str(comp.id) if comp else None,
+                        name=user_obj.full_name if user_obj and user_obj.full_name else "Buyer Contact",
                         company_name=comp.name if comp else "Commercial Buyer",
+                        logo_url=comp.logo_url if comp else None,
                         role="buyer",
                         country=comp.country if comp else "Global",
+                        verified=comp.verified_status in ["verified", "published"] if comp else False,
                         relationship_reason=f"Order #{ord_obj.order_number}",
                         context_type="order",
                         context_id=str(ord_obj.id),
@@ -297,38 +318,117 @@ async def list_allowed_recipients(
                     AllowedRecipientItem(
                         recipient_user_id=str(user_obj.id if user_obj else b_item.user_id),
                         participant_id=str(b_item.id),
-                        name=user_obj.full_name if user_obj else "Prospective Buyer",
+                        company_id=str(comp.id) if comp else None,
+                        name=user_obj.full_name if user_obj and user_obj.full_name else "Prospective Buyer",
                         company_name=comp.name if comp else "Trade Partner",
+                        logo_url=comp.logo_url if comp else None,
                         role="buyer",
                         country=comp.country if comp else "Global",
-                        relationship_reason=f"Lead: Saved your product '{p_item.title}'",
+                        verified=comp.verified_status in ["verified", "published"] if comp else False,
+                        relationship_reason=f"Lead: Saved your product '{p_item.name}'",
                         context_type="product",
                         context_id=str(p_item.id),
                     )
                 )
 
+        if q and q.strip():
+            term = q.strip().lower()
+            recipients = [
+                r for r in recipients
+                if term in r.name.lower() or term in r.company_name.lower() or term in r.country.lower() or term in r.relationship_reason.lower()
+            ]
+
     else:
-        # User is Buyer (or Admin): can message verified active suppliers
-        suppliers = (
-            await db.execute(
-                select(Supplier)
-                .options(selectinload(Supplier.company), selectinload(Supplier.user))
-                .limit(30)
+        # User is Buyer (or Admin): Prompt 33 recipient search
+        # Must return any active supplier company that is Published or Verified and has at least one published product
+        has_prod = exists().where(
+            Product.supplier_id == Supplier.id,
+            Product.status == "published",
+            Product.is_active.is_(True),
+        )
+        conditions = [
+            User.is_active.is_(True),
+            Company.verified_status.in_(["verified", "published", "active"]),
+            has_prod,
+        ]
+
+        if q and q.strip():
+            term = f"%{q.strip()}%"
+            prod_match = exists().where(
+                Product.supplier_id == Supplier.id,
+                Product.status == "published",
+                Product.is_active.is_(True),
+                Product.name.ilike(term),
             )
-        ).scalars().all()
+            cat_match = exists().where(
+                Product.supplier_id == Supplier.id,
+                Product.status == "published",
+                Product.category.has(Category.name.ilike(term)),
+            )
+            sup_cat_match = exists().where(
+                SupplierCategory.supplier_id == Supplier.id,
+                SupplierCategory.category.has(Category.name.ilike(term)),
+            )
+            conditions.append(
+                or_(
+                    Company.name.ilike(term),
+                    User.full_name.ilike(term),
+                    Company.country.ilike(term),
+                    prod_match,
+                    cat_match,
+                    sup_cat_match,
+                )
+            )
+
+        stmt = (
+            select(Supplier)
+            .join(Supplier.user)
+            .join(Supplier.company)
+            .where(*conditions)
+            .options(
+                selectinload(Supplier.company),
+                selectinload(Supplier.user),
+                selectinload(Supplier.supplier_categories).selectinload(SupplierCategory.category),
+                selectinload(Supplier.products).selectinload(Product.category),
+            )
+            .order_by(
+                case((Company.verified_status == "verified", 1), else_=2),
+                Company.name.asc(),
+            )
+            .limit(50)
+        )
+        suppliers = (await db.execute(stmt)).scalars().all()
+
         for sup in suppliers:
             comp = sup.company
             user_obj = sup.user
+
+            cats = []
+            for sc in (sup.supplier_categories or []):
+                if sc.category and sc.category.name not in cats:
+                    cats.append(sc.category.name)
+            if not cats and sup.products:
+                for p in sup.products:
+                    if p.category and p.category.name not in cats:
+                        cats.append(p.category.name)
+                    if len(cats) >= 5:
+                        break
+
+            is_verified = (comp.verified_status in ["verified", "published"]) if comp else False
             recipients.append(
                 AllowedRecipientItem(
                     recipient_user_id=str(user_obj.id if user_obj else sup.user_id),
                     participant_id=str(sup.id),
-                    name=user_obj.full_name if user_obj else "Sales Manager",
+                    company_id=str(comp.id) if comp else None,
+                    name=user_obj.full_name if user_obj and user_obj.full_name else "Sales Representative",
                     company_name=comp.name if comp else "Export Supplier",
+                    logo_url=comp.logo_url if comp else None,
                     role="supplier",
-                    country=comp.country if comp else "India",
-                    relationship_reason="Verified Export Supplier",
-                    context_type="general",
+                    country=comp.country if comp else "Global",
+                    verified=is_verified,
+                    categories=cats[:5],
+                    relationship_reason="Verified Export Supplier" if is_verified else "Published Supplier",
+                    context_type="product",
                 )
             )
 
@@ -341,10 +441,12 @@ async def create_new_thread(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    """
-    Starts a new conversation thread.
-    Validates anti-spam relationship rules:
-    Suppliers can only message buyers with a pre-existing relationship (inquiry, RFQ, quote, order, lead).
+    """Starts or reuses a conversation thread.
+    - Resolves recipient by Supplier/Buyer ID, User ID, or Company ID.
+    - Idempotent: Reuses existing thread for (buyer, supplier, product) if one already exists.
+    - Enforces rate limit for buyers: max 15 new threads per hour (HTTP 429).
+    - Preserves Prompt 26 anti-spam validation for suppliers (HTTP 403).
+    - If recipient is not eligible or contact not found, returns HTTP 404.
     """
     buyer, supplier = await get_user_profiles(db, current_user)
 
@@ -357,15 +459,19 @@ async def create_new_thread(
             raise HTTPException(status_code=400, detail="Supplier profile required to initiate supplier thread")
         target_supplier_id = supplier.id
 
-        # Resolve target buyer from payload.recipient_id (either buyer.id or buyer.user_id)
+        # Resolve target buyer from payload.recipient_id (either buyer.id, buyer.user_id, or buyer.company_id)
         b_stmt = (
             select(Buyer)
-            .where((Buyer.id == payload.recipient_id) | (Buyer.user_id == payload.recipient_id))
+            .where(
+                (Buyer.id == payload.recipient_id)
+                | (Buyer.user_id == payload.recipient_id)
+                | (Buyer.company_id == payload.recipient_id)
+            )
             .options(selectinload(Buyer.user))
         )
-        target_buyer = (await db.execute(b_stmt)).scalar_one_or_none()
+        target_buyer = (await db.execute(b_stmt)).scalars().first()
         if not target_buyer:
-            raise HTTPException(status_code=404, detail="Recipient buyer not found")
+            raise HTTPException(status_code=404, detail="No eligible buyer contact found")
 
         # Anti-spam verification check
         has_rel, reason = await check_supplier_buyer_relationship(db, supplier.id, target_buyer.id)
@@ -384,23 +490,40 @@ async def create_new_thread(
             b_stmt = select(Buyer).where(Buyer.user_id == current_user.id)
             buyer = (await db.execute(b_stmt)).scalar_one_or_none()
             if not buyer:
-                raise HTTPException(status_code=400, detail="Buyer profile required to initiate buyer thread")
+                # Auto-create buyer company and profile for smooth buyer onboarding
+                new_comp = Company(
+                    name=f"{current_user.full_name or 'Commercial Buyer'}'s Enterprise",
+                    country="Global",
+                    verified_status="unverified",
+                )
+                db.add(new_comp)
+                await db.flush()
+                buyer = Buyer(user_id=current_user.id, company_id=new_comp.id)
+                db.add(buyer)
+                await db.flush()
         target_buyer_id = buyer.id
 
-        # Resolve target supplier
+        # Resolve target supplier: accepts Supplier.id, Supplier.user_id, or Supplier.company_id
         s_stmt = (
             select(Supplier)
-            .where((Supplier.id == payload.recipient_id) | (Supplier.user_id == payload.recipient_id))
-            .options(selectinload(Supplier.user))
+            .where(
+                (Supplier.id == payload.recipient_id)
+                | (Supplier.user_id == payload.recipient_id)
+                | (Supplier.company_id == payload.recipient_id)
+            )
+            .options(selectinload(Supplier.user), selectinload(Supplier.company))
         )
-        target_supplier = (await db.execute(s_stmt)).scalar_one_or_none()
-        if not target_supplier:
-            raise HTTPException(status_code=404, detail="Recipient supplier not found")
+        target_supplier = (await db.execute(s_stmt)).scalars().first()
+        if not target_supplier or not target_supplier.user or not target_supplier.user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No eligible supplier contact found for this company"
+            )
 
         target_supplier_id = target_supplier.id
         recipient_user_id = target_supplier.user_id
 
-    # Create thread
+    # Resolve product_id and rfq_id
     rfq_id_val = None
     if payload.context_type == "rfq" and payload.context_id:
         try:
@@ -408,11 +531,100 @@ async def create_new_thread(
         except ValueError:
             pass
 
+    prod_id_val = payload.product_id
+    if not prod_id_val and payload.context_type == "product" and payload.context_id:
+        try:
+            prod_id_val = uuid.UUID(payload.context_id)
+        except ValueError:
+            pass
+
+    if prod_id_val:
+        # Verify product exists so foreign key is never violated
+        p_exists = (await db.execute(select(Product.id).where(Product.id == prod_id_val))).scalar_one_or_none()
+        if not p_exists:
+            prod_id_val = None
+
+    # Check for existing thread (Idempotent reuse per buyer, supplier, and product)
+    th_query = select(Thread).where(
+        Thread.buyer_id == target_buyer_id,
+        Thread.supplier_id == target_supplier_id,
+    )
+    if prod_id_val:
+        th_query = th_query.where(Thread.product_id == prod_id_val)
+    elif rfq_id_val:
+        th_query = th_query.where(Thread.rfq_id == rfq_id_val)
+    else:
+        th_query = th_query.where(
+            Thread.product_id.is_(None),
+            Thread.rfq_id.is_(None),
+            Thread.title == payload.subject,
+        )
+
+    existing_thread = (await db.execute(th_query.order_by(Thread.created_at.desc()))).scalars().first()
+
+    if existing_thread:
+        # Reuse existing conversation thread
+        msg_id = ""
+        if payload.initial_message:
+            new_msg = Message(
+                thread_id=existing_thread.id,
+                sender_id=current_user.id,
+                body=payload.initial_message,
+                message_type="text",
+                attachments=payload.attachments or [],
+                is_read=False,
+            )
+            db.add(new_msg)
+            await db.commit()
+            await db.refresh(new_msg)
+            msg_id = str(new_msg.id)
+
+            if recipient_user_id:
+                recip_u = (await db.execute(select(User).where(User.id == recipient_user_id))).scalar_one_or_none()
+                allow_msg = True
+                if recip_u and recip_u.settings:
+                    allow_msg = recip_u.settings.get("notifications", {}).get("messages", True)
+                if allow_msg:
+                    notif = Notification(
+                        user_id=recipient_user_id,
+                        title=f"New message: {existing_thread.title or payload.subject}",
+                        message=payload.initial_message[:120],
+                        event_type="message",
+                        is_read=False,
+                        link=f"/messages?threadId={existing_thread.id}",
+                    )
+                    db.add(notif)
+                    await db.commit()
+
+        return {
+            "status": "success",
+            "thread_id": str(existing_thread.id),
+            "message_id": msg_id,
+            "title": existing_thread.title or payload.subject,
+            "is_existing": True,
+        }
+
+    # New Thread: Enforce Rate Limit for Buyers (Max 15 new threads per hour)
+    if current_user.role != "supplier":
+        one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+        count_stmt = select(func.count(Thread.id)).where(
+            Thread.buyer_id == target_buyer_id,
+            Thread.created_at >= one_hour_ago,
+        )
+        recent_count = (await db.execute(count_stmt)).scalar() or 0
+        if recent_count >= 15:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Rate limit exceeded: Maximum 15 new trade conversations per hour. Please wait before creating more threads."
+            )
+
+    # Create thread
     thread = Thread(
         title=payload.subject,
         buyer_id=target_buyer_id,
         supplier_id=target_supplier_id,
         rfq_id=rfq_id_val,
+        product_id=prod_id_val,
     )
     db.add(thread)
     await db.flush()
@@ -454,6 +666,7 @@ async def create_new_thread(
         "thread_id": str(thread.id),
         "message_id": str(first_msg.id),
         "title": thread.title,
+        "is_existing": False,
     }
 
 @router.get("/threads", response_model=List[ThreadListItem])

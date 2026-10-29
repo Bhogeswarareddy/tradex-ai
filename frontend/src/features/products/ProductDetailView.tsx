@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { formatNumber, formatCurrency } from "../../lib/format";
 import { ProductDetailResponse } from "../../lib/api/products";
 import {
@@ -17,7 +17,9 @@ import { Button } from "../../components/ui/Button";
 import { Tabs } from "../../components/ui/Tabs";
 import { ProductCard } from "./ProductCard";
 import { RfqRequestModal } from "./RfqRequestModal";
+import { Modal } from "../../components/ui/Modal";
 import { useToast } from "../../components/ui/Toast";
+import { communicationApi } from "../../lib/api/communication";
 
 interface ProductDetailViewProps {
   product: ProductDetailResponse;
@@ -28,11 +30,35 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
   product,
   onToggleSave,
 }) => {
+  const navigate = useNavigate();
   const [selectedImageIdx, setSelectedImageIdx] = useState(0);
   const [activeTab, setActiveTab] = useState("overview");
   const [isSaved, setIsSaved] = useState(product.is_saved);
   const [rfqModalOpen, setRfqModalOpen] = useState(false);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [ineligibleModalOpen, setIneligibleModalOpen] = useState(false);
   const { success } = useToast();
+
+  const handleChatNow = async () => {
+    setChatLoading(true);
+    try {
+      const recipientId = product.supplier.company_id || product.supplier.id;
+      const res = await communicationApi.createThread({
+        recipient_id: recipientId,
+        product_id: product.id,
+        subject: `Inquiry regarding ${product.name}`,
+        initial_message: `Hello, I am interested in sourcing ${product.name}. Could you please provide your formal FOB/CIF quotation, MOQ tiers, and confirmed lead time?`,
+        context_type: "product",
+        context_id: product.id,
+      });
+      navigate(`/messages?threadId=${res.thread_id}`);
+    } catch (err: any) {
+      console.warn("Could not initiate chat with supplier:", err);
+      setIneligibleModalOpen(true);
+    } finally {
+      setChatLoading(false);
+    }
+  };
 
   const handleSaveToggle = () => {
     const nextState = !isSaved;
@@ -207,10 +233,11 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
             <Button
               variant="outline"
               size="lg"
-              onClick={() => success("Connecting with supplier account representative.")}
+              onClick={handleChatNow}
+              isLoading={chatLoading}
               icon={<MessageSquare className="w-4 h-4" />}
             >
-              Contact Supplier
+              Chat Now
             </Button>
           </div>
         </div>
@@ -387,6 +414,43 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
         onClose={() => setRfqModalOpen(false)}
         product={product}
       />
+
+      {/* Ineligible Contact Fallback Modal */}
+      {ineligibleModalOpen && (
+        <Modal
+          isOpen={ineligibleModalOpen}
+          onClose={() => setIneligibleModalOpen(false)}
+          title="Supplier Contact Unavailable"
+        >
+          <div className="space-y-4">
+            <p className="text-xs text-slate-600 dark:text-slate-300">
+              This supplier does not have an active direct chat contact at the moment. You can submit an inquiry or create a formal RFQ.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setIneligibleModalOpen(false);
+                  navigate(`/messages?productName=${encodeURIComponent(product.name)}&contextId=${product.id}`);
+                }}
+              >
+                Send an Inquiry
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  setIneligibleModalOpen(false);
+                  setRfqModalOpen(true);
+                }}
+              >
+                Create an RFQ
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

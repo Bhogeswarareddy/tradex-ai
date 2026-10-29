@@ -8,10 +8,14 @@ function getAuthHeader(): Record<string, string> {
 export interface AllowedRecipientItem {
   recipient_user_id: string;
   participant_id: string;
+  company_id?: string;
   name: string;
   company_name: string;
+  logo_url?: string;
   role: string;
   country: string;
+  verified?: boolean;
+  categories?: string[];
   relationship_reason: string;
   context_type: string;
   context_id?: string;
@@ -23,6 +27,7 @@ export interface CreateThreadInput {
   initial_message: string;
   context_type?: string;
   context_id?: string;
+  product_id?: string;
   attachments?: string[];
 }
 
@@ -104,8 +109,9 @@ export interface NotificationsResponse {
 }
 
 export const communicationApi = {
-  async listRecipients(): Promise<AllowedRecipientItem[]> {
-    const res = await fetch(`${BASE_URL}/recipients`, {
+  async listRecipients(q?: string): Promise<AllowedRecipientItem[]> {
+    const url = q ? `${BASE_URL}/recipients?q=${encodeURIComponent(q)}` : `${BASE_URL}/recipients`;
+    const res = await fetch(url, {
       headers: getAuthHeader(),
     });
     if (!res.ok) {
