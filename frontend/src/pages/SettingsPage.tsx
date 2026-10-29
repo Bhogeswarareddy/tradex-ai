@@ -28,7 +28,7 @@ import { useToast } from "../components/ui/Toast";
 
 export const SettingsPage: React.FC = () => {
   const { t } = useTranslation();
-  const { user, refreshUser } = useAuth();
+  const { user } = useAuth();
   const { success, error: toastError, info } = useToast();
 
   const {
@@ -111,7 +111,6 @@ export const SettingsPage: React.FC = () => {
         theme,
       };
       await saveSettings(payload);
-      if (refreshUser) await refreshUser();
       success(t("common.success"), t("settings.preferencesSaved"));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to save settings";
@@ -124,7 +123,6 @@ export const SettingsPage: React.FC = () => {
   const handleConfirmReset = async () => {
     try {
       await resetSettings();
-      if (refreshUser) await refreshUser();
       success(t("common.success"), t("settings.preferencesReset"));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to reset settings";

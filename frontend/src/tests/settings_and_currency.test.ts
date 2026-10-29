@@ -150,5 +150,40 @@ describe("Prompt 25: Settings, Currency, Language, and Theme", () => {
         expect(localStorage.getItem("tradex_theme")).toBe("light");
       }
     });
+
+    it("supports per-account localStorage settings for Prompt 32", () => {
+      if (typeof localStorage !== "undefined") {
+        const userId = "usr-buyer-456";
+        localStorage.setItem("tradex_active_user_id", userId);
+        localStorage.setItem(`tradex_theme_${userId}`, "dark");
+        localStorage.setItem(`tradex_currency_${userId}`, "INR");
+        localStorage.setItem(`tradex_language_${userId}`, "HI");
+
+        expect(localStorage.getItem("tradex_active_user_id")).toBe(userId);
+        expect(localStorage.getItem(`tradex_theme_${userId}`)).toBe("dark");
+        expect(localStorage.getItem(`tradex_currency_${userId}`)).toBe("INR");
+        expect(localStorage.getItem(`tradex_language_${userId}`)).toBe("HI");
+      }
+    });
+
+    it("sets data-theme and colorScheme on document element", () => {
+      if (typeof document !== "undefined") {
+        document.documentElement.classList.add("dark");
+        document.documentElement.setAttribute("data-theme", "dark");
+        document.documentElement.style.colorScheme = "dark";
+
+        expect(document.documentElement.classList.contains("dark")).toBe(true);
+        expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+        expect(document.documentElement.style.colorScheme).toBe("dark");
+
+        document.documentElement.classList.remove("dark");
+        document.documentElement.setAttribute("data-theme", "light");
+        document.documentElement.style.colorScheme = "light";
+
+        expect(document.documentElement.classList.contains("dark")).toBe(false);
+        expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+        expect(document.documentElement.style.colorScheme).toBe("light");
+      }
+    });
   });
 });

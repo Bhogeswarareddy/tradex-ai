@@ -149,7 +149,7 @@ export const CopilotDrawer: React.FC = () => {
 
       {/* Slide-out Drawer */}
       {isOpen && (
-        <div className="fixed bottom-6 right-6 z-50 w-[92vw] sm:w-[420px] h-[580px] max-h-[85vh] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-in slide-in-from-bottom-5">
+        <div className="fixed bottom-6 right-6 z-50 w-[92vw] sm:w-[420px] h-[580px] max-h-[85vh] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden animate-in slide-in-from-bottom-5">
           {/* Header */}
           <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-3.5 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
@@ -193,7 +193,7 @@ export const CopilotDrawer: React.FC = () => {
           </div>
 
           {/* Chat Messages */}
-          <div className="flex-1 overflow-y-auto p-3.5 space-y-3 bg-slate-50 text-xs">
+          <div className="flex-1 overflow-y-auto p-3.5 space-y-3 bg-slate-50 dark:bg-slate-950 text-xs">
             {messages.map((m, idx) => (
               <div
                 key={idx}
@@ -203,7 +203,7 @@ export const CopilotDrawer: React.FC = () => {
                   className={`p-3 rounded-xl max-w-[88%] shadow-xs leading-relaxed whitespace-pre-wrap ${
                     m.sender === "user"
                       ? "bg-indigo-600 text-white rounded-tr-none"
-                      : "bg-white border border-slate-200 text-slate-800 rounded-tl-none"
+                      : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-tl-none"
                   }`}
                 >
                   {m.text}
@@ -271,7 +271,7 @@ export const CopilotDrawer: React.FC = () => {
               e.preventDefault();
               handleSend();
             }}
-            className="p-2.5 bg-white border-t border-slate-200 flex items-center gap-2"
+            className="p-2.5 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2"
           >
             <input
               type="text"
@@ -279,7 +279,7 @@ export const CopilotDrawer: React.FC = () => {
               value={inputVal}
               onChange={(e) => setInputVal(e.target.value)}
               disabled={loading}
-              className="flex-1 text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className="flex-1 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             />
             <button
               type="submit"

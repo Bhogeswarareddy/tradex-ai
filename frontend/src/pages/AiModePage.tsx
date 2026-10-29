@@ -35,6 +35,7 @@ import { useAuth } from "../features/auth";
 
 export const AiModePage: React.FC = () => {
   const { user } = useAuth();
+  const { currency } = useCurrency();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeParamId = searchParams.get("id");
@@ -435,12 +436,12 @@ export const AiModePage: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen w-full bg-[#FAFAFA] text-slate-800 font-sans overflow-hidden">
+    <div className="flex h-screen w-full bg-[#FAFAFA] dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans overflow-hidden">
       {/* ============================================================ */}
       {/* 1. LEFT SIDEBAR (Collapsible, Light, Clean)                  */}
       {/* ============================================================ */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-200 flex flex-col transition-transform duration-200 lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col transition-transform duration-200 lg:static lg:translate-x-0 ${
           sidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"
         }`}
       >
@@ -549,7 +550,7 @@ export const AiModePage: React.FC = () => {
       {/* ============================================================ */}
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
         {/* TOP NAVIGATION BAR */}
-        <header className="h-14 bg-white border-b border-slate-200 px-4 lg:px-6 flex items-center justify-between z-20 shrink-0">
+        <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 lg:px-6 flex items-center justify-between z-20 shrink-0">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(true)}
@@ -639,13 +640,13 @@ export const AiModePage: React.FC = () => {
                 </div>
               );
             })()}
-            <div className="hidden lg:flex items-center gap-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded-md font-medium">
+            <div className="hidden lg:flex items-center gap-1 px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-md font-medium">
               <Globe className="w-3.5 h-3.5 text-slate-400" />
               <span>Deliver to: USA</span>
             </div>
-            <div className="hidden md:flex items-center gap-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded-md font-medium">
+            <div className="hidden md:flex items-center gap-1 px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-md font-medium">
               <DollarSign className="w-3.5 h-3.5 text-slate-400" />
-              <span>USD</span>
+              <span>{currency}</span>
             </div>
             <Link
               to="/messages"
@@ -748,7 +749,7 @@ export const AiModePage: React.FC = () => {
                     </div>
 
                     {/* AI Reply Text */}
-                    <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs max-w-3xl text-xs sm:text-sm text-slate-800 leading-relaxed">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 shadow-2xs max-w-3xl text-xs sm:text-sm text-slate-800 dark:text-slate-100 leading-relaxed">
                       <div>{m.content}</div>
                       {/* AI Reply Footer: provider, model, latency, fallback reason (Prompt 30) */}
                       <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
@@ -901,9 +902,9 @@ export const AiModePage: React.FC = () => {
         {/* ============================================================ */}
         {/* 4. PINNED BOTTOM COMPOSER                                   */}
         {/* ============================================================ */}
-        <div className="absolute bottom-0 left-0 right-0 bg-linear-to-t from-[#FAFAFA] via-[#FAFAFA] to-transparent pt-6 pb-4 px-4 md:px-8 z-10">
+        <div className="absolute bottom-0 left-0 right-0 bg-linear-to-t from-[#FAFAFA] via-[#FAFAFA] to-transparent dark:from-slate-950 dark:via-slate-950 pt-6 pb-4 px-4 md:px-8 z-10">
           <div className="max-w-3xl mx-auto">
-            <div className="relative bg-white rounded-2xl border border-slate-300 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-100 shadow-md transition-all">
+            <div className="relative bg-white dark:bg-slate-900 rounded-2xl border border-slate-300 dark:border-slate-700 focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-100 dark:focus-within:ring-orange-900/30 shadow-md transition-all">
               <textarea
                 ref={textareaRef}
                 value={inputContent}
@@ -917,7 +918,7 @@ export const AiModePage: React.FC = () => {
                 disabled={isLoading}
                 placeholder="Describe your trade sourcing needs... (e.g. 'Find affordable laptops for USA')"
                 rows={2}
-                className="w-full pl-4 pr-14 py-3 bg-transparent text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 resize-none focus:outline-none"
+                className="w-full pl-4 pr-14 py-3 bg-transparent text-xs sm:text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 resize-none focus:outline-none"
               />
               <button
                 disabled={isLoading || !inputContent.trim()}

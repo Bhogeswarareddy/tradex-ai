@@ -123,15 +123,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const messages = data?.messages || [];
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-50 overflow-hidden relative">
+    <div className="flex-1 flex flex-col h-full bg-slate-50 dark:bg-slate-950 overflow-hidden relative">
       {/* Header */}
-      <div className="px-6 py-4 bg-white border-b border-slate-200 flex items-center justify-between shadow-2xs">
+      <div className="px-6 py-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shadow-2xs">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-200 font-bold">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center border border-blue-200 dark:border-blue-800 font-bold">
             <Building2 className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-slate-900">{data?.title || "Trade Negotiation"}</h3>
+            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{data?.title || "Trade Negotiation"}</h3>
             <div className="flex items-center gap-2 text-[11px] text-slate-500">
               <span className="flex items-center gap-1 text-emerald-600 font-medium">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -230,7 +230,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                   className={`max-w-xl rounded-2xl px-4 py-3 text-xs leading-relaxed ${
                     isMe
                       ? "bg-blue-600 text-white shadow-xs rounded-tr-xs"
-                      : "bg-white text-slate-800 border border-slate-200/90 shadow-2xs rounded-tl-xs"
+                      : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200/90 dark:border-slate-700 shadow-2xs rounded-tl-xs"
                   }`}
                 >
                   <p className="whitespace-pre-wrap">{m.body}</p>
@@ -334,12 +334,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       {/* Input Box Footer */}
       <form
         onSubmit={handleSendMessage}
-        className="p-4 bg-white border-t border-slate-200 flex items-center gap-3"
+        className="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex items-center gap-3"
       >
         <button
           type="button"
           title="Attach document or spec"
-          className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+          className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
         >
           <Paperclip className="w-4 h-4" />
         </button>
@@ -349,7 +349,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           placeholder="Type commercial message, question, or negotiation reply..."
-          className="flex-1 py-2.5 px-4 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all text-slate-800"
+          className="flex-1 py-2.5 px-4 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500 transition-all text-slate-800 dark:text-slate-100"
         />
 
         <Button

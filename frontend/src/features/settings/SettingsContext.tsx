@@ -59,43 +59,71 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
   CNY: "¥",
 };
 
+const getInitialCurrency = (): SupportedCurrency => {
+  if (typeof window !== "undefined") {
+    const activeUser = localStorage.getItem("tradex_active_user_id");
+    const userCurr = activeUser ? localStorage.getItem(`tradex_currency_${activeUser}`) : null;
+    return (userCurr || localStorage.getItem("tradex_currency") || "USD") as SupportedCurrency;
+  }
+  return "USD";
+};
+
+const getInitialLanguage = (): SupportedLanguage => {
+  if (typeof window !== "undefined") {
+    const activeUser = localStorage.getItem("tradex_active_user_id");
+    const userLang = activeUser ? localStorage.getItem(`tradex_language_${activeUser}`) : null;
+    return (userLang || localStorage.getItem("tradex_language") || "EN") as SupportedLanguage;
+  }
+  return "EN";
+};
+
+const getInitialTheme = (): SupportedTheme => {
+  if (typeof window !== "undefined") {
+    const activeUser = localStorage.getItem("tradex_active_user_id");
+    const userTheme = activeUser ? localStorage.getItem(`tradex_theme_${activeUser}`) : null;
+    const stored = userTheme || localStorage.getItem("tradex_theme");
+    if (stored === "dark" || stored === "light") return stored as SupportedTheme;
+    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      return "dark";
+    }
+  }
+  return "light";
+};
+
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
 export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
 
-  // Get initial values from localStorage or system
-  const initialCurrency = ((typeof window !== "undefined" && localStorage.getItem("tradex_currency")) || "USD") as SupportedCurrency;
-  const initialLanguage = ((typeof window !== "undefined" && localStorage.getItem("tradex_language")) || "EN") as SupportedLanguage;
-  
-  const getSystemTheme = (): SupportedTheme => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("tradex_theme");
-      if (stored === "dark" || stored === "light") return stored as SupportedTheme;
-      if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
-        return "dark";
-      }
-    }
-    return "light";
-  };
-
-  const [currency, setCurrencyState] = useState<SupportedCurrency>(initialCurrency);
-  const [language, setLanguageState] = useState<SupportedLanguage>(initialLanguage);
-  const [theme, setThemeState] = useState<SupportedTheme>(getSystemTheme);
+  const [currency, setCurrencyState] = useState<SupportedCurrency>(getInitialCurrency);
+  const [language, setLanguageState] = useState<SupportedLanguage>(getInitialLanguage);
+  const [theme, setThemeState] = useState<SupportedTheme>(getInitialTheme);
   const [notifications, setNotifications] = useState<Record<string, boolean>>(DEFAULT_NOTIFICATIONS);
   const [exchangeRates, setExchangeRates] = useState<Record<string, number>>(DEFAULT_RATES);
   const [isLoaded, setIsLoaded] = useState<boolean>(false);
 
-  // Apply theme to DOM
+  // Apply theme to DOM and CSS root variables
   const applyThemeToDOM = (th: SupportedTheme) => {
     if (typeof document !== "undefined") {
-      if (th === "dark") {
-        document.documentElement.classList.add("dark");
-      } else {
-        document.documentElement.classList.remove("dark");
-      }
+      const isDark = th === "dark";
+      document.documentElement.classList.toggle("dark", isDark);
+      document.documentElement.setAttribute("data-theme", th);
+      document.documentElement.style.colorScheme = th;
     }
   };
+
+  const persistUserValues = useCallback((curr?: string, lang?: string, th?: string) => {
+    if (typeof window === "undefined") return;
+    if (user?.id) {
+      localStorage.setItem("tradex_active_user_id", user.id);
+      if (curr) localStorage.setItem(`tradex_currency_${user.id}`, curr);
+      if (lang) localStorage.setItem(`tradex_language_${user.id}`, lang);
+      if (th) localStorage.setItem(`tradex_theme_${user.id}`, th);
+    }
+    if (curr) localStorage.setItem("tradex_currency", curr);
+    if (lang) localStorage.setItem("tradex_language", lang);
+    if (th) localStorage.setItem("tradex_theme", th);
+  }, [user]);
 
   // Fetch exchange rates from backend
   const loadExchangeRates = useCallback(async () => {
@@ -109,7 +137,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, []);
 
-  // Fetch settings when user mounts or changes
+  // Fetch and reconcile settings when user mounts or changes (backend wins for signed-in user)
   useEffect(() => {
     loadExchangeRates();
     applyThemeToDOM(theme);
@@ -118,26 +146,36 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const syncUserSettings = async () => {
       try {
         if (user) {
-          const s = await authApi.getSettings();
+          localStorage.setItem("tradex_active_user_id", user.id);
+          // Backend settings win for signed in user
+          const s = (user.settings && Object.keys(user.settings).length > 0)
+            ? user.settings
+            : await authApi.getSettings();
+
           if (s.currency) {
-            setCurrencyState(s.currency as SupportedCurrency);
-            localStorage.setItem("tradex_currency", s.currency);
+            const curr = s.currency as SupportedCurrency;
+            setCurrencyState(curr);
+            persistUserValues(curr, undefined, undefined);
           }
           if (s.language) {
             const langUpper = s.language.toUpperCase() as SupportedLanguage;
             setLanguageState(langUpper);
-            localStorage.setItem("tradex_language", langUpper);
+            persistUserValues(undefined, langUpper, undefined);
             i18n.changeLanguage(langUpper.toLowerCase());
           }
           if (s.theme) {
             const th = s.theme as SupportedTheme;
             setThemeState(th);
-            localStorage.setItem("tradex_theme", th);
+            persistUserValues(undefined, undefined, th);
             applyThemeToDOM(th);
           }
           if (s.notifications) {
             setNotifications((prev) => ({ ...prev, ...s.notifications }));
           }
+        } else {
+          // Anonymous / guest mode
+          applyThemeToDOM(theme);
+          i18n.changeLanguage(language.toLowerCase());
         }
       } catch {
         // Fallback to local
@@ -147,13 +185,12 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
 
     syncUserSettings();
-  }, [user, loadExchangeRates]);
+  }, [user, loadExchangeRates, persistUserValues]);
 
+  // Header selectors save immediately
   const setCurrency = async (newCurr: SupportedCurrency) => {
     setCurrencyState(newCurr);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("tradex_currency", newCurr);
-    }
+    persistUserValues(newCurr, undefined, undefined);
     if (user) {
       try {
         await authApi.updateSettings({ currency: newCurr });
@@ -165,9 +202,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const setLanguage = async (newLang: SupportedLanguage) => {
     setLanguageState(newLang);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("tradex_language", newLang);
-    }
+    persistUserValues(undefined, newLang, undefined);
     i18n.changeLanguage(newLang.toLowerCase());
     if (user) {
       try {
@@ -180,9 +215,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const setTheme = async (newTheme: SupportedTheme) => {
     setThemeState(newTheme);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("tradex_theme", newTheme);
-    }
+    persistUserValues(undefined, undefined, newTheme);
     applyThemeToDOM(newTheme);
     if (user) {
       try {
@@ -193,26 +226,31 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
+  // Batch save for Settings Page
   const saveSettings = async (payload: UserSettings) => {
+    let newCurr: SupportedCurrency | undefined;
+    let newLang: SupportedLanguage | undefined;
+    let newTheme: SupportedTheme | undefined;
+
     if (payload.currency) {
-      setCurrencyState(payload.currency as SupportedCurrency);
-      localStorage.setItem("tradex_currency", payload.currency);
+      newCurr = payload.currency as SupportedCurrency;
+      setCurrencyState(newCurr);
     }
     if (payload.language) {
-      const l = payload.language.toUpperCase() as SupportedLanguage;
-      setLanguageState(l);
-      localStorage.setItem("tradex_language", l);
-      i18n.changeLanguage(l.toLowerCase());
+      newLang = payload.language.toUpperCase() as SupportedLanguage;
+      setLanguageState(newLang);
+      i18n.changeLanguage(newLang.toLowerCase());
     }
     if (payload.theme) {
-      const th = payload.theme as SupportedTheme;
-      setThemeState(th);
-      localStorage.setItem("tradex_theme", th);
-      applyThemeToDOM(th);
+      newTheme = payload.theme as SupportedTheme;
+      setThemeState(newTheme);
+      applyThemeToDOM(newTheme);
     }
     if (payload.notifications) {
       setNotifications((prev) => ({ ...prev, ...payload.notifications }));
     }
+
+    persistUserValues(newCurr, newLang, newTheme);
 
     if (user) {
       await authApi.updateSettings(payload);
@@ -227,14 +265,12 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       notifications: DEFAULT_NOTIFICATIONS,
     };
     setCurrencyState("USD");
-    localStorage.setItem("tradex_currency", "USD");
     setLanguageState("EN");
-    localStorage.setItem("tradex_language", "EN");
     i18n.changeLanguage("en");
     setThemeState("light");
-    localStorage.setItem("tradex_theme", "light");
     applyThemeToDOM("light");
     setNotifications(DEFAULT_NOTIFICATIONS);
+    persistUserValues("USD", "EN", "light");
 
     if (user) {
       await authApi.updateSettings(defaults);

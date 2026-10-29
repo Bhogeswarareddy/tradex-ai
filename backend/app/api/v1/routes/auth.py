@@ -54,6 +54,24 @@ def _extract_company_info(user: User) -> tuple[Optional[str], Optional[User]]:
     return company_name, company_id
 
 
+def _build_merged_settings(user_settings: Optional[dict]) -> dict:
+    default_settings = {
+        "notifications": {
+            "messages": True,
+            "rfq_updates": True,
+            "new_quotes": True,
+            "orders": True,
+            "shipments": True,
+            "document_verification": True,
+            "email_notifications": False,
+        },
+        "currency": "USD",
+        "language": "EN",
+        "theme": "light",
+    }
+    return {**default_settings, **(user_settings or {})}
+
+
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(rate_limit_auth)])
 async def register(
     payload: UserRegisterRequest,
@@ -141,6 +159,7 @@ async def register(
             is_active=new_user.is_active,
             email_verified=new_user.email_verified,
             company_name=company.name,
+            settings=_build_merged_settings(new_user.settings),
             company_id=company.id,
         ),
     )
@@ -284,6 +303,7 @@ async def login(
             email_verified=user.email_verified,
             company_name=company_name,
             company_id=company_id,
+            settings=_build_merged_settings(user.settings),
         ),
     )
 
@@ -359,6 +379,7 @@ async def refresh_tokens(
             email_verified=user.email_verified,
             company_name=company_name,
             company_id=company_id,
+            settings=_build_merged_settings(user.settings),
         ),
     )
 

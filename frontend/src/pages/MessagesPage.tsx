@@ -73,10 +73,10 @@ export const MessagesPage: React.FC = () => {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
             <span>Trade Messages & Structured Negotiation</span>
           </h1>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             Real-time direct messaging, formal counter-offers, and autonomous AI deal assistance
           </p>
         </div>
@@ -93,15 +93,15 @@ export const MessagesPage: React.FC = () => {
             <span>New Message</span>
           </Button>
 
-          <div className="flex items-center gap-2 text-xs text-slate-500 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl font-medium">
-            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+          <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 rounded-xl font-medium">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             <span>Encrypted Trade Communication</span>
           </div>
         </div>
       </div>
 
       {/* Main Messages Container */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col md:flex-row h-[780px]">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col md:flex-row h-[780px]">
         {/* Left Column: Thread List */}
         <div className="w-full md:w-80 lg:w-96 shrink-0 h-1/3 md:h-full">
           <ThreadList
@@ -122,13 +122,13 @@ export const MessagesPage: React.FC = () => {
               onRefreshThreadList={() => loadThreads(true)}
             />
           ) : (
-            <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-400 space-y-4 bg-slate-50">
-              <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-500 flex items-center justify-center border border-blue-200 shadow-2xs">
+            <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-400 space-y-4 bg-slate-50 dark:bg-slate-950">
+              <div className="w-16 h-16 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-blue-500 flex items-center justify-center border border-blue-200 dark:border-blue-800 shadow-2xs">
                 <MessageSquare className="w-8 h-8" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-slate-800">No Conversation Selected</h3>
-                <p className="text-xs text-slate-500 max-w-sm mt-1">
+                <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">No Conversation Selected</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mt-1">
                   Select an active thread from the list or start a new conversation with a qualified trade counterparty.
                 </p>
               </div>
