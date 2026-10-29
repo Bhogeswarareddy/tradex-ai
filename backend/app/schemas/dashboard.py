@@ -70,4 +70,7 @@ class CopilotChatResponse(BaseModel):
     sources: Optional[List[dict]] = Field(default_factory=list)
     conversation_id: Optional[str] = None
     ai_meta: Optional[Dict[str, Any]] = None
+    rag_used: bool = False
+    mode: str = "chat"
+    cards: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
 

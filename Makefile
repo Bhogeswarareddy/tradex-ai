@@ -1,4 +1,4 @@
-.PHONY: help demo build up down restart logs ps stats backup restore seed test test-backend test-frontend lint clean certs ai-check reindex
+.PHONY: help demo build up down restart logs ps stats backup restore seed test test-backend test-frontend lint clean certs ai-check ai-eval reindex
 
 help:
 	@echo "TradeX AI Production Management Commands"
@@ -96,6 +96,9 @@ clean:
 
 ai-check:
 	docker compose exec backend python -m app.cli ai-check
+
+ai-eval:
+	docker compose exec backend python -m app.cli ai-eval
 
 reindex:
 	docker compose exec backend python -m app.cli reindex

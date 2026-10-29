@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     # AI Provider & Models
     AI_PROVIDER: str = "mock"  # mock, ollama, openrouter, groq, gemini, anthropic
     AI_MODEL: str = "qwen2.5:3b"
+    AI_MODEL_INTENT: str = ""
+    AI_MODEL_ANSWER: str = ""
     AI_PROVIDER_PRIORITY: str = "groq,openrouter,ollama,gemini"
     ANTHROPIC_API_KEY: str = ""
     ANTHROPIC_MODEL: str = "claude-3-5-sonnet-20241022"

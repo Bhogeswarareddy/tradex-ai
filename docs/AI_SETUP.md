@@ -1,140 +1,108 @@
-# TradeX AI - Provider Setup & Configuration Guide (\docs/AI_SETUP.md\)
+# TradeX AI Inference Architecture and Setup Guide (Prompt 30)
 
-This guide outlines setup instructions for running TradeX AI completely free or with local inference on standard developer hardware. **No paid API keys are required to run the full application.**
-
----
-
-## 1. Zero-Cost Architecture Overview
-
-TradeX AI supports a multi-provider pluggable inference layer with automatic fallback:
-
-| Provider | Type | Memory / Hardware | Cost | Best For |
-| :--- | :--- | :--- | :--- | :--- |
-| **Demo AI (\mock\)** | In-Memory Deterministic | 0 MB overhead | \.00 | Immediate onboarding, offline CI, zero dependencies |
-| **Ollama (\ollama\)** | Local Offline Inference | 2GB - 4GB RAM | \.00 | Complete data privacy, edge deployments, offline testing |
-| **OpenRouter (\openrouter\)**| Free Cloud Tier | Cloud | \.00 | Llama 3.1 8B, Qwen 2.5 7B free-tier access |
-| **Groq (\groq\)** | High-Speed Cloud | Cloud | Free Tier | Ultra-low latency responses with rate-limit tracking |
-| **Gemini (\gemini\)** | Google Cloud AI | Cloud | Free Quota | Google Gemini 1.5 Flash models (optional) |
-| **Anthropic (\nthropic\)** | Claude 3.5 Sonnet | Cloud | Commercial | Enterprise production deployments (optional) |
+This guide documents the enterprise AI inference infrastructure powering **AI Mode** (`/ai-mode`), **AI Search** (`/search`), and the **Trade Copilot** (`/copilot` and floating drawer).
 
 ---
 
-## 2. Option A: Default Demo AI (No Setup Required)
+## 1. Single Brain Architecture
 
-TradeX AI defaults to \AI_PROVIDER=mock\.
-- **Requires zero keys or downloads.**
-- Generates realistic, domain-grounded B2B procurement data, landed cost matrices, shipment tracking telemetry, and RAG answers.
-- Every response generated via this mode is transparently badged with \Demo AI\.
-
----
-
-## 3. Option B: Local Inference with Ollama (Recommended Free & Offline)
-
-Run open-source models completely offline with zero data leaving your machine.
-
-### Step 1: Install Ollama
-- **Windows / macOS**: Download and install the native installer from [ollama.com](https://ollama.com/download).
-- **Linux / WSL**:
-  \\ash
-  curl -fsSL https://ollama.com/install.sh | sh
-  \
-### Step 2: Download Recommended Low-Footprint Models
-For laptops and machines with 8 GB to 16 GB of RAM, the \qwen2.5:3b\ or \qwen2.5:1.5b\ models deliver exceptional B2B trade understanding:
-\\ash
-# Pull Qwen 2.5 3B (requires ~2.2 GB VRAM / RAM)
-ollama pull qwen2.5:3b
-
-# Optionally pull local embedding model
-ollama pull nomic-embed-text
-\
-### Step 3: Configure Environment Variables
-Set the following in your \.env\:
-\\env
-AI_PROVIDER=ollama
-AI_MODEL=qwen2.5:3b
-OLLAMA_BASE_URL=http://localhost:11434
-EMBEDDING_PROVIDER=mock
-EMBEDDING_DIM=1536
-\
-If Ollama is stopped or unavailable, the built-in **Circuit Breaker** automatically transitions to \MockProvider (Demo AI)\ so the application never crashes.
+All AI capabilities share a single unified orchestrator in `backend/app/ai/`:
+- **Primary Inference Provider**: Groq Cloud High-Speed Inference (`AI_PROVIDER=groq`)
+- **Configurable Models**:
+  - `AI_MODEL`: Default platform model (e.g. `qwen/qwen3.8-27b`)
+  - `AI_MODEL_INTENT`: Dedicated model for JSON intent & criteria extraction
+  - `AI_MODEL_ANSWER`: Dedicated model for grounded answer generation
+- **Prioritized Fallback Chain**: `AI_PROVIDER_PRIORITY=groq,ollama`
+- **Real Health Probing**: Header badges query live inference probes cached for 30s (`Connected`, `Disconnected`, `Rate limited`, `Demo AI`).
+- **Footer Observability**: Every response records `provider`, `model`, `is_demo`, `latency_ms`, and `fallback_reason`.
 
 ---
 
-## 4. Option C: OpenRouter Free Models
+## 2. Groq Cloud Setup (Primary Provider)
 
-Access open models hosted in the cloud with free tier quotas.
+### 2.1 Configuration in `.env`
+Add the following variables to `.env` (never commit `.env` or expose the key):
+```env
+AI_PROVIDER=groq
+GROQ_API_KEY=gsk_...
+AI_MODEL=qwen/qwen3.8-27b
+AI_MODEL_INTENT=qwen/qwen3.8-27b
+AI_MODEL_ANSWER=qwen/qwen3.8-27b
+AI_TIMEOUT_SECONDS=30.0
+AI_PROVIDER_PRIORITY=groq,ollama
+```
 
-1. Create a free account at [openrouter.ai](https://openrouter.ai/).
-2. Obtain your free API key at \https://openrouter.ai/keys\.
-3. Configure \.env\:
-   \\env
-   AI_PROVIDER=openrouter
-   OPENROUTER_API_KEY=sk-or-v1-xxxxxxxxxxxxxxxxxxxx
-   OPENROUTER_MODEL=meta-llama/llama-3.1-8b-instruct:free
-   \
----
+### 2.2 How to Pick a Current Model from Groq Console
+Groq frequently updates active model IDs. To query the available models for your API key:
+```bash
+docker compose exec backend python -c "
+import os, httpx, asyncio
+async def list_models():
+    async with httpx.AsyncClient() as c:
+        r = await c.get('https://api.groq.com/openai/v1/models', headers={'Authorization': 'Bearer ' + os.getenv('GROQ_API_KEY')})
+        for m in sorted([x['id'] for x in r.json().get('data', [])]):
+            print(' -', m)
+asyncio.run(list_models())
+"
+```
+Select a fast, large instruction-tuned model currently listed in your console (e.g. `qwen/qwen3.8-27b`, `openai/gpt-oss-120b`).
 
-## 5. Option D: Groq High-Speed Inference
-
-Groq provides free developer rate limits with near-instant token generation.
-
-1. Sign up at [console.groq.com](https://console.groq.com/).
-2. Create an API key in the API Keys section.
-3. Configure \.env\:
-   \\env
-   AI_PROVIDER=groq
-   GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxx
-   GROQ_MODEL=llama-3.1-8b-instant
-   \
----
-
-## 6. Option E: Google Gemini Free Tier
-
-1. Generate a free API key at [Google AI Studio](https://aistudio.google.com/).
-2. Configure \.env\:
-   \\env
-   AI_PROVIDER=gemini
-   GEMINI_API_KEY=AIzaSyxxxxxxxxxxxxxxxxxxxx
-   GEMINI_MODEL=gemini-1.5-flash
-   \
----
-
-## 7. Vector Database & Embedding Dimensions
-
-TradeX AI stores vector embeddings in PostgreSQL using the \pgvector\ extension:
-- Column dimension: \Vector(1536)- \EMBEDDING_DIM=1536- The default \MockProvider\ and \OllamaProvider\ normalize vectors to exactly 1536 dimensions, ensuring clean database indexing and cosine distance calculations (\<->\).
+### 2.3 Rate Limit Handling & Backoff
+If Groq returns HTTP 429, TradeX AI performs a short exponential backoff (0.5s) and retries once. If rate limits persist, it gracefully falls back to the next priority provider (Ollama or Demo AI) and records `fallback_reason = "Groq rate limited (HTTP 429)"`.
 
 ---
 
-## 8. Admin Diagnostics & Telemetry
+## 3. Switching to OpenRouter
 
-Platform administrators can verify the live AI setup at \/admin\ under the **AI Diagnostics** tab:
-- **Active Provider & Model**: Confirms runtime engine without leaking secrets.
-- **Circuit Breaker Telemetry**: Live tracker for success, failure, and HTTP 429 rate-limit counts.
-- **Live Ping Test**: Click **Test AI Connection** to test round-trip latency.
+To route completions through OpenRouter:
+1. Obtain an OpenRouter API key from [openrouter.ai](https://openrouter.ai).
+2. Configure `.env`:
+```env
+AI_PROVIDER=openrouter
+OPENROUTER_API_KEY=sk-or-v1-...
+OPENROUTER_MODEL=meta-llama/llama-3.1-8b-instruct:free
+AI_PROVIDER_PRIORITY=openrouter,groq,ollama
+```
+3. Restart containers:
+```bash
+docker compose up -d backend worker
+```
 
 ---
 
-## 9. Multi-Provider Priority & Automatic Fallback (Prompt 21)
+## 4. Local Ollama (Emergency Fallback)
 
-TradeX AI supports automatic multi-provider fallback using AI_PROVIDER_PRIORITY. The system tries configured providers in order, handling timeouts, bounded retries (up to 2), rate limits (HTTP 429), and circuit breaker failures before falling back to next provider, and finally to mock (Demo AI):
+> [!WARNING]
+> The small local model `qwen2.5:3b` is designed strictly as an **emergency offline fallback** when internet access is unavailable. It should not be used as the primary production provider due to limited reasoning capacity for complex trade finance.
 
-`env
-AI_PROVIDER_PRIORITY=groq,openrouter,ollama,gemini
-`
+### 4.1 Prerequisites
+1. Install Ollama locally and pull the fallback model:
+```bash
+ollama run qwen2.5:3b
+```
+2. Verify available models:
+```bash
+ollama list
+```
+3. In Docker on Windows/macOS, access Ollama on the host via `http://host.docker.internal:11434`.
 
-### Docker Ollama Configuration
-When running backend inside Docker Compose and Ollama natively on Windows or macOS host:
-`env
-OLLAMA_BASE_URL=http://host.docker.internal:11434
-`
+---
 
-### Verification with make ai-check
-Test active provider connectivity and latency from the terminal:
-`ash
-make ai-check
-# or inside docker:
-docker compose exec backend python -m app.cli ai-check
-# or reindex RAG catalogue:
-make reindex
-`
+## 5. Model Evaluation (`make ai-eval`)
+
+TradeX AI includes an automated benchmark evaluating intent classification across 32 trade utterances in `tests/fixtures/ai_utterances.json`:
+- Greetings & small talk
+- Laptops & electronics
+- Mobile phones
+- Tractors & agricultural machinery
+- Spices (chilli, turmeric, cardamom)
+- Typo and trade synonym queries
+- Multi-turn follow-ups ("only from China", "compare the first two")
+- Authoritative stock questions ("is it in stock?", "units available?")
+- Absent products ("OPPO phones", "diamond rings")
+
+### Running the Evaluation
+```bash
+make ai-eval
+```
+The model must achieve at least **90% accuracy** to pass acceptance criteria.

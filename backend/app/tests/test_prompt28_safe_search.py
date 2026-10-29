@@ -53,7 +53,7 @@ async def test_unified_ai_provider_status_groq():
         assert res.status_code == 200
         data = res.json()
         assert data["provider"] == "groq"
-        assert data["model"] == "llama-3.3-70b-versatile"
+        assert data["model"] in ["llama-3.3-70b-versatile", "qwen/qwen3.8-27b"]
         assert data["mode"] == "live"
         assert data["reachable"] is True
         assert "groq" in data["configured_providers"]

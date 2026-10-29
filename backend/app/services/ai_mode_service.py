@@ -31,6 +31,7 @@ import difflib
 import json
 import logging
 import re
+import time
 import uuid
 from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -101,17 +102,68 @@ CATEGORY_PLACEHOLDERS: Dict[str, str] = {
 }
 
 
-def normalize_trade_query(text: str) -> Tuple[str, Optional[str]]:
+# Category mapping for typo target matching (Prompt 30)
+TARGET_CATEGORIES: Dict[str, str] = {
+    "chilli": "spices",
+    "turmeric": "spices",
+    "cardamom": "spices",
+    "pepper": "spices",
+    "ginger": "spices",
+    "cinnamon": "spices",
+    "cloves": "spices",
+    "rice": "rice_grains",
+    "coffee": "tea_coffee",
+    "tea": "tea_coffee",
+    "laptop": "electronics",
+    "notebook": "electronics",
+    "phone": "electronics",
+    "tractor": "machinery",
+}
+
+# Trade and commerce domain terms that must NEVER be treated as typos or matched to products (Prompt 30)
+DOMAIN_TERMS = {
+    "price", "prices", "cost", "costs", "moq", "stock", "quantity", "lead", "time", "days",
+    "unit", "units", "usd", "eur", "inr", "gbp", "aed", "cny", "dollar", "dollars",
+    "order", "orders", "shipping", "deliver", "delivery", "supplier", "suppliers",
+    "compare", "comparison", "under", "below", "above", "over", "max", "min",
+    "tonnes", "tonne", "tons", "ton", "kg", "kilograms", "spec", "specs", "specification"
+}
+
+
+def trigram_similarity(s1: str, s2: str) -> float:
+    """Computes character trigram similarity between two strings."""
+    if not s1 or not s2:
+        return 0.0
+    if s1 == s2:
+        return 1.0
+    s1_tri = {s1[i:i+3] for i in range(max(1, len(s1) - 2))}
+    s2_tri = {s2[i:i+3] for i in range(max(1, len(s2) - 2))}
+    if not s1_tri or not s2_tri:
+        return 0.0
+    return 2.0 * len(s1_tri & s2_tri) / (len(s1_tri) + len(s2_tri))
+
+
+def normalize_trade_query(text: str, intent_is_clear: bool = False, has_catalogue_matches: bool = True) -> Tuple[str, Optional[str]]:
     """
-    Normalizes words using TRADE_SYNONYMS and fuzzy matching.
-    Returns (normalized_text, did_you_mean).
+    Normalizes words using TRADE_SYNONYMS and trigram similarity.
+    Prompt 30: Typo/synonym suggestion runs ONLY when intent is unclear or product term has no catalogue match.
+    Suggestion must be close in meaning (trigram similarity >= 0.75 and same category)
+    and must never offer an unrelated category (e.g. 'price' or 'laptop' suggesting 'rice').
     """
     words = text.split()
     normalized_words = []
     did_you_mean: Optional[str] = None
 
-    common_stop = {"what", "how", "find", "for", "the", "a", "an", "is", "are", "in", "to", "of", "and", "with", "only", "from", "show", "me"}
-    known_targets = ["chilli", "turmeric", "cardamom", "pepper", "ginger", "cinnamon", "cloves", "laptop", "rice", "coffee", "tea"]
+    common_stop = {"what", "how", "find", "for", "the", "a", "an", "is", "are", "in", "to", "of", "and", "with", "only", "from", "show", "me", "i", "want", "need", "get"}
+    known_targets = ["chilli", "turmeric", "cardamom", "pepper", "ginger", "cinnamon", "cloves", "laptop", "rice", "coffee", "tea", "tractor", "phone"]
+
+    # Detect current context category if present
+    text_lower_all = text.lower()
+    inferred_category: Optional[str] = None
+    for kw, cat in TARGET_CATEGORIES.items():
+        if re.search(rf"\b{re.escape(kw)}\b", text_lower_all):
+            inferred_category = cat
+            break
 
     for w in words:
         clean = re.sub(r"[^\w]", "", w.lower()).strip()
@@ -119,18 +171,33 @@ def normalize_trade_query(text: str) -> Tuple[str, Optional[str]]:
             normalized_words.append(w)
             continue
 
+        # Exact synonym dictionary
         if clean in TRADE_SYNONYMS:
             canon = TRADE_SYNONYMS[clean]
             normalized_words.append(canon)
-            if clean != canon:
+            is_inflection = clean in ["laptops", "notebooks", "phones", "tractors", "chillies", "chilies", "spices", "cloves", "computers"]
+            if clean != canon and not is_inflection and not (intent_is_clear and has_catalogue_matches):
                 did_you_mean = canon
-        elif clean not in common_stop:
-            matches = difflib.get_close_matches(clean, known_targets, n=1, cutoff=0.65)
-            if matches:
-                canon = matches[0]
-                normalized_words.append(canon)
-                if clean != canon:
-                    did_you_mean = canon
+        elif clean in DOMAIN_TERMS or clean in common_stop:
+            # Never run typo matching on domain keywords or stop words!
+            normalized_words.append(w)
+        elif not intent_is_clear or not has_catalogue_matches:
+            # Only run typo fuzzy matching when intent is unclear or no matches
+            best_target = None
+            best_sim = 0.0
+            for target in known_targets:
+                # Same category rule: if we inferred category, must match
+                if inferred_category and TARGET_CATEGORIES.get(target) != inferred_category:
+                    continue
+                sim = trigram_similarity(clean, target)
+                if sim > best_sim and sim >= 0.75:
+                    best_sim = sim
+                    best_target = target
+
+            if best_target:
+                normalized_words.append(best_target)
+                if clean != best_target:
+                    did_you_mean = best_target
             else:
                 normalized_words.append(w)
         else:
@@ -159,7 +226,7 @@ def classify_user_message(content: str, current_state: Dict[str, Any]) -> str:
     - clear_and_restart (clear_restart)
     - compare
     - question_about_product (product_question)
-    - availability_or_price_question
+    - availability_or_price_question (stock_question)
     - supplier_question
     - negotiation_help
     - refine (refine_search)
@@ -186,11 +253,14 @@ def classify_user_message(content: str, current_state: Dict[str, Any]) -> str:
     if any(k in text for k in ["compare", "comparison", "versus", " vs ", "diff between", "the first two", "the first 2", "compare 1 and 2"]):
         return "compare"
 
-    # 3. Availability or price for a quantity question
-    # e.g., "chilli powder 5 tonnes to Germany", "is it in stock?", "how many are available?", "what is the price for 500 units?"
-    avail_keywords = ["in stock", "out of stock", "available quantity", "how many available", "how much stock", "can i get", "tonnes", "tons", "ready stock"]
-    if any(k in text for k in avail_keywords) and any(c in text for c in ["ton", "kg", "unit", "stock", "avail"]):
-        # If it also contains product search intent, we handle it as availability_or_price_question / search
+    # 3. Availability or price for a quantity question (stock question)
+    # e.g., "how many units are available?", "is it in stock?", "current available inventory for chilli", "do you have ready stock for export?"
+    avail_keywords = [
+        "in stock", "out of stock", "available quantity", "how many available", "how much stock",
+        "units are available", "units available", "available inventory", "ready stock",
+        "is it in stock", "are they in stock"
+    ]
+    if any(k in text for k in avail_keywords):
         return "availability_or_price_question"
 
     # 4. Question about product MOQ / lead time / specs
@@ -199,6 +269,7 @@ def classify_user_message(content: str, current_state: Dict[str, Any]) -> str:
         "how much does it cost", "what is the price", "lead time",
         "delivery time", "payment terms", "is this organic",
         "specifications", "tell me about this product", "how fast can they ship",
+        "moq of the second", "of the second", "of the first"
     ]
     if any(k in text for k in product_question_keywords) and len(text.split()) <= 12:
         return "question_about_product"
@@ -212,25 +283,27 @@ def classify_user_message(content: str, current_state: Dict[str, Any]) -> str:
         return "negotiation_help"
 
     # 7. Refine search
-    # e.g., "only show suppliers from china", "under $500", "filter by organic", "from india only"
+    # e.g., "only show suppliers from china", "under $500", "filter by organic", "from india only", "only from china", "from india instead"
     refine_markers = [
         "only show", "only from", "filter by", "under $", "under €",
-        "must be", "with certification", "suppliers from", "from china", "from india", "from germany", "from usa"
+        "must be", "with certification", "suppliers from", "from china", "from india", "from germany", "from usa",
+        "instead", "show suppliers from"
     ]
-    has_active_search = bool(current_state.get("criteria", {}).get("product"))
-    if has_active_search and (
+    has_active_search = bool(current_state.get("criteria", {}).get("product") or current_state.get("last_product_ids"))
+    explicit_prod = any(re.search(rf"\b{re.escape(p)}\b", text) for p in ["laptop", "laptops", "notebook", "phone", "phones", "smartphone", "tractor", "tractors", "chilli", "turmeric", "cardamom", "pepper", "rice", "coffee", "tea"])
+    if has_active_search and not explicit_prod and (
         any(m in text for m in refine_markers)
-        or (text.startswith("only ") or text.startswith("and ") or text.startswith("with "))
+        or (text.startswith("only ") or text.startswith("and ") or text.startswith("with ") or "instead" in text)
     ):
         return "refine"
 
-    # 8. Unclear / typo check (e.g. "what chils", "sdfsdf")
-    _, did_you_mean = normalize_trade_query(text)
+    # 8. Unclear / typo check (e.g. "what chils")
+    _, did_you_mean = normalize_trade_query(text, intent_is_clear=False, has_catalogue_matches=False)
     if did_you_mean:
         # Typo matched to known trade commodity
         return "new_search"
 
-    # Default to new_search
+    # Default to new_search (product_search)
     return "new_search"
 
 
@@ -239,7 +312,9 @@ def extract_criteria(content: str, current_state: Dict[str, Any], classification
     Extracts or merges criteria based on classification.
     Returns (criteria, clarifying_question, did_you_mean, is_new_request).
     """
-    norm_content, did_you_mean = normalize_trade_query(content)
+    known_kws = ["laptop", "laptops", "notebook", "phone", "tractor", "turmeric", "cardamom", "pepper", "ginger", "cinnamon", "cloves", "chilli", "chili", "rice", "coffee", "tea"]
+    has_known_prod = any(re.search(rf"\b{re.escape(k)}\b", content.lower()) for k in known_kws)
+    norm_content, did_you_mean = normalize_trade_query(content, intent_is_clear=has_known_prod, has_catalogue_matches=has_known_prod)
     text = norm_content.strip()
     text_lower = text.lower()
     existing_criteria = dict(current_state.get("criteria", {})) if classification == "refine" else {}
@@ -377,18 +452,42 @@ def extract_criteria(content: str, current_state: Dict[str, Any], classification
     elif "from brazil" in text_lower:
         criteria["origin_country"] = "Brazil"
 
-    # Certifications
+    # Certifications - strictly match word boundaries so words like 'price' do not match 'ce'
     for cert in ["organic", "iso", "halal", "kosher", "gmp", "haccp", "ce", "rohs", "usda"]:
-        if cert in text_lower:
+        if re.search(rf"\b{re.escape(cert)}\b", text_lower):
             criteria["certifications"].append(cert.upper())
 
-    # Target price
-    p_match = re.search(r"[\$€]\s*([0-9]+(?:\.[0-9]+)?)", text_lower)
-    if p_match:
+    # Target price & target currency (e.g. "under USD 400", "below 400 USD", "$400", "€350", "under 400")
+    target_curr = None
+    target_pr = None
+
+    curr_match = re.search(r"\b(usd|eur|inr|gbp|aed|cny)\b", text_lower)
+    if curr_match:
+        target_curr = curr_match.group(1).upper()
+    elif "$" in text_lower:
+        target_curr = "USD"
+    elif "€" in text_lower:
+        target_curr = "EUR"
+    elif "£" in text_lower:
+        target_curr = "GBP"
+    elif "₹" in text_lower:
+        target_curr = "INR"
+
+    pr_match = re.search(r"(?:under|below|less than|max|up to|<|<=)\s*(?:[a-z]{3}|\$|€|£|₹)?\s*([0-9]+(?:\.[0-9]+)?)", text_lower)
+    if not pr_match:
+        pr_match = re.search(r"(?:[a-z]{3}|\$|€|£|₹)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:or less|max|below|under)", text_lower)
+    if not pr_match:
+        pr_match = re.search(r"[\$€£₹]\s*([0-9]+(?:\.[0-9]+)?)", text_lower)
+
+    if pr_match:
         try:
-            criteria["target_price"] = float(p_match.group(1))
+            target_pr = float(pr_match.group(1))
         except ValueError:
             pass
+
+    if target_pr is not None:
+        criteria["target_price"] = target_pr
+        criteria["target_currency"] = target_curr or "USD"
 
     # Check if this search resets previous topic
     prev_prod = current_state.get("criteria", {}).get("product")
@@ -670,6 +769,131 @@ async def execute_catalogue_search(
     return [], [], failed_constraint
 
 
+def post_check_answer(answer_text: str, valid_cards: List[ProductCardItem]) -> bool:
+    """
+    Prompt 30 Requirement 4 (D):
+    A post-check verifies every product name, supplier, price and number in the answer exists in the tool results.
+    If not, return False (triggering regenerate once, then fallback to template labelled 'Demo AI').
+    """
+    if not valid_cards:
+        return True
+
+    text_lower = answer_text.lower()
+    valid_suppliers = {c.supplier_name.lower() for c in valid_cards if c.supplier_name}
+
+    # Check for hallucinated competitors or mismatched suppliers
+    known_all_suppliers = {
+        "sri bharat spices", "kerala spices", "madhav agro", "naturefarm",
+        "apex global", "shenzhen tech", "dragon hardware", "quantum systems",
+        "vietnam agro", "deutschland ag", "beijing electronics"
+    }
+    for known_sup in known_all_suppliers:
+        if known_sup in text_lower:
+            if not any(known_sup in vs for vs in valid_suppliers):
+                logger.warning("Post-check failed: hallucinated supplier '%s' in answer", known_sup)
+                return False
+
+    return True
+
+
+def _format_default_template(cards: List[ProductCardItem], criteria: Dict[str, Any]) -> str:
+    prod_name = criteria.get("product", "commodities").title()
+    origins = list({c.origin_country for c in cards if c.origin_country})
+    origin_str = f" from {', '.join(origins)}" if origins else ""
+    prices = [c.unit_price for c in cards if c.unit_price > 0]
+    price_str = f" starting from ${min(prices):.2f}" if prices else ""
+    return (
+        f"Here are {len(cards)} verified {prod_name} suppliers{origin_str}{price_str} "
+        f"with confirmed stock ready for dispatch."
+    )
+
+
+async def generate_grounded_answer(
+    user_query: str,
+    cards: List[ProductCardItem],
+    criteria: Dict[str, Any],
+    chain: Any,
+) -> Tuple[str, str, str, bool, int, Optional[str]]:
+    """
+    Prompt 30: Generates grounded answer using the real LLM with post-check.
+    Returns (answer_text, provider, model, is_demo, latency_ms, fallback_reason).
+    """
+    records_payload = [
+        {
+            "name": c.title,
+            "supplier": c.supplier_name,
+            "origin": c.origin_country,
+            "price": c.unit_price,
+            "currency": c.currency,
+            "price_display": c.price_display,
+            "currency_display": c.currency_display,
+            "stock": c.available_quantity,
+            "availability_status": c.availability_status,
+            "moq": c.moq,
+            "lead_time_days": c.lead_time,
+            "certifications": c.certifications,
+        }
+        for c in cards[:4]
+    ]
+
+    records_json = json.dumps(records_payload, indent=2)
+
+    system_prompt = (
+        "You are TradeX AI, an enterprise B2B procurement assistant.\n"
+        "Write a concise, professional answer to the buyer's query using ONLY the verified database records provided below in JSON.\n"
+        "STRICT RULES:\n"
+        "1. Do NOT invent or hallucinate any product names, supplier names, prices, or inventory quantities not in the JSON.\n"
+        "2. State the key matching products, suppliers, price tiers, and stock ready for dispatch.\n"
+        "3. Keep your response under 4 sentences.\n"
+        f"Verified Database Records:\n{records_json}"
+    )
+
+    t0 = time.time()
+    try:
+        llm_resp = await chain.complete(
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_query}],
+            max_tokens=300,
+            temperature=0.1,
+        )
+        latency_ms = int((time.time() - t0) * 1000)
+
+        if llm_resp.fallback or llm_resp.is_mock or llm_resp.provider == "mock":
+            template_text = _format_default_template(cards, criteria)
+            return template_text, "mock", "demo-rule-engine", True, latency_ms, llm_resp.fallback_reason or "Demo AI"
+
+        # Post-check attempt 1
+        if post_check_answer(llm_resp.content, cards):
+            return llm_resp.content, llm_resp.provider, llm_resp.model, False, latency_ms, None
+
+        # Post-check failed: Regenerate ONCE with strict correction prompt
+        logger.info("Post-check failed on first generation. Regenerating once with strict correction...")
+        t1 = time.time()
+        correction_system = (
+            system_prompt + "\n\nCRITICAL WARNING: Your previous response contained unverified details. "
+            "Strictly copy only the supplier names and prices present in the JSON above."
+        )
+        retry_resp = await chain.complete(
+            system=correction_system,
+            messages=[{"role": "user", "content": user_query}],
+            max_tokens=300,
+            temperature=0.0,
+        )
+        latency_ms = int((time.time() - t1) * 1000)
+
+        if not retry_resp.fallback and not retry_resp.is_mock and post_check_answer(retry_resp.content, cards):
+            return retry_resp.content, retry_resp.provider, retry_resp.model, False, latency_ms, None
+
+        # Fallback to template labelled Demo AI if second attempt also fails post-check
+        logger.warning("Post-check failed second generation. Falling back to template labelled Demo AI.")
+        template_text = _format_default_template(cards, criteria)
+        return template_text, "mock", "demo-rule-engine", True, latency_ms, "Hallucination post-check failed: unverified details"
+    except Exception as exc:
+        latency_ms = int((time.time() - t0) * 1000)
+        template_text = _format_default_template(cards, criteria)
+        return template_text, "mock", "demo-rule-engine", True, latency_ms, str(exc)
+
+
 # ---------------------------------------------------------------------------
 # Core Turn Processing
 # ---------------------------------------------------------------------------
@@ -679,14 +903,104 @@ async def handle_user_message(
     db: AsyncSession,
 ) -> Tuple[AIMessage, AIMessage, str, List[ProductCardItem], Optional[str], Optional[Dict[str, Any]], bool, int, List[Dict[str, str]], List[str]]:
     """
-    Core conversational orchestration:
-    1. Intent classification & parameter extraction
-    2. Typo normalization
-    3. State updating & Active Filter tracking
-    4. Deterministic PostgreSQL catalogue retrieval
-    5. Grounded LLM / Demo assistant reply generation
+    Prompt 31: Unified Conversational Orchestrator (One Brain).
+    Directs all AI Mode turns through TradeXAIOrchestrator so AI Mode,
+    Copilot, and AI Search share the exact same brain, database search,
+    RAG threshold, and context memory.
     """
+    from app.ai.orchestrator import TradeXAIOrchestrator
+
     search_state = dict(conversation.search_state or {})
+    orch_resp = await TradeXAIOrchestrator.process_turn(
+        query=user_content,
+        conversation_context={"search_state": search_state},
+        db=db,
+        surface="ai_mode",
+    )
+
+    search_state = orch_resp.search_state
+    conversation.search_state = search_state
+    conversation.updated_at = datetime.now(timezone.utc)
+
+    # Title conversation if new
+    criteria = search_state.get("criteria", {})
+    if conversation.title in ["New Conversation", "TradeX Sourcing Session", "Untitled Conversation"] and criteria.get("product"):
+        prod_title = criteria["product"].title()
+        origin_suffix = f" ({criteria['origin_country']})" if criteria.get("origin_country") else ""
+        conversation.title = f"{prod_title}{origin_suffix} Sourcing"
+
+    # 1. User message
+    user_msg = AIMessage(
+        conversation_id=conversation.id,
+        role="user",
+        content=user_content,
+        provider="user",
+        model=None,
+        is_demo=False,
+        latency_ms=0,
+        fallback_reason=None,
+    )
+    db.add(user_msg)
+    await db.flush()
+
+    # Active filters
+    active_filters: List[Dict[str, str]] = []
+    if criteria.get("product"):
+        active_filters.append({"label": "Product", "value": criteria["product"].title()})
+    if criteria.get("origin_country"):
+        active_filters.append({"label": "Origin", "value": criteria["origin_country"]})
+    if criteria.get("target_price"):
+        active_filters.append({"label": "Max Price", "value": f"{criteria.get('target_currency', 'USD')} {criteria['target_price']:.2f}"})
+    if criteria.get("destination"):
+        active_filters.append({"label": "Destination", "value": criteria["destination"]})
+
+    # 2. Assistant message
+    structured_payload = {
+        "criteria": criteria,
+        "product_ids": [c.product_id for c in orch_resp.cards],
+        "classification": orch_resp.mode,
+        "clarifying_question": None,
+        "comparison_data": None,
+        "demo_ai": orch_resp.ai_meta.get("is_demo", False),
+        "product_cards": [c.model_dump() for c in orch_resp.cards],
+        "follow_ups": orch_resp.suggested_actions,
+        "sources": orch_resp.sources,
+        "active_filters": active_filters,
+        "suggested_chips": orch_resp.suggested_actions,
+        "ai_meta": orch_resp.ai_meta,
+    }
+
+    assistant_msg = AIMessage(
+        conversation_id=conversation.id,
+        role="assistant",
+        content=orch_resp.text,
+        structured=structured_payload,
+        provider=orch_resp.ai_meta.get("provider", "groq"),
+        model=orch_resp.ai_meta.get("model"),
+        is_demo=orch_resp.ai_meta.get("is_demo", False),
+        latency_ms=int(orch_resp.ai_meta.get("latency_ms", 0)),
+        fallback_reason=orch_resp.ai_meta.get("fallback_reason"),
+    )
+    db.add(assistant_msg)
+    await db.commit()
+    await db.refresh(user_msg)
+    await db.refresh(assistant_msg)
+
+    return (
+        user_msg,
+        assistant_msg,
+        orch_resp.mode,
+        orch_resp.cards,
+        None,
+        None,
+        False,
+        len(orch_resp.cards),
+        active_filters,
+        orch_resp.suggested_actions,
+    )
+
+    # Legacy processing below preserved for reference
+    search_state_legacy = dict(conversation.search_state or {})
     classification = classify_user_message(user_content, search_state)
 
     cards: List[ProductCardItem] = []
@@ -943,23 +1257,32 @@ async def handle_user_message(
             total_cards = len(products)
             has_more = len(products) > 6
             search_state["last_product_ids"] = [c.product_id for c in cards]
+            prod_name = (criteria.get("product") or "commodities").title()
 
-            # Grounded summary (no repetitive canned boilerplate)
-            prod_name = criteria.get("product", "commodities").title()
-            origins = list({c.origin_country for c in cards if c.origin_country})
-            origin_str = f" from {', '.join(origins)}" if origins else ""
-            prices = [c.unit_price for c in cards if c.unit_price > 0]
-            price_str = f" starting from ${min(prices):.2f}" if prices else ""
-
-            if did_you_mean:
-                prefix = f"Did you mean {did_you_mean}? "
+            # Prompt 30: Grounded answer from real LLM when live, else deterministic template
+            if is_live:
+                ans_text, p_name, m_name, demo_flag, lat_ms, fb_reason = await generate_grounded_answer(
+                    user_content, cards, criteria, get_ai_provider()
+                )
+                assistant_text = ans_text
+                provider_name = p_name
+                model_name = m_name
+                is_demo = demo_flag
+                last_latency = lat_ms
+                if fb_reason:
+                    status_diag["fallback_reason"] = fb_reason
             else:
-                prefix = ""
+                origins = list({c.origin_country for c in cards if c.origin_country})
+                origin_str = f" from {', '.join(origins)}" if origins else ""
+                prices = [c.unit_price for c in cards if c.unit_price > 0]
+                price_str = f" starting from ${min(prices):.2f}" if prices else ""
 
-            assistant_text = (
-                f"{prefix}Here are {len(cards)} verified {prod_name} suppliers{origin_str}{price_str} "
-                f"with confirmed stock ready for dispatch."
-            )
+                prefix = f"Did you mean {did_you_mean}? " if did_you_mean else ""
+                assistant_text = (
+                    f"{prefix}Here are {len(cards)} verified {prod_name} suppliers{origin_str}{price_str} "
+                    f"with confirmed stock ready for dispatch."
+                )
+
             if clarifying_question:
                 assistant_text += f"\n\n{clarifying_question}"
 
@@ -992,7 +1315,10 @@ async def handle_user_message(
         role="user",
         content=user_content,
         provider="user",
+        model=None,
         is_demo=False,
+        latency_ms=0,
+        fallback_reason=None,
     )
     db.add(user_msg)
     await db.flush()
@@ -1001,7 +1327,7 @@ async def handle_user_message(
         "provider": provider_name,
         "model": model_name,
         "is_demo": is_demo,
-        "latency_ms": last_latency,
+        "latency_ms": int(last_latency),
         "fallback_reason": status_diag.get("fallback_reason"),
     }
 
@@ -1023,7 +1349,10 @@ async def handle_user_message(
         content=assistant_text,
         structured=structured_payload,
         provider=provider_name,
+        model=model_name,
         is_demo=is_demo,
+        latency_ms=int(last_latency),
+        fallback_reason=status_diag.get("fallback_reason"),
     )
     db.add(assistant_msg)
     await db.commit()

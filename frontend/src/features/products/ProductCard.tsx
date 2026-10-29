@@ -189,11 +189,18 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           </Link>
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 via-transparent to-transparent pointer-events-none" />
 
-          {/* Top Bar on Image: Category Tag & Heart */}
+          {/* Top Bar on Image: Category Tag, Demo Badge & Heart */}
           <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-white bg-slate-950/60 backdrop-blur-md px-2 py-0.5 rounded-lg border border-white/20">
-              {product.category_name}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-white bg-slate-950/60 backdrop-blur-md px-2 py-0.5 rounded-lg border border-white/20">
+                {product.category_name}
+              </span>
+              {product.is_demo && (
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-200 bg-amber-950/80 backdrop-blur-md px-2 py-0.5 rounded-lg border border-amber-500/30" data-testid="demo-data-badge">
+                  Demo data
+                </span>
+              )}
+            </div>
 
             <button
               type="button"

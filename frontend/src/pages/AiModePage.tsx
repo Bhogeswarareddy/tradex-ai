@@ -589,28 +589,56 @@ export const AiModePage: React.FC = () => {
 
           {/* Region, Currency & Deliver to selector stubs */}
           <div className="flex items-center gap-2 text-xs text-slate-600">
-            {/* Live AI / Demo AI Status Indicator (Prompt 21) */}
-            {aiStatus && (
-              aiStatus.mode === "live" ? (
-                <div
-                  data-testid="ai-status-live"
-                  className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full font-semibold shadow-xs"
-                  title={`Live inference active: ${aiStatus.provider} (${aiStatus.model}) | Latency: ${aiStatus.last_latency}ms`}
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
-                  <span>Live AI: {aiStatus.model}</span>
-                </div>
-              ) : (
+            {/* Live AI / Demo AI Status Indicator (Prompt 21 & Prompt 30) */}
+            {aiStatus && (() => {
+              const badge = aiStatus.status_badge || (aiStatus.mode === "live" ? "Connected" : "Demo AI");
+              if (badge === "Connected") {
+                return (
+                  <div
+                    data-testid="ai-status-live"
+                    className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full font-semibold shadow-xs"
+                    title={`Live inference probe succeeded: ${aiStatus.provider} (${aiStatus.model}) | Latency: ${aiStatus.last_latency}ms`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                    <span>Live AI: {aiStatus.model}</span>
+                  </div>
+                );
+              }
+              if (badge === "Rate limited") {
+                return (
+                  <div
+                    data-testid="ai-status-rate-limited"
+                    className="flex items-center gap-1.5 px-2.5 py-1 bg-orange-50 text-orange-700 border border-orange-200 rounded-full font-semibold shadow-xs"
+                    title={`Rate limited: ${aiStatus.fallback_reason || "HTTP 429"}`}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5 text-orange-600" />
+                    <span>Rate limited</span>
+                  </div>
+                );
+              }
+              if (badge === "Disconnected") {
+                return (
+                  <div
+                    data-testid="ai-status-disconnected"
+                    className="flex items-center gap-1.5 px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-full font-semibold shadow-xs"
+                    title={`Disconnected: ${aiStatus.fallback_reason || "Offline"}`}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Disconnected</span>
+                  </div>
+                );
+              }
+              return (
                 <div
                   data-testid="ai-status-demo"
                   className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full font-semibold shadow-xs"
-                  title="No live LLM key connected; using deterministic trade rule engine"
+                  title={aiStatus.fallback_reason || "Deterministic trade rule engine"}
                 >
                   <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
                   <span>Demo AI</span>
                 </div>
-              )
-            )}
+              );
+            })()}
             <div className="hidden lg:flex items-center gap-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded-md font-medium">
               <Globe className="w-3.5 h-3.5 text-slate-400" />
               <span>Deliver to: USA</span>
@@ -722,15 +750,15 @@ export const AiModePage: React.FC = () => {
                     {/* AI Reply Text */}
                     <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs max-w-3xl text-xs sm:text-sm text-slate-800 leading-relaxed">
                       <div>{m.content}</div>
-                      {/* AI Reply Footer: provider, model, latency, fallback reason */}
-                      <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-                        <span>
+                      {/* AI Reply Footer: provider, model, latency, fallback reason (Prompt 30) */}
+                      <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+                        <span data-testid="ai-reply-footer">
                           {m.is_demo
-                            ? `Demo AI (reason: ${(m.structured as any)?.ai_meta?.fallback_reason || "Deterministic catalogue engine"})`
-                            : `Live AI: ${(m.structured as any)?.ai_meta?.model || aiStatus?.model || "llama-3.3-70b-versatile"}, ${(((m.structured as any)?.ai_meta?.latency_ms || aiStatus?.last_latency || 1200) / 1000).toFixed(1)}s`}
+                            ? `Demo AI (reason: ${m.fallback_reason || (m.structured as any)?.ai_meta?.fallback_reason || "Deterministic catalogue engine"})`
+                            : `Live AI: ${m.model || (m.structured as any)?.ai_meta?.model || aiStatus?.model || "qwen/qwen3.8-27b"}, ${((m.latency_ms || (m.structured as any)?.ai_meta?.latency_ms || aiStatus?.last_latency || 1200) / 1000).toFixed(1)} s`}
                         </span>
                         <span className="text-[10px] font-mono uppercase text-slate-400">
-                          {(m.structured as any)?.ai_meta?.provider || (m.is_demo ? "demo" : "groq")}
+                          {m.provider || (m.structured as any)?.ai_meta?.provider || (m.is_demo ? "demo" : "groq")}
                         </span>
                       </div>
                     </div>
@@ -1377,8 +1405,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
         )}
 
         {card.demo_data && (
-          <span className="absolute bottom-2 right-2 bg-slate-900/70 text-white text-[9px] px-1.5 py-0.5 rounded">
-            Demo Item
+          <span className="absolute bottom-2 right-2 bg-amber-950/80 text-amber-200 border border-amber-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs" data-testid="demo-data-badge">
+            Demo data
           </span>
         )}
       </div>
@@ -1409,12 +1437,17 @@ const ProductCard: React.FC<ProductCardProps> = ({
           {/* Price & MOQ */}
           <div className="mt-1.5">
             <div
-              className="flex items-baseline gap-1.5"
+              className="flex items-baseline gap-1.5 flex-wrap"
               title={priceRes.approx ? `Original: ${card.currency} ${card.unit_price.toFixed(2)}` : undefined}
             >
               <span className="font-bold text-sm sm:text-base text-slate-900">
                 {priceRes.formatted}
               </span>
+              {card.currency_display && card.currency_original && card.currency_display !== card.currency_original && card.price_display !== undefined && (
+                <span className="text-[10px] text-slate-500 font-medium">
+                  (approx. {card.currency_display} {card.price_display.toFixed(2)})
+                </span>
+              )}
               <span
                 className={`text-[9px] font-semibold px-1 rounded ${
                   card.price_status === "current"

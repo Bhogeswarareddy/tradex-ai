@@ -157,7 +157,10 @@ async def get_conversation_detail(
             content=m.content,
             structured=m.structured,
             provider=m.provider,
+            model=getattr(m, "model", None),
             is_demo=m.is_demo,
+            latency_ms=getattr(m, "latency_ms", None),
+            fallback_reason=getattr(m, "fallback_reason", None),
             created_at=m.created_at.isoformat(),
         )
         for m in sorted(conv.messages, key=lambda x: x.created_at)
@@ -260,7 +263,10 @@ async def post_conversation_message(
             content=user_msg.content,
             structured=user_msg.structured,
             provider=user_msg.provider,
+            model=getattr(user_msg, "model", None),
             is_demo=user_msg.is_demo,
+            latency_ms=getattr(user_msg, "latency_ms", None),
+            fallback_reason=getattr(user_msg, "fallback_reason", None),
             created_at=user_msg.created_at.isoformat(),
         ),
         assistant_reply=AIMessageDetail(
@@ -270,7 +276,10 @@ async def post_conversation_message(
             content=assistant_msg.content,
             structured=assistant_msg.structured,
             provider=assistant_msg.provider,
+            model=getattr(assistant_msg, "model", None),
             is_demo=assistant_msg.is_demo,
+            latency_ms=getattr(assistant_msg, "latency_ms", None),
+            fallback_reason=getattr(assistant_msg, "fallback_reason", None),
             created_at=assistant_msg.created_at.isoformat(),
         ),
         classification=classification,

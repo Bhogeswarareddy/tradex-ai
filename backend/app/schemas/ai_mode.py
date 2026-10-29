@@ -43,6 +43,13 @@ class ProductCardItem(BaseModel):
     availability_status: str = "in_stock"  # in_stock, limited, made_to_order, out_of_stock
     available_quantity: Optional[float] = None
     is_alternative: bool = False
+    price_original: Optional[float] = None
+    currency_original: Optional[str] = None
+    price_display: Optional[float] = None
+    currency_display: Optional[str] = None
+    rate: Optional[float] = None
+    rate_as_of: Optional[str] = None
+    is_simulated: Optional[bool] = None
 
 
 class MessageInput(BaseModel):
@@ -56,7 +63,10 @@ class AIMessageDetail(BaseModel):
     content: str
     structured: Optional[Dict[str, Any]] = None
     provider: str
+    model: Optional[str] = None
     is_demo: bool
+    latency_ms: Optional[int] = None
+    fallback_reason: Optional[str] = None
     created_at: str
 
 

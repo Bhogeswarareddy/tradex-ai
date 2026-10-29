@@ -17,6 +17,9 @@ export interface CopilotChatResponse {
   suggested_actions: string[];
   sources?: CopilotSource[];
   conversation_id?: string;
+  rag_used?: boolean;
+  mode?: string;
+  cards?: any[];
   ai_meta?: {
     provider: string;
     model: string;

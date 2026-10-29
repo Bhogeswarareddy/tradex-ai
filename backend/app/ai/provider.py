@@ -222,11 +222,15 @@ class PriorityFallbackChainProvider(LLMProvider):
                         "AI Provider '%s' attempt %d failed: %s",
                         prov_name, attempt, exc
                     )
-                    if attempt == 2 or is_rate_limit:
-                        failure_reasons.append(f"{prov_name}: {exc}")
-                    # On rate limit, immediately fall through to next provider
                     if is_rate_limit:
+                        failure_reasons.append(f"{prov_name}: rate limited (HTTP 429)")
+                        if attempt < 2 and prov_name == "groq":
+                            # Short backoff on Groq rate limit before retrying or falling back
+                            await asyncio.sleep(0.5)
+                            continue
                         break
+                    elif attempt == 2:
+                        failure_reasons.append(f"{prov_name}: {exc}")
                     if attempt < 2:
                         await asyncio.sleep(0.3)
 
@@ -256,30 +260,137 @@ class PriorityFallbackChainProvider(LLMProvider):
 # Singleton chain instance
 _ai_chain_singleton = PriorityFallbackChainProvider()
 
+# Probe Cache (cached for 30 seconds as specified in Prompt 30)
+_probe_cache: Dict[str, Any] = {
+    "cached_at": 0.0,
+    "result": None,
+}
+
 
 def get_ai_provider() -> LLMProvider:
     """Returns the unified prioritized AI Provider instance."""
     return _ai_chain_singleton
 
 
+async def probe_ai_health(force_refresh: bool = False) -> Dict[str, Any]:
+    """
+    Honest AI health probe (Prompt 30):
+    Performs a tiny model completion, cached for 30 seconds.
+    Returns status_badge in ('Connected', 'Disconnected', 'Rate limited', 'Demo AI').
+    It must never say Live / Connected unless the probe actually succeeded.
+    """
+    now = time.time()
+    if not force_refresh and _probe_cache["result"] is not None:
+        if now - _probe_cache["cached_at"] < 30.0:
+            return _probe_cache["result"]
+
+    configured = _ai_chain_singleton.get_configured_providers()
+    prov_override = (settings.AI_PROVIDER or "").lower()
+
+    if prov_override in ["mock", "deterministic_fallback"] or not configured:
+        result = {
+            "status_badge": "Demo AI",
+            "mode": "demo",
+            "provider": "mock",
+            "model": "demo-rule-engine",
+            "reachable": False,
+            "last_latency": 0.0,
+            "fallback_reason": "Mock provider configured (Demo AI)",
+            "configured_providers": configured,
+            "priority": _ai_chain_singleton.priority_list,
+            "circuit_breaker": circuit_breaker.get_stats(),
+        }
+        _probe_cache["cached_at"] = now
+        _probe_cache["result"] = result
+        return result
+
+    primary_prov = configured[0]
+    t0 = time.time()
+    try:
+        provider = _ai_chain_singleton._get_provider_instance(primary_prov)
+        if not provider:
+            raise RuntimeError(f"Could not instantiate provider '{primary_prov}'")
+
+        probe_resp = await provider.complete(
+            system="You are TradeX AI health probe. Reply with PONG.",
+            messages=[{"role": "user", "content": "ping"}],
+            max_tokens=5,
+            temperature=0.0,
+        )
+        latency = (time.time() - t0) * 1000
+
+        if getattr(probe_resp, "fallback", False) or getattr(probe_resp, "is_mock", False):
+            reason = getattr(probe_resp, "fallback_reason", "Provider fallback to demo engine")
+            is_rl = "429" in str(reason) or "rate limit" in str(reason).lower()
+            badge = "Rate limited" if is_rl else "Demo AI"
+            result = {
+                "status_badge": badge,
+                "mode": "demo",
+                "provider": primary_prov,
+                "model": probe_resp.model,
+                "reachable": False,
+                "last_latency": round(latency, 2),
+                "fallback_reason": reason,
+                "configured_providers": configured,
+                "priority": _ai_chain_singleton.priority_list,
+                "circuit_breaker": circuit_breaker.get_stats(),
+            }
+        else:
+            result = {
+                "status_badge": "Connected",
+                "mode": "live",
+                "provider": primary_prov,
+                "model": probe_resp.model,
+                "reachable": True,
+                "last_latency": round(latency, 2),
+                "fallback_reason": None,
+                "configured_providers": configured,
+                "priority": _ai_chain_singleton.priority_list,
+                "circuit_breaker": circuit_breaker.get_stats(),
+            }
+    except Exception as exc:
+        latency = (time.time() - t0) * 1000
+        exc_str = str(exc)
+        is_rl = "429" in exc_str or "rate limit" in exc_str.lower()
+        badge = "Rate limited" if is_rl else "Disconnected"
+        result = {
+            "status_badge": badge,
+            "mode": "demo",
+            "provider": primary_prov,
+            "model": getattr(settings, f"{primary_prov.upper()}_MODEL", settings.AI_MODEL),
+            "reachable": False,
+            "last_latency": round(latency, 2),
+            "fallback_reason": exc_str,
+            "configured_providers": configured,
+            "priority": _ai_chain_singleton.priority_list,
+            "circuit_breaker": circuit_breaker.get_stats(),
+        }
+
+    _probe_cache["cached_at"] = now
+    _probe_cache["result"] = result
+    return result
+
+
 def get_ai_status() -> Dict[str, Any]:
     """Diagnostics status dictionary for GET /api/v1/ai/status and header badges."""
+    if _probe_cache["result"] is not None:
+        return _probe_cache["result"]
+
     configured = _ai_chain_singleton.get_configured_providers()
     cb_stats = circuit_breaker.get_stats()
-    is_live = len(configured) > 0 and not circuit_breaker.is_open()
+    is_live = len(configured) > 0 and not circuit_breaker.is_open() and _ai_chain_singleton.active_provider_name != "mock"
 
     if is_live:
         prov = _ai_chain_singleton.active_provider_name
-        if prov == "mock" and configured:
-            prov = configured[0]
         model = _ai_chain_singleton.active_model_name
-        if model == "demo-rule-engine" and configured:
-            model = getattr(settings, f"{prov.upper()}_MODEL", settings.AI_MODEL)
+        badge = "Connected"
     else:
         prov = "mock"
         model = "demo-rule-engine"
+        badge = "Demo AI"
 
     return {
+        "status_badge": badge,
         "provider": prov,
         "model": model,
         "reachable": is_live,
@@ -324,5 +435,6 @@ __all__ = [
     "PriorityFallbackChainProvider",
     "get_ai_provider",
     "get_ai_status",
+    "probe_ai_health",
     "startup_log_ai_provider",
 ]

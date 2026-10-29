@@ -123,3 +123,4 @@ class Supplier(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         "SupplierCertification", back_populates="supplier"
     )
     products: Mapped[List["Product"]] = relationship("Product", back_populates="supplier")
+    supplier_categories: Mapped[List["SupplierCategory"]] = relationship("SupplierCategory", back_populates="supplier", cascade="all, delete-orphan")

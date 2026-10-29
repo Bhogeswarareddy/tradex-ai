@@ -63,7 +63,10 @@ class AIMessage(Base, UUIDPrimaryKeyMixin):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     structured: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)  # criteria, product_ids, follow_ups, sources
     provider: Mapped[str] = mapped_column(String(50), default="deterministic_fallback", nullable=False)
+    model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    latency_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    fallback_reason: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

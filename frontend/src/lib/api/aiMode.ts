@@ -27,6 +27,13 @@ export interface ProductCardData {
   availability_status?: string;
   available_quantity?: number | null;
   is_alternative?: boolean;
+  price_original?: number;
+  currency_original?: string;
+  price_display?: number;
+  currency_display?: string;
+  rate?: number;
+  rate_as_of?: string;
+  is_simulated?: boolean;
 }
 
 export interface AIMessageData {
@@ -48,7 +55,10 @@ export interface AIMessageData {
     suggested_chips?: string[];
   } | null;
   provider: string;
+  model?: string | null;
   is_demo: boolean;
+  latency_ms?: number | null;
+  fallback_reason?: string | null;
   created_at: string;
 }
 
@@ -109,6 +119,8 @@ export interface AiStatusResponse {
   reachable: boolean;
   last_latency: number;
   mode: "live" | "demo";
+  status_badge?: "Connected" | "Disconnected" | "Rate limited" | "Demo AI" | string;
+  fallback_reason?: string | null;
   configured_providers: string[];
   priority: string[];
   circuit_breaker?: Record<string, any>;

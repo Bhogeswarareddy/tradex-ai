@@ -21,6 +21,7 @@ class Category(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     parent: Mapped[Optional["Category"]] = relationship("Category", remote_side="Category.id", back_populates="children")
     children: Mapped[List["Category"]] = relationship("Category", back_populates="parent")
     products: Mapped[List["Product"]] = relationship("Product", back_populates="category")
+    supplier_categories: Mapped[List["SupplierCategory"]] = relationship("SupplierCategory", back_populates="category", cascade="all, delete-orphan")
 
 
 class Certification(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -82,6 +83,8 @@ class Product(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     specifications: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     stock_available: Mapped[int] = mapped_column(Integer, default=1000, nullable=False)
     next_available_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Prompt 15 Catalog Enhancements
     product_form: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
@@ -156,3 +159,34 @@ class IndexJob(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     payload: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
+
+
+class SupplierCategory(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "supplier_categories"
+    __table_args__ = (
+        Index("idx_supplier_category_pair", "supplier_id", "category_id", unique=True),
+    )
+
+    supplier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    category_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    supplier: Mapped["Supplier"] = relationship("Supplier", back_populates="supplier_categories")
+    category: Mapped["Category"] = relationship("Category", back_populates="supplier_categories")
+
+
+class ExchangeRate(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "exchange_rates"
+    __table_args__ = (
+        Index("idx_exchange_rates_pair", "base_currency", "quote_currency", unique=True),
+    )
+
+    base_currency: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    quote_currency: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    rate: Mapped[float] = mapped_column(Numeric(14, 6), nullable=False)
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    source: Mapped[str] = mapped_column(String(50), default="ECB_SIMULATED", nullable=False)
+    is_simulated: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

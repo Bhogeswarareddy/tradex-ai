@@ -38,7 +38,37 @@ export const CopilotDrawer: React.FC = () => {
   ]);
   const [inputVal, setInputVal] = useState("");
   const [loading, setLoading] = useState(false);
+  const [conversationId, setConversationId] = useState<string | undefined>(() => {
+    return localStorage.getItem("tradex_copilot_conv_id") || undefined;
+  });
+  const [turnStatus, setTurnStatus] = useState<{ rag_used?: boolean; mode?: string }>({ rag_used: false, mode: "ready" });
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Sync conversation history from shared storage
+  React.useEffect(() => {
+    const loadSharedHistory = async () => {
+      const activeId = localStorage.getItem("tradex_copilot_conv_id");
+      if (activeId) {
+        setConversationId(activeId);
+        try {
+          const detail = await copilotApi.getConversation(activeId);
+          if (detail && detail.messages && detail.messages.length > 0) {
+            setMessages(
+              detail.messages.map((m) => ({
+                sender: m.role === "user" ? "user" : "bot",
+                text: m.content,
+                sources: m.sources,
+                actions: m.suggested_actions?.map((a) => a.action),
+              }))
+            );
+          }
+        } catch {
+          // Non-critical if session unavailable
+        }
+      }
+    };
+    loadSharedHistory();
+  }, []);
 
   // Do not render floating trigger on /copilot page
   if (location.pathname === "/copilot") {
@@ -54,7 +84,12 @@ export const CopilotDrawer: React.FC = () => {
     setLoading(true);
 
     try {
-      const res = await copilotApi.sendMessage(text);
+      const res = await copilotApi.sendMessage(text, conversationId);
+      setTurnStatus({ rag_used: Boolean(res.rag_used), mode: res.mode });
+      if (res.conversation_id) {
+        setConversationId(res.conversation_id);
+        localStorage.setItem("tradex_copilot_conv_id", res.conversation_id);
+      }
       setMessages((prev) => [
         ...prev,
         {
@@ -124,7 +159,13 @@ export const CopilotDrawer: React.FC = () => {
               <div>
                 <h3 className="text-xs font-bold flex items-center gap-1.5">
                   TradeX Copilot
-                  <span className="text-[10px] text-emerald-300 font-normal">● RAG Active</span>
+                  {turnStatus.rag_used ? (
+                    <span className="text-[10px] text-emerald-300 font-normal">● RAG Active</span>
+                  ) : turnStatus.mode === "catalogue_search" ? (
+                    <span className="text-[10px] text-sky-300 font-normal">● Catalogue Search</span>
+                  ) : (
+                    <span className="text-[10px] text-indigo-300 font-normal">● Trade AI</span>
+                  )}
                 </h3>
                 <p className="text-[10px] text-slate-300">15 verified trade compliance guides</p>
               </div>

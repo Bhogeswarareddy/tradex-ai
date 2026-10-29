@@ -42,11 +42,14 @@ export const CopilotPage: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [loading, setLoading] = useState(false);
-  const [conversationId, setConversationId] = useState<string | undefined>(undefined);
+  const [conversationId, setConversationId] = useState<string | undefined>(() => {
+    return localStorage.getItem("tradex_copilot_conv_id") || undefined;
+  });
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [guides, setGuides] = useState<TradeGuideSummary[]>([]);
   const [suggestedPrompts, setSuggestedPrompts] = useState<SuggestedPrompt[]>([]);
   const [sidebarTab, setSidebarTab] = useState<"history" | "guides">("guides");
+  const [lastTurnStatus, setLastTurnStatus] = useState<{ rag_used?: boolean; mode?: string }>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -69,6 +72,29 @@ export const CopilotPage: React.FC = () => {
         setSuggestedPrompts(promptsData);
         setGuides(guidesData);
         setConversations(convsData);
+
+        const activeId = localStorage.getItem("tradex_copilot_conv_id");
+        if (activeId) {
+          try {
+            const detail = await copilotApi.getConversation(activeId);
+            if (detail && detail.messages && detail.messages.length > 0) {
+              setConversationId(detail.id);
+              setMessages(
+                detail.messages.map((m) => ({
+                  id: m.id,
+                  role: m.role,
+                  content: m.content,
+                  sources: m.sources,
+                  suggested_actions: m.suggested_actions?.map((a) => a.action) || [],
+                  created_at: m.created_at,
+                }))
+              );
+              return;
+            }
+          } catch {
+            // fallback to default welcome message
+          }
+        }
 
         // Add welcome message if no messages
         setMessages([
@@ -111,8 +137,10 @@ export const CopilotPage: React.FC = () => {
 
     try {
       const res = await copilotApi.sendMessage(text, conversationId);
+      setLastTurnStatus({ rag_used: res.rag_used, mode: res.mode });
       if (res.conversation_id) {
         setConversationId(res.conversation_id);
+        localStorage.setItem("tradex_copilot_conv_id", res.conversation_id);
       }
 
       const botMsg: ChatMessage = {
@@ -149,6 +177,7 @@ export const CopilotPage: React.FC = () => {
   // Start new conversation
   const handleNewChat = () => {
     setConversationId(undefined);
+    localStorage.removeItem("tradex_copilot_conv_id");
     setMessages([
       {
         id: `welcome-${Date.now()}`,
@@ -169,6 +198,7 @@ export const CopilotPage: React.FC = () => {
       setLoading(true);
       const detail = await copilotApi.getConversation(conv.id);
       setConversationId(detail.id);
+      localStorage.setItem("tradex_copilot_conv_id", detail.id);
       setMessages(
         detail.messages.map((m) => ({
           id: m.id,
@@ -340,10 +370,22 @@ export const CopilotPage: React.FC = () => {
             <div>
               <h1 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 AI Trade Copilot
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                  <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                  RAG Grounded
-                </span>
+                {lastTurnStatus.rag_used ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                    <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                    RAG Active
+                  </span>
+                ) : lastTurnStatus.mode === "catalogue_search" ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-full">
+                    <Sparkles className="w-3 h-3 text-sky-600" />
+                    Catalogue Search
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                    <Bot className="w-3 h-3 text-indigo-600" />
+                    Trade AI
+                  </span>
+                )}
               </h1>
               <p className="text-[11px] text-slate-500">
                 Hybrid vector & full-text knowledge retrieval across 15 international trade compliance standards

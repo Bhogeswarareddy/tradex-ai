@@ -46,6 +46,14 @@ export interface ProductItem {
   supplier_rating: number;
   certifications: string[];
   is_saved: boolean;
+  is_demo?: boolean;
+  price_original?: number;
+  currency_original?: string;
+  price_display?: number;
+  currency_display?: string;
+  rate?: number;
+  rate_as_of?: string;
+  is_simulated?: boolean;
 }
 
 export interface PaginatedProductsResponse {
