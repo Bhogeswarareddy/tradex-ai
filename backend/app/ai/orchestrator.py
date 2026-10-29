@@ -641,7 +641,7 @@ class TradeXAIOrchestrator:
             text_out += make_footer(meta)
             return OrchestratorResponse(
                 text=text_out,
-                cards=related_cards,
+                cards=[],
                 sources=[],
                 suggested_actions=[
                     f"Create RFQ for {matched_absent}",

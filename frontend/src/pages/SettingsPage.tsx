@@ -203,6 +203,7 @@ export const SettingsPage: React.FC = () => {
           </Button>
           <Button
             type="button"
+            data-testid="save-preferences-btn"
             variant="primary"
             size="sm"
             onClick={handleSaveSettings}
@@ -374,6 +375,7 @@ export const SettingsPage: React.FC = () => {
             <div className="grid grid-cols-2 gap-3 pt-2">
               <button
                 type="button"
+                data-testid="theme-light-btn"
                 onClick={() => setTheme("light")}
                 className={`p-4 rounded-xl border text-left transition-all ${
                   theme === "light"
@@ -394,6 +396,7 @@ export const SettingsPage: React.FC = () => {
 
               <button
                 type="button"
+                data-testid="theme-dark-btn"
                 onClick={() => setTheme("dark")}
                 className={`p-4 rounded-xl border text-left transition-all ${
                   theme === "dark"

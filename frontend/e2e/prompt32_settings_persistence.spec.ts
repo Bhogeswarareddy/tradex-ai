@@ -24,11 +24,11 @@ test.describe("Prompt 32: Settings, Theme, Language and Currency Persistence", (
     await languageSelect.selectOption("HI");
 
     // 5. Select Dark mode card
-    const darkThemeCard = page.locator('button:has-text("Dark Theme"), button:has-text("डार्क थीम"), button:has-text("Dark")').first();
+    const darkThemeCard = page.locator('[data-testid="theme-dark-btn"]').first();
     await darkThemeCard.click();
 
     // 6. Click Save Preferences
-    const saveBtn = page.locator('button:has-text("Save Preferences"), button:has-text("प्राथमिकताएं सहेजें"), button:has-text("Save")').first();
+    const saveBtn = page.locator('[data-testid="save-preferences-btn"]').first();
     await saveBtn.click();
     await page.waitForTimeout(1500);
 
@@ -130,11 +130,11 @@ test.describe("Prompt 32: Settings, Theme, Language and Currency Persistence", (
     await languageSelect.selectOption("DE");
 
     // 5. Select Light mode card
-    const lightThemeCard = page.locator('button:has-text("Light Theme"), button:has-text("Helles Design"), button:has-text("Light")').first();
+    const lightThemeCard = page.locator('[data-testid="theme-light-btn"]').first();
     await lightThemeCard.click();
 
     // 6. Click Save Preferences
-    const saveBtn = page.locator('button:has-text("Save Preferences"), button:has-text("Einstellungen speichern"), button:has-text("Save")').first();
+    const saveBtn = page.locator('[data-testid="save-preferences-btn"]').first();
     await saveBtn.click();
     await page.waitForTimeout(1500);
 

@@ -1,4 +1,20 @@
 import { defineConfig, devices } from "@playwright/test";
+import { execSync } from "child_process";
+
+function getBackendUrl(): string {
+  if (process.env.VITE_BACKEND_URL) return process.env.VITE_BACKEND_URL;
+  try {
+    const ip = execSync("wsl hostname -I", { encoding: "utf8" }).trim().split(/\s+/)[0];
+    if (ip && /^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
+      return `http://${ip}:8000`;
+    }
+  } catch {
+    // ignore WSL check failure
+  }
+  return "http://127.0.0.1:8000";
+}
+
+const backendUrl = getBackendUrl();
 
 export default defineConfig({
   testDir: "./e2e",
@@ -23,5 +39,8 @@ export default defineConfig({
     url: "http://127.0.0.1:5173",
     reuseExistingServer: true,
     timeout: 30000,
+    env: {
+      VITE_BACKEND_URL: backendUrl,
+    },
   },
 });
