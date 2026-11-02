@@ -1,5 +1,6 @@
 import csv
 import io
+import json
 from typing import Dict, List, Optional
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -7,6 +8,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.ai.structured import generate_structured
 from app.api.deps import get_current_user_optional
 from app.core.db import get_db
 from app.core.freshness import get_product_freshness_metadata
@@ -20,6 +22,7 @@ from app.models.catalog import (
 )
 from app.models.content import SavedItem
 from app.models.identity import Company, Supplier, User
+from app.schemas.ai_features import ProductAISummaryResponse
 from app.schemas.products import (
     AISummary,
     CategoryNode,
@@ -501,14 +504,34 @@ async def get_product_detail(
     incoterms = ["FOB", "CIF", "CFR", "EXW"]
 
     # AI Summary grounded in verified data
-    ai_summary = AISummary(
-        key_points=[
-            f"Direct verified sourcing in {p.origin_country} under standardized Incoterms CIF/FOB.",
-            f"Batch laboratory COA guarantees compliant limits ({specs.get('Purity', 'Grade A')}) and moisture standards ({specs.get('Moisture Content', '<10%')}).",
-            f"Port readiness supported within {p.lead_time_days} days with minimum order volume of {p.moq:,} {p.unit}.",
-        ],
-        caution="Bulk cargo shipments require moisture-lock packaging to prevent humidity degradation during maritime transit.",
-    )
+    try:
+        prod_context = (
+            f"Product: {p.name}\n"
+            f"Category: {c_name}\n"
+            f"Origin: {p.origin_country}\n"
+            f"MOQ: {p.moq} {p.unit}\n"
+            f"Lead Time: {p.lead_time_days} days\n"
+            f"Specifications: {json.dumps(specs)}\n"
+            f"Supplier: {p.supplier.company.name if p.supplier and p.supplier.company else 'Verified Exporter'}"
+        )
+        ai_res = await generate_structured(
+            prompt_name="product_summary.v1",
+            variables={"product_details": prod_context},
+            pydantic_model=ProductAISummaryResponse,
+            session=db,
+            feature_name="product_summary",
+            use_cache=True,
+        )
+        ai_summary = AISummary(key_points=ai_res.key_points, caution=ai_res.caution)
+    except Exception:
+        ai_summary = AISummary(
+            key_points=[
+                f"Direct verified sourcing in {p.origin_country} under standardized Incoterms CIF/FOB.",
+                f"Batch laboratory COA guarantees compliant limits ({specs.get('Purity', 'Grade A')}) and moisture standards ({specs.get('Moisture Content', '<10%')}).",
+                f"Port readiness supported within {p.lead_time_days} days with minimum order volume of {p.moq:,} {p.unit}.",
+            ],
+            caution="Bulk cargo shipments require moisture-lock packaging to prevent humidity degradation during maritime transit.",
+        )
 
     # Related products query
     rel_stmt = (
@@ -610,6 +633,51 @@ async def get_product_detail(
         certifications_json=p.certifications_json or [],
         supported_destinations=p.supported_destinations or [],
         payment_terms=p.payment_terms or [],
+    )
+
+
+@router.get("/products/{id_or_slug}/ai-summary", response_model=ProductAISummaryResponse, summary="Generate structured AI summary of product specifications")
+async def get_product_ai_summary(
+    id_or_slug: str,
+    db: AsyncSession = Depends(get_db),
+) -> ProductAISummaryResponse:
+    """Returns AI-synthesized product highlights and caution advice from catalog data."""
+    try:
+        p_uuid = uuid.UUID(id_or_slug)
+        where_clause = or_(Product.id == p_uuid, Product.slug == id_or_slug)
+    except ValueError:
+        where_clause = Product.slug == id_or_slug
+
+    stmt = (
+        select(Product)
+        .where(where_clause)
+        .where(Product.deleted_at.is_(None))
+        .options(
+            selectinload(Product.category),
+            selectinload(Product.supplier).selectinload(Supplier.company),
+        )
+    )
+    res = await db.execute(stmt)
+    p = res.scalar_one_or_none()
+    if not p:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    prod_context = (
+        f"Product: {p.name}\n"
+        f"Category: {p.category.name if p.category else 'General'}\n"
+        f"Origin: {p.origin_country}\n"
+        f"MOQ: {p.moq} {p.unit}\n"
+        f"Lead Time: {p.lead_time_days} days\n"
+        f"Supplier: {p.supplier.company.name if p.supplier and p.supplier.company else 'Verified Exporter'}"
+    )
+
+    return await generate_structured(
+        prompt_name="product_summary.v1",
+        variables={"product_details": prod_context},
+        pydantic_model=ProductAISummaryResponse,
+        session=db,
+        feature_name="product_summary",
+        use_cache=True,
     )
 
 
@@ -827,4 +895,48 @@ async def export_compare_csv(
         content=csv_data,
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=tradex_products_comparison.csv"},
+    )
+
+
+
+@router.get("/products/export/csv", summary="Export products catalog as CSV")
+async def export_products_csv(
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = (
+        select(Product)
+        .where(Product.deleted_at.is_(None))
+        .where(Product.is_active.is_(True))
+        .options(selectinload(Product.category), selectinload(Product.supplier).selectinload(Supplier.company))
+        .order_by(Product.name.asc())
+        .limit(1000)
+    )
+    res = await db.execute(stmt)
+    products = res.scalars().all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["ID", "Name", "Category", "HS Code", "Origin Country", "MOQ", "Stock Available", "Currency", "Supplier", "Verification Tier", "Is Demo"])
+    for p in products:
+        supp_name = p.supplier.company.name if p.supplier and p.supplier.company else "Supplier"
+        tier = getattr(p.supplier, "verification_tier", "standard") if p.supplier else "standard"
+        writer.writerow([
+            str(p.id),
+            p.name,
+            p.category.name if p.category else "",
+            p.hs_code or "",
+            p.origin_country,
+            p.moq,
+            p.stock_available,
+            p.currency,
+            supp_name,
+            tier,
+            getattr(p, "is_demo", False),
+        ])
+
+    output.seek(0)
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=TradeX_Products_Catalog.csv"},
     )

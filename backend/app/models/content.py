@@ -146,6 +146,12 @@ class Review(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     rating: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    status: Mapped[str] = mapped_column(String(50), default="approved", nullable=False, index=True)
+    moderation_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
 
 
 class SavedItem(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -171,6 +177,7 @@ class CopilotConversation(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     title: Mapped[str] = mapped_column(String(255), default="New Trade Inquiry", nullable=False)
+    search_state: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     messages: Mapped[List["CopilotMessage"]] = relationship(
         "CopilotMessage", back_populates="conversation", cascade="all, delete-orphan", order_by="CopilotMessage.created_at"
@@ -191,6 +198,8 @@ class CopilotMessage(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     sources: Mapped[Optional[List[dict]]] = mapped_column(JSONB, nullable=True)
     suggested_actions: Mapped[Optional[List[dict]]] = mapped_column(JSONB, nullable=True)
+    cards: Mapped[Optional[List[dict]]] = mapped_column(JSONB, nullable=True)
+    ai_meta: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     conversation: Mapped["CopilotConversation"] = relationship("CopilotConversation", back_populates="messages")
 

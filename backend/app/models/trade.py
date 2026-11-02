@@ -43,6 +43,9 @@ class RFQ(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     required_certifications: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
     attachments: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    share_token: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    share_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     buyer: Mapped["Buyer"] = relationship("Buyer")
     items: Mapped[List["RFQItem"]] = relationship("RFQItem", back_populates="rfq", cascade="all, delete-orphan")
@@ -133,6 +136,7 @@ class Order(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     payment_terms: Mapped[str] = mapped_column(String(100), default="LC at sight, 30% advance", nullable=False)
     shipping_address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     documents: Mapped[Optional[list]] = mapped_column(JSONB, default=list, nullable=True)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
 
     rfq: Mapped[Optional["RFQ"]] = relationship("RFQ")
     quotation: Mapped[Optional["Quotation"]] = relationship("Quotation")
@@ -216,6 +220,7 @@ class Shipment(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     estimated_delivery: Mapped[date] = mapped_column(Date, nullable=False)
     actual_delivery: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(50), default="in_transit", nullable=False)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
 
     order: Mapped["Order"] = relationship("Order", back_populates="shipments")
     events: Mapped[List["ShipmentEvent"]] = relationship("ShipmentEvent", back_populates="shipment", cascade="all, delete-orphan")

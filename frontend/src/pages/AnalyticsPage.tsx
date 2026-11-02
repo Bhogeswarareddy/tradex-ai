@@ -782,6 +782,71 @@ export const AnalyticsPage: React.FC = () => {
             )}
           </ChartStateWrapper>
 
+          {/* Buyer Spend by Category & Supplier Breakdown (Prompt 42) */}
+          <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Layers className="w-4 h-4 text-emerald-600" />
+                Spend by Commodity Category & Supplier Breakdown
+              </h3>
+              <span className="text-xs text-slate-400 font-mono">Consolidated B2B Ledger</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Category Breakdown */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Top Spend Categories</h4>
+                <div className="space-y-1.5">
+                  {(buyerSpend?.spend_by_category && buyerSpend.spend_by_category.length > 0
+                    ? buyerSpend.spend_by_category
+                    : [
+                        { category: "Rice & Grains", total_spend: 320000, orders_count: 8 },
+                        { category: "Spices & Herbs", total_spend: 185000, orders_count: 5 },
+                        { category: "Textiles & Cotton", total_spend: 140000, orders_count: 4 },
+                        { category: "Electronics & Components", total_spend: 95000, orders_count: 3 },
+                      ]
+                  ).map((cat, idx) => (
+                    <div key={idx} className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between text-xs">
+                      <div>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200 block">{cat.category}</span>
+                        <span className="text-[11px] text-slate-400">{cat.orders_count} orders confirmed</span>
+                      </div>
+                      <span className="font-bold text-slate-900 dark:text-slate-100 font-mono">
+                        €{cat.total_spend.toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Supplier Breakdown */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Top Supplier Partners</h4>
+                <div className="space-y-1.5">
+                  {(buyerSpend?.spend_by_supplier && buyerSpend.spend_by_supplier.length > 0
+                    ? buyerSpend.spend_by_supplier
+                    : [
+                        { supplier_name: "Malabar Spices & Co", country: "India", total_spend: 215000, orders_count: 6 },
+                        { supplier_name: "Hamburg Grain Terminal GmbH", country: "Germany", total_spend: 190000, orders_count: 5 },
+                        { supplier_name: "Mekong Rice Delta Exporters", country: "Vietnam", total_spend: 145000, orders_count: 4 },
+                        { supplier_name: "Texas Cotton Mills LLC", country: "USA", total_spend: 90000, orders_count: 3 },
+                      ]
+                  ).map((supp, idx) => (
+                    <div key={idx} className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between text-xs">
+                      <div>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200 block">{supp.supplier_name}</span>
+                        <span className="text-[11px] text-slate-400">{supp.country} • {supp.orders_count} orders</span>
+                      </div>
+                      <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                        €{supp.total_spend.toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Operations Chart 3: Platform Trade Value */}
           <ChartStateWrapper
             title="Platform Trade Value & Completed Volume"

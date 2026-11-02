@@ -11,15 +11,17 @@ from sqlalchemy import desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.ai.structured import generate_structured
 from app.api.deps import require_role
 from app.core.db import get_db
 from app.core.errors import BadRequestError, NotFoundError
 from app.models.ai_ops import AuditLog, SystemSetting
 from app.models.catalog import IndexJob, Product
 from app.services.indexer import CURRENT_EMBEDDING_MODEL, process_index_job, reindex_all
-from app.models.content import Document
+from app.models.content import Document, Review
 from app.models.identity import Buyer, Company, Supplier, User
 from app.models.trade import Order, RFQ
+from app.schemas.ai_features import ModerationSummaryRequest, ModerationSummaryResponse
 
 logger = logging.getLogger(__name__)
 
@@ -458,6 +460,66 @@ async def moderate_product(
     await db.commit()
 
     return {"product_id": str(product.id), "status": payload.action, "is_active": product.is_active}
+
+
+@router.post("/moderation/ai-summary", response_model=ModerationSummaryResponse, summary="AI moderation assessment of flagged content")
+async def get_moderation_ai_summary(
+    payload: ModerationSummaryRequest,
+    current_user: User = Depends(require_role("admin")),
+    db: AsyncSession = Depends(get_db),
+) -> ModerationSummaryResponse:
+    """Provides objective compliance risk assessment and recommended action for human administrator review."""
+    content_info = (
+        f"Entity Type: {payload.entity_type}\n"
+        f"Entity ID: {payload.entity_id}\n"
+        f"Reported Reason: {payload.flag_reason or 'Routine compliance audit'}"
+    )
+
+    if payload.entity_type == "product":
+        try:
+            p_uuid = uuid.UUID(payload.entity_id)
+            p = (await db.execute(select(Product).where(Product.id == p_uuid))).scalar_one_or_none()
+            if p:
+                content_info += (
+                    f"\nProduct Name: {p.name}\n"
+                    f"Description: {p.description or 'No description'}\n"
+                    f"Origin: {p.origin_country}\n"
+                    f"HS Code: {p.hs_code}"
+                )
+        except Exception:
+            pass
+    elif payload.entity_type == "document":
+        try:
+            d_uuid = uuid.UUID(payload.entity_id)
+            d = (await db.execute(select(Document).where(Document.id == d_uuid))).scalar_one_or_none()
+            if d:
+                content_info += (
+                    f"\nDocument Title: {d.title}\n"
+                    f"Doc Type: {d.doc_type}\n"
+                    f"Original Filename: {d.original_filename}"
+                )
+        except Exception:
+            pass
+    elif payload.entity_type == "rfq":
+        try:
+            r_uuid = uuid.UUID(payload.entity_id)
+            r = (await db.execute(select(RFQ).where(RFQ.id == r_uuid))).scalar_one_or_none()
+            if r:
+                content_info += (
+                    f"\nRFQ Title: {r.title}\n"
+                    f"Destination: {r.destination_country}\n"
+                    f"Budget: {r.target_price} {r.currency}"
+                )
+        except Exception:
+            pass
+
+    return await generate_structured(
+        prompt_name="moderation_summary.v1",
+        variables={"flagged_context": content_info},
+        pydantic_model=ModerationSummaryResponse,
+        session=db,
+        feature_name="moderation",
+    )
 
 
 # --- Prompt 15: Product Approval Workflow Endpoints ---
@@ -1078,3 +1140,155 @@ async def trigger_reindexing(
     result = await reindex_all(db)
     return result
 
+
+
+
+# ---------------------------------------------------------------------------
+# Review Moderation Queue & Supplier KYC Onboarding
+# ---------------------------------------------------------------------------
+
+class ReviewModerateRequest(BaseModel):
+    status: str  # approved, rejected
+    moderation_note: Optional[str] = None
+
+
+class SupplierKycReviewRequest(BaseModel):
+    verification_tier: str  # gold, silver, bronze
+    kyc_status: str  # verified, rejected, pending
+    tier_reason: Optional[str] = None
+    kyc_documents: Optional[Dict[str, Any]] = None
+
+
+@router.get("/reviews/queue", summary="Admin Review Moderation Queue")
+async def get_reviews_moderation_queue(
+    status_filter: Optional[str] = Query("all"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    stmt = (
+        select(Review)
+        .options(
+            selectinload(Review.buyer).selectinload(Buyer.company),
+            selectinload(Review.supplier).selectinload(Supplier.company),
+        )
+        .order_by(Review.created_at.desc())
+    )
+    if status_filter and status_filter != "all":
+        stmt = stmt.where(Review.status == status_filter)
+
+    count_stmt = select(func.count(Review.id))
+    if status_filter and status_filter != "all":
+        count_stmt = count_stmt.where(Review.status == status_filter)
+    total = (await db.execute(count_stmt)).scalar() or 0
+
+    stmt = stmt.offset((page - 1) * page_size).limit(page_size)
+    res = await db.execute(stmt)
+    records = res.scalars().all()
+
+    items = []
+    for r in records:
+        items.append({
+            "id": str(r.id),
+            "supplier_id": str(r.supplier_id),
+            "supplier_name": r.supplier.company.name if r.supplier and r.supplier.company else "Supplier",
+            "buyer_id": str(r.buyer_id),
+            "buyer_name": r.buyer.company.name if r.buyer and r.buyer.company else "Buyer",
+            "order_id": str(r.order_id) if r.order_id else None,
+            "rating": r.rating,
+            "title": r.title,
+            "comment": r.comment,
+            "status": r.status,
+            "moderation_note": r.moderation_note,
+            "created_at": r.created_at.strftime("%Y-%m-%d %H:%M:%S") if r.created_at else None,
+            "is_demo": getattr(r, "is_demo", False),
+        })
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+@router.patch("/reviews/{review_id}/moderate", summary="Approve or reject review in moderation queue")
+async def moderate_review(
+    review_id: uuid.UUID,
+    payload: ReviewModerateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    review = await db.get(Review, review_id)
+    if not review:
+        raise NotFoundError("Review not found")
+
+    review.status = payload.status
+    review.moderation_note = payload.moderation_note
+
+    # Update supplier rating dynamically based on approved reviews
+    supplier = await db.get(Supplier, review.supplier_id)
+    if supplier:
+        avg_res = await db.execute(
+            select(func.avg(Review.rating), func.count(Review.id))
+            .where(Review.supplier_id == supplier.id)
+            .where(Review.status == "approved")
+        )
+        avg_r, count_r = avg_res.first()
+        if avg_r:
+            supplier.rating = round(float(avg_r), 2)
+            supplier.trust_score = round(min(5.0, (supplier.rating * 0.7) + (float(supplier.on_time_rate) / 100.0 * 1.5)), 2)
+
+    await db.commit()
+    await db.refresh(review)
+
+    return {
+        "status": "success",
+        "review_id": str(review.id),
+        "new_status": review.status,
+        "moderation_note": review.moderation_note,
+    }
+
+
+@router.post("/suppliers/{supplier_id}/kyc/review", summary="Admin review and tier upgrade for supplier")
+async def review_supplier_kyc(
+    supplier_id: uuid.UUID,
+    payload: SupplierKycReviewRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
+    supplier = await db.get(Supplier, supplier_id)
+    if not supplier:
+        raise NotFoundError("Supplier not found")
+
+    supplier.verification_tier = payload.verification_tier
+    supplier.kyc_status = payload.kyc_status
+    if payload.tier_reason:
+        supplier.tier_reason = payload.tier_reason
+    if payload.kyc_documents:
+        supplier.kyc_documents = payload.kyc_documents
+
+    # Audit log
+    audit = AuditLog(
+        user_id=current_user.id,
+        action="supplier_tier_updated",
+        entity_type="supplier",
+        entity_id=str(supplier.id),
+        details={
+            "new_tier": payload.verification_tier,
+            "kyc_status": payload.kyc_status,
+            "reason": payload.tier_reason,
+        },
+    )
+    db.add(audit)
+    await db.commit()
+    await db.refresh(supplier)
+
+    return {
+        "status": "success",
+        "supplier_id": str(supplier.id),
+        "verification_tier": supplier.verification_tier,
+        "kyc_status": supplier.kyc_status,
+        "tier_reason": supplier.tier_reason,
+    }

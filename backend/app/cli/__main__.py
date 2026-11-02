@@ -493,6 +493,13 @@ def main():
     subparsers.add_parser("ai-eval", help="Benchmark AI intent classification accuracy on fixtures/ai_utterances.json")
     subparsers.add_parser("audit-catalogue", help="Run comprehensive catalogue and supplier integrity audit")
 
+    scale_parser = subparsers.add_parser("seed-scale", help="Seed enterprise scale demo dataset with is_demo=True")
+    scale_parser.add_argument("--suppliers", type=int, default=60, help="Number of suppliers (default: 60)")
+    scale_parser.add_argument("--buyers", type=int, default=150, help="Number of buyers (default: 150)")
+    scale_parser.add_argument("--products", type=int, default=1500, help="Number of products (default: 1500)")
+    scale_parser.add_argument("--rfqs", type=int, default=300, help="Number of RFQs (default: 300)")
+    scale_parser.add_argument("--orders", type=int, default=200, help="Number of orders (default: 200)")
+
     args = parser.parse_args()
 
     if args.command == "create-admin":
@@ -505,6 +512,22 @@ def main():
         sys.exit(ai_eval_command())
     elif args.command == "audit-catalogue":
         sys.exit(audit_catalogue_command())
+    elif args.command == "seed-scale":
+        from app.scripts.seed_scale import seed_scale_data
+        session = SyncSessionLocal()
+        try:
+            res = seed_scale_data(
+                session=session,
+                num_suppliers=args.suppliers,
+                num_buyers=args.buyers,
+                num_products=args.products,
+                num_rfqs=args.rfqs,
+                num_orders=args.orders,
+            )
+            print(f"[CLI SUCCESS] Scale dataset generated: {res}")
+            sys.exit(0)
+        finally:
+            session.close()
     else:
         parser.print_help()
         sys.exit(1)

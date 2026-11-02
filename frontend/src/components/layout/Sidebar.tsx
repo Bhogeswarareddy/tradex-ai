@@ -15,6 +15,7 @@ import {
   MessageSquare,
   Bookmark,
   Settings,
+  Calculator,
   Bot,
   Hexagon,
   Store,
@@ -202,6 +203,26 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavClick, className = "" }) 
               </Link>
             );
           })}
+
+          <div className="pt-2 mt-2 border-t border-white/10">
+            <Link
+              to="/landed-cost"
+              onClick={onNavClick}
+              className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all group ${
+                location.pathname === "/landed-cost"
+                  ? "bg-[#2563EB] text-white shadow-md shadow-blue-500/20 font-semibold"
+                  : "text-slate-300 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <Calculator className="w-4 h-4 shrink-0 text-emerald-400 group-hover:text-emerald-300" />
+                <span className="truncate">Landed Cost Calc</span>
+              </div>
+              <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                Sim
+              </span>
+            </Link>
+          </div>
         </nav>
       </div>
 

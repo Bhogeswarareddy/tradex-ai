@@ -19,6 +19,7 @@ import { NegotiationTimeline } from "../features/communication";
 import { Button } from "../components/ui/Button";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { ErrorState } from "../components/ErrorState";
+import { ActivityTimeline } from "../components/common/ActivityTimeline";
 import { useAuth } from "../features/auth";
 
 export const RfqDetailPage: React.FC = () => {
@@ -283,32 +284,7 @@ export const RfqDetailPage: React.FC = () => {
 
       {/* Tab 5: Timeline */}
       {activeTab === "timeline" && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
-          <h3 className="text-sm font-bold text-slate-800">Contract Lifecycle Timeline</h3>
-          <div className="space-y-4 text-xs">
-            <div className="flex items-start gap-3">
-              <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold flex-shrink-0">✓</div>
-              <div>
-                <p className="font-bold text-slate-800">RFQ Published</p>
-                <p className="text-slate-500">Requirements broadcast to 5 verified exporters in network</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold flex-shrink-0">✓</div>
-              <div>
-                <p className="font-bold text-slate-800">5 Quotations Received</p>
-                <p className="text-slate-500">All supplier bids processed and AI scored</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-6 h-6 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center font-bold flex-shrink-0">3</div>
-              <div>
-                <p className="font-bold text-slate-800">Evaluation & Award</p>
-                <p className="text-slate-500">Pending buyer final award selection</p>
-              </div>
-            </div>
-          </div>
-        </div>
+        <ActivityTimeline entityType="rfq" entityId={rfq.id} />
       )}
 
       {/* Submit Quote Modal (for Suppliers) */}

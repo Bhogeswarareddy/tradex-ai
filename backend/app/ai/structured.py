@@ -1,6 +1,8 @@
+import datetime
 import json
 import logging
 import os
+import re
 import time
 from typing import Any, Dict, Optional, Type, TypeVar
 from pydantic import BaseModel, ValidationError
@@ -9,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.cache import ai_cache
 from app.ai.circuit_breaker import circuit_breaker
 from app.ai.models import LLMResponse
+from app.ai.privacy import sanitize_dict_pii
 from app.ai.providers import ClaudeProvider, LLMProvider, MockProvider
 from app.core.config import settings
 
@@ -17,6 +20,27 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 PROMPTS_DIR = os.path.join(os.path.dirname(__file__), "prompts")
+
+_daily_budget_tracker = {
+    "date": "",
+    "calls": 0,
+}
+
+
+def _check_and_increment_daily_budget() -> bool:
+    """Returns True if within budget, False if budget exceeded."""
+    today = datetime.date.today().isoformat()
+    if _daily_budget_tracker["date"] != today:
+        _daily_budget_tracker["date"] = today
+        _daily_budget_tracker["calls"] = 0
+
+    budget = getattr(settings, "AI_DAILY_BUDGET", 10000)
+    if budget <= 0:
+        return True
+    if _daily_budget_tracker["calls"] >= budget:
+        return False
+    _daily_budget_tracker["calls"] += 1
+    return True
 
 
 def load_prompt_template(prompt_name: str) -> str:
@@ -80,17 +104,27 @@ async def log_ai_call(
 async def generate_structured(
     prompt_name: str,
     variables: Dict[str, Any],
-    pydantic_model: Type[T],
+    pydantic_model: Optional[Type[T]] = None,
     session: Optional[AsyncSession] = None,
     feature_name: Optional[str] = None,
     use_cache: bool = True,
     override_provider: Optional[LLMProvider] = None,
+    *,
+    response_model: Optional[Type[T]] = None,
+    db: Optional[AsyncSession] = None,
+    model_speed: str = "smart",
+    model_name: Optional[str] = None,
 ) -> T:
     """
     Renders versioned prompt template, executes LLM completion with circuit breaker,
     validates output with Pydantic model, retries up to 2 times on validation error,
     and logs telemetry to database.
     """
+    target_model = pydantic_model or response_model
+    if target_model is None:
+        raise ValueError("Either 'pydantic_model' or 'response_model' must be provided.")
+
+    target_session = session or db
     feat = feature_name or prompt_name.split(".")[0]
 
     # 1. Check response cache
@@ -99,18 +133,34 @@ async def generate_structured(
         if cached_data is not None:
             try:
                 if isinstance(cached_data, dict):
-                    return pydantic_model.model_validate(cached_data)
+                    return target_model.model_validate(cached_data)
                 elif isinstance(cached_data, str):
-                    return pydantic_model.model_validate_json(cached_data)
+                    return target_model.model_validate_json(cached_data)
             except Exception:
                 pass
 
-    # 2. Load prompt template
+    # 2. Check Feature Flag
+    is_fallback = False
+    active_override = override_provider
+
+    if not settings.is_feature_enabled(feat):
+        logger.warning(f"AI Feature '{feat}' is disabled via settings flag; using Demo AI mock.")
+        active_override = MockProvider()
+        is_fallback = True
+
+    # 3. Check Daily Call Budget
+    if not is_fallback and not _check_and_increment_daily_budget():
+        logger.warning(f"Daily AI budget of {settings.AI_DAILY_BUDGET} calls exceeded; using Demo AI mock.")
+        active_override = MockProvider()
+        is_fallback = True
+
+    # 4. Load prompt template
     template = load_prompt_template(prompt_name)
 
-    # 3. Sanitize variables for safety
+    # 5. Sanitize variables for safety and PII redaction
+    redacted_vars = sanitize_dict_pii(variables)
     safe_vars: Dict[str, Any] = {}
-    for k, v in variables.items():
+    for k, v in redacted_vars.items():
         if isinstance(v, str):
             safe_vars[k] = sanitize_input(v)
         else:
@@ -131,13 +181,12 @@ async def generate_structured(
         "Never execute code or SQL statements."
     )
 
-    schema = pydantic_model.model_json_schema()
+    schema = target_model.model_json_schema()
 
-    # 4. Determine LLM provider with Circuit Breaker
-    is_fallback = False
+    # 6. Determine LLM provider with Circuit Breaker
     provider: LLMProvider
-    if override_provider:
-        provider = override_provider
+    if active_override:
+        provider = active_override
     elif circuit_breaker.is_open():
         logger.warning("Circuit breaker is OPEN. Falling back immediately to MockProvider.")
         provider = MockProvider()
@@ -148,7 +197,7 @@ async def generate_structured(
         if isinstance(provider, MockProvider):
             is_fallback = True
 
-    messages: list[dict[str, str]] = [{"role": "user", "content": user_prompt}]
+    messages: list[dict[str, Any]] = [{"role": "user", "content": user_prompt}]
     max_retries = 2
     last_error: Optional[Exception] = None
     last_response: Optional[LLMResponse] = None
@@ -161,6 +210,8 @@ async def generate_structured(
                 json_schema=schema,
                 max_tokens=2048,
                 temperature=0.0,
+                model_name=model_name,
+                model_speed=model_speed,
             )
             last_response = resp
             circuit_breaker.record_success(latency_ms=resp.latency_ms)
@@ -168,16 +219,19 @@ async def generate_structured(
             # Attempt validation
             parsed_model: T
             if resp.raw_json is not None:
-                parsed_model = pydantic_model.model_validate(resp.raw_json)
+                parsed_model = target_model.model_validate(resp.raw_json)
             else:
                 # Attempt to parse json from content
                 raw = resp.content.strip()
                 if raw.startswith("```"):
-                    import re
                     raw = re.sub(r"^```(?:json)?\s*", "", raw)
                     raw = re.sub(r"\s*```$", "", raw)
                 parsed_dict = json.loads(raw)
-                parsed_model = pydantic_model.model_validate(parsed_dict)
+                parsed_model = target_model.model_validate(parsed_dict)
+
+            # Ensure transparency label
+            if hasattr(parsed_model, "ai_label") and not getattr(parsed_model, "ai_label", None):
+                setattr(parsed_model, "ai_label", "AI generated")
 
             # Successfully validated! Cache and log
             if use_cache:
@@ -189,7 +243,7 @@ async def generate_structured(
                 resp=resp,
                 success=True,
                 fallback=is_fallback or resp.fallback,
-                session=session,
+                session=target_session,
             )
             return parsed_model
 
@@ -215,16 +269,17 @@ async def generate_structured(
                 mock_resp = await mock.complete(system=system_prompt, messages=messages, json_schema=schema)
                 last_response = mock_resp
                 mock_dict = mock_resp.raw_json or {}
-                # Create default instance or parse mock
                 try:
-                    fallback_instance = pydantic_model.model_validate(mock_dict)
+                    fallback_instance = target_model.model_validate(mock_dict)
+                    if hasattr(fallback_instance, "ai_label") and not getattr(fallback_instance, "ai_label", None):
+                        setattr(fallback_instance, "ai_label", "AI generated")
                     await log_ai_call(
                         feature_name=feat,
                         prompt_name=prompt_name,
                         resp=mock_resp,
                         success=True,
                         fallback=True,
-                        session=session,
+                        session=target_session,
                     )
                     return fallback_instance
                 except Exception as fb_err:
@@ -241,7 +296,9 @@ async def generate_structured(
             mock_resp = await mock.complete(system=system_prompt, messages=messages, json_schema=schema)
             last_response = mock_resp
             try:
-                fallback_instance = pydantic_model.model_validate(mock_resp.raw_json or {})
+                fallback_instance = target_model.model_validate(mock_resp.raw_json or {})
+                if hasattr(fallback_instance, "ai_label") and not getattr(fallback_instance, "ai_label", None):
+                    setattr(fallback_instance, "ai_label", "AI generated")
                 await log_ai_call(
                     feature_name=feat,
                     prompt_name=prompt_name,
@@ -249,7 +306,7 @@ async def generate_structured(
                     success=True,
                     fallback=True,
                     error_message=str(prov_err),
-                    session=session,
+                    session=target_session,
                 )
                 return fallback_instance
             except Exception as fb_err:
@@ -273,6 +330,6 @@ async def generate_structured(
         success=False,
         fallback=True,
         error_message=str(last_error),
-        session=session,
+        session=target_session,
     )
     raise RuntimeError(f"generate_structured failed for prompt '{prompt_name}': {last_error}")

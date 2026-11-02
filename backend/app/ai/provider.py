@@ -116,54 +116,68 @@ class PriorityFallbackChainProvider(LLMProvider):
                 configured.append("ollama")
         return configured
 
-    def _get_provider_instance(self, name: str) -> Optional[LLMProvider]:
-        if name in self._provider_cache:
-            return self._provider_cache[name]
+    def _get_provider_instance(self, name: str, model_name: Optional[str] = None) -> Optional[LLMProvider]:
+        cache_key = f"{name}:{model_name}" if model_name else name
+        if cache_key in self._provider_cache:
+            return self._provider_cache[cache_key]
 
         instance: Optional[LLMProvider] = None
         if name == "groq" and settings.GROQ_API_KEY:
+            groq_m = model_name or getattr(settings, "AI_MODEL_SMART", "llama-3.3-70b-versatile")
             instance = GroqProvider(
                 api_key=settings.GROQ_API_KEY,
-                model_name=settings.AI_MODEL or settings.GROQ_MODEL or "llama-3.3-70b-versatile",
+                model_name=groq_m,
                 timeout_seconds=settings.AI_TIMEOUT_SECONDS,
             )
         elif name == "openrouter" and settings.OPENROUTER_API_KEY:
             instance = OpenRouterProvider(
                 api_key=settings.OPENROUTER_API_KEY,
-                model_name=settings.OPENROUTER_MODEL or settings.AI_MODEL,
+                model_name=model_name or settings.OPENROUTER_MODEL or settings.AI_MODEL,
                 timeout_seconds=settings.AI_TIMEOUT_SECONDS,
             )
         elif name == "gemini" and settings.GEMINI_API_KEY:
             instance = GeminiProvider(
                 api_key=settings.GEMINI_API_KEY,
-                model_name=settings.GEMINI_MODEL or settings.AI_MODEL,
+                model_name=model_name or settings.GEMINI_MODEL or settings.AI_MODEL,
                 timeout_seconds=settings.AI_TIMEOUT_SECONDS,
             )
         elif name == "anthropic" and settings.ANTHROPIC_API_KEY:
             instance = ClaudeProvider(
                 api_key=settings.ANTHROPIC_API_KEY,
-                model_name=settings.ANTHROPIC_MODEL,
+                model_name=model_name or settings.ANTHROPIC_MODEL,
                 timeout_seconds=settings.AI_TIMEOUT_SECONDS,
             )
         elif name == "ollama":
             instance = OllamaProvider(
                 base_url=settings.OLLAMA_BASE_URL,
-                model_name=settings.OLLAMA_MODEL or settings.AI_MODEL,
+                model_name=model_name or settings.OLLAMA_MODEL or settings.AI_MODEL,
                 timeout_seconds=settings.AI_TIMEOUT_SECONDS,
             )
 
         if instance:
-            self._provider_cache[name] = instance
+            self._provider_cache[cache_key] = instance
         return instance
 
     async def complete(
         self,
         system: str,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         json_schema: Optional[Dict[str, Any]] = None,
         max_tokens: int = 2048,
         temperature: float = 0.0,
+        model_name: Optional[str] = None,
+        model_speed: Optional[str] = "smart",
     ) -> LLMResponse:
+        # Resolve target model from speed if not explicitly provided
+        effective_model = model_name
+        if not effective_model:
+            if model_speed == "fast":
+                effective_model = getattr(settings, "AI_MODEL_FAST", "llama-3.1-8b-instant")
+            elif model_speed == "vision":
+                effective_model = getattr(settings, "AI_MODEL_VISION", "llama-3.2-11b-vision-preview")
+            else:
+                effective_model = getattr(settings, "AI_MODEL_SMART", "llama-3.3-70b-versatile")
+
         # 1. If explicit AI_PROVIDER is set to 'mock' or 'deterministic_fallback', use Mock immediately
         prov_override = (settings.AI_PROVIDER or "").lower()
         if prov_override in ["mock", "deterministic_fallback"]:
@@ -187,7 +201,7 @@ class PriorityFallbackChainProvider(LLMProvider):
                 failure_reasons.append(f"{prov_name}: circuit breaker open")
                 continue
 
-            provider = self._get_provider_instance(prov_name)
+            provider = self._get_provider_instance(prov_name, model_name=effective_model)
             if not provider:
                 continue
 
@@ -201,6 +215,7 @@ class PriorityFallbackChainProvider(LLMProvider):
                         json_schema=json_schema,
                         max_tokens=max_tokens,
                         temperature=temperature,
+                        model_name=effective_model,
                     )
                     # If provider returned a fallback mock inside its own catch, treat as failure
                     if getattr(resp, "is_mock", False) or getattr(resp, "fallback", False):

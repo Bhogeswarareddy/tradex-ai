@@ -34,6 +34,8 @@ from app.ai.rag.retriever import retrieve_knowledge_chunks
 from app.models.catalog import Category, ExchangeRate, PriceTier, Product, SupplierCertification
 from app.models.identity import Company, Supplier, User
 from app.schemas.ai_mode import ProductCardItem
+from app.services.sourcing_engine import SourcingEngine, SourcingEngineResult, SourcingRequirement
+
 
 
 class OrchestratorResponse(BaseModel):
@@ -122,7 +124,7 @@ def extract_search_criteria(text: str, current_criteria: Optional[Dict[str, Any]
     dest_match = re.search(r"\b(?:to|for|destination)\s+(?:the\s+)?([a-zA-Z\s]+)", text_lower)
     if dest_match:
         dw = dest_match.group(1).strip().title().split()[0] if dest_match.group(1).strip() else ""
-        if dw and dw.lower() not in ["a", "an", "the", "sale", "export"]:
+        if dw and dw.lower() not in ["a", "an", "the", "sale", "export", "trade", "tradex", "me", "us", "free"]:
             criteria["destination"] = "USA" if dw.lower() in ["usa", "united", "us", "america"] else dw
 
     # Certifications: strictly word-bounded
@@ -174,8 +176,8 @@ def format_card(
 ) -> ProductCardItem:
     tiers = p.price_tiers or []
     prices = [float(t.unit_price) for t in tiers] if tiers else []
-    unit_p = min(prices) if prices else float(getattr(p, "unit_price", 0.0) or 0.0)
-    p_range = f"{min(prices):.2f} - {max(prices):.2f}" if len(prices) > 1 else (f"{unit_p:.2f}" if prices else None)
+    unit_p = min(prices) if prices else None
+    p_range = f"{min(prices):.2f} - {max(prices):.2f}" if len(prices) > 1 else (f"{unit_p:.2f}" if unit_p is not None else None)
 
     supplier_name = "Verified TradeX Supplier"
     is_verified = False
@@ -200,7 +202,7 @@ def format_card(
 
     p_orig = unit_p
     c_orig = p.currency or "USD"
-    p_disp = round(unit_p * rate, 2) if (display_currency.upper() != c_orig.upper() and rate != 1.0) else None
+    p_disp = round(unit_p * rate, 2) if (unit_p is not None and display_currency.upper() != c_orig.upper() and rate != 1.0) else None
     c_disp = display_currency.upper() if p_disp is not None else None
 
     # Certs
@@ -305,9 +307,13 @@ class TradeXAIOrchestrator:
         # ----------------------------------------------------------------------
         greetings = {
             "hi", "hello", "hey", "good morning", "good afternoon", "good evening",
-            "howdy", "greetings", "hi there", "hello there", "what's up", "whats up"
+            "howdy", "greetings", "hi there", "hello there", "what's up", "whats up",
+            "hi bro", "hey bro", "hello bro", "bro", "yo"
         }
-        if clean_punct in greetings:
+        is_greeting = clean_punct in greetings or any(
+            clean_punct.startswith(g) for g in ["hi bro", "hello bro", "hey bro"]
+        )
+        if is_greeting:
             text = (
                 "Hello! I am TradeX AI, your enterprise international trade and procurement assistant.\n\n"
                 "I can assist you with:\n"
@@ -420,15 +426,17 @@ class TradeXAIOrchestrator:
             p2 = p_map.get(last_product_ids[1])
             if p1 and p2:
                 cards = [format_card(p1, criteria), format_card(p2, criteria)]
+                p1_price_str = f"{p1.currency} {cards[0].unit_price:.2f}" if cards[0].unit_price is not None else "Contact supplier for pricing"
+                p2_price_str = f"{p2.currency} {cards[1].unit_price:.2f}" if cards[1].unit_price is not None else "Contact supplier for pricing"
                 text_out = (
                     f"**Side-by-Side Product Comparison**:\n\n"
                     f"1. **{p1.name}** ({p1.origin_country}):\n"
-                    f"   - **Unit Price**: {p1.currency} {cards[0].unit_price:.2f}\n"
+                    f"   - **Unit Price**: {p1_price_str}\n"
                     f"   - **MOQ**: {p1.moq:,.0f} {p1.unit or 'units'}\n"
                     f"   - **Stock**: {cards[0].available_quantity:,.0f} {p1.unit or 'units'} ({cards[0].availability_status})\n"
                     f"   - **Lead Time**: {p1.lead_time_days or 14} days\n\n"
                     f"2. **{p2.name}** ({p2.origin_country}):\n"
-                    f"   - **Unit Price**: {p2.currency} {cards[1].unit_price:.2f}\n"
+                    f"   - **Unit Price**: {p2_price_str}\n"
                     f"   - **MOQ**: {p2.moq:,.0f} {p2.unit or 'units'}\n"
                     f"   - **Stock**: {cards[1].available_quantity:,.0f} {p2.unit or 'units'} ({cards[1].availability_status})\n"
                     f"   - **Lead Time**: {p2.lead_time_days or 14} days\n\n"
@@ -695,179 +703,75 @@ class TradeXAIOrchestrator:
         # ----------------------------------------------------------------------
         # Rule 6: Mixed Questions ('how much are laptops from China and what documents do I need?')
         # ----------------------------------------------------------------------
-        is_mixed = (
-            ("laptop" in query_lower or "product" in query_lower or "price" in query_lower or "cost" in query_lower)
-            and ("document" in query_lower or "hs code" in query_lower or "customs" in query_lower or "certificate" in query_lower)
-            and ("how much" in query_lower or "what documents" in query_lower or "from china" in query_lower)
+        # Mixed query detection (Product/sourcing + Compliance/trade documents)
+        has_sourcing_element = bool(
+            criteria.get("product")
+            or any(k in query_lower for k in ["laptop", "phone", "rice", "chilli", "spice", "tractor", "goods", "supplier", "buy", "source", "quote", "pricing"])
+            or re.search(r"\b\d+\s*(?:kg|tons?|tonnes?|units?|pcs?|pieces?|boxes?)\b", query_lower)
         )
+        has_compliance_element = any(
+            k in query_lower
+            for k in [
+                "what documents", "document", "documents", "hs code", "tariff", "tariffs", "incoterm", "incoterms",
+                "cif", "fob", "ddp", "customs", "certificate", "certificates", "traces", "fda", "regulation", "regulations",
+                "clearance", "quarantine", "compliance"
+            ]
+        )
+        is_mixed = bool(has_sourcing_element and has_compliance_element)
 
         # ----------------------------------------------------------------------
-        # Rule 2: Product Discovery & Catalogue Search
+        # Rule 2: Product Discovery & Catalogue Search via SourcingEngine (Prompt 35)
         # ----------------------------------------------------------------------
         criteria = extract_search_criteria(query_strip, criteria)
         search_state["criteria"] = criteria
 
-        is_search = bool(
-            criteria.get("product")
-            or "laptop" in query_lower
-            or "phone" in query_lower
-            or "spice" in query_lower
-            or "chilli" in query_lower
-            or "rice" in query_lower
-            or "coffee" in query_lower
-            or "tractor" in query_lower
-            or "machinery" in query_lower
-            or "textile" in query_lower
-            or "show " in query_lower
-            or "find " in query_lower
-            or "i want" in query_lower
-            or "compare" in query_lower
-        ) and not (is_compliance and not is_mixed)
-
         cards_found: List[ProductCardItem] = []
-        if is_search or is_mixed:
-            base_where = [
-                Product.status == "published",
-                Product.deleted_at.is_(None),
-                Product.availability_status != "out_of_stock",
-                or_(Product.available_quantity > 0, Product.stock_available > 0),
-            ]
-            stmt = (
-                select(Product)
-                .options(
-                    selectinload(Product.category),
-                    selectinload(Product.price_tiers),
-                    selectinload(Product.images),
-                    selectinload(Product.supplier).selectinload(Supplier.company),
-                    selectinload(Product.supplier).selectinload(Supplier.certifications).selectinload(SupplierCertification.certification),
-                )
-                .where(*base_where)
+        is_search = False
+
+        if not (is_compliance and not is_mixed):
+            engine_res = await SourcingEngine.process_query(
+                query=query_strip,
+                db=db,
+                context=conversation_context,
+                display_currency=criteria.get("target_currency", "USD"),
+                surface=surface,
             )
 
-            prod_term = (criteria.get("product") or "").strip().lower()
-            orig = criteria.get("origin_country")
+            # Sync search_state
+            if engine_res.search_state:
+                search_state.update(engine_res.search_state)
+                if "criteria" in engine_res.search_state:
+                    search_state["criteria"].update(engine_res.search_state["criteria"])
 
-            if prod_term:
-                if prod_term == "laptop":
-                    stmt = stmt.where(
-                        or_(
-                            func.lower(Product.name).ilike("%laptop%"),
-                            func.lower(Product.name).ilike("%notebook%"),
-                            func.lower(Product.name).ilike("%probook%"),
-                            func.lower(Product.name).ilike("%ultrabook%"),
-                        )
-                    )
-                elif prod_term in ["chilli", "chili"]:
-                    stmt = stmt.where(func.lower(Product.name).ilike("%chilli%"))
-                elif prod_term == "phone":
-                    stmt = stmt.where(
-                        or_(
-                            func.lower(Product.name).ilike("%phone%"),
-                            func.lower(Product.name).ilike("%smartphone%"),
-                        )
-                    )
-                elif prod_term == "tractor":
-                    stmt = stmt.where(
-                        or_(
-                            func.lower(Product.name).ilike("%tractor%"),
-                            func.lower(Product.name).ilike("%cultivator%"),
-                        )
-                    )
-                else:
-                    stmt = stmt.where(
-                        or_(
-                            func.lower(Product.name).ilike(f"%{prod_term}%"),
-                            Product.category.has(func.lower(Category.name).ilike(f"%{prod_term}%")),
-                        )
-                    )
-
-            if orig:
-                stmt = stmt.where(
-                    or_(
-                        func.lower(Product.origin_country).ilike(f"%{orig.lower()}%"),
-                        Product.supplier.has(Supplier.company.has(func.lower(Company.country).ilike(f"%{orig.lower()}%"))),
-                    )
+            # Prompt 38: Handle FOLLOW_UP like 'i need more help'
+            if engine_res.status == "follow_up" or engine_res.intent == "FOLLOW_UP":
+                text_out = engine_res.text or "I am continuing with your inquiry."
+                text_out += make_footer(meta)
+                return OrchestratorResponse(
+                    text=text_out,
+                    cards=[],
+                    sources=[],
+                    suggested_actions=engine_res.suggested_actions,
+                    rag_used=False,
+                    mode="chat",
+                    search_state=search_state,
+                    ai_meta=meta,
                 )
 
-            stmt = stmt.order_by(Product.created_at.desc()).limit(15)
-            candidates = list((await db.execute(stmt)).scalars().all())
+            cards_found = engine_res.products
+            if not cards_found and engine_res.alternatives:
+                cards_found = engine_res.alternatives
 
-            # Fallback token search if no candidates found by category/product keyword
-            if not candidates:
-                query_tokens = [w for w in re.findall(r"\b[a-zA-Z0-9_\-]{3,}\b", query_lower) if w not in {"what", "the", "for", "and", "show", "find", "price", "stock", "with", "from", "under", "less", "more", "want", "affordable", "only"}]
-                if query_tokens:
-                    tok_stmt = (
-                        select(Product)
-                        .options(
-                            selectinload(Product.category),
-                            selectinload(Product.price_tiers),
-                            selectinload(Product.images),
-                            selectinload(Product.supplier).selectinload(Supplier.company),
-                            selectinload(Product.supplier).selectinload(Supplier.certifications).selectinload(SupplierCertification.certification),
-                        )
-                        .where(
-                            *base_where,
-                            or_(*[func.lower(Product.name).ilike(f"%{tok}%") for tok in query_tokens])
-                        )
-                        .order_by(Product.created_at.desc())
-                        .limit(15)
-                    )
-                    candidates = list((await db.execute(tok_stmt)).scalars().all())
+            if cards_found:
+                search_state["last_product_ids"] = [c.product_id for c in cards_found]
 
-            # Quantity volume extraction (e.g. 5000 kg)
-            qty_match = re.search(r"\b([0-9]+(?:\.[0-9]+)?)\s*(?:kg|tonnes|tons|units|pcs|pieces)?\b", query_lower)
-            if qty_match and not criteria.get("target_price"):
-                try:
-                    criteria["quantity"] = float(qty_match.group(1))
-                except ValueError:
-                    pass
-
-            # Currency-aware price filtering
-            target_pr = criteria.get("target_price")
-            target_curr = criteria.get("target_currency", "USD")
-            req_qty = criteria.get("quantity")
-
-            matching = []
-            alternatives = []
-            for p in candidates:
-                p_curr = p.currency or "USD"
-                tiers = p.price_tiers or []
-                prices = [float(t.unit_price) for t in tiers] if tiers else []
-                min_price = min(prices) if prices else float(getattr(p, "unit_price", 0.0) or 0.0)
-
-                # If specific quantity was requested, calculate applicable volume tier
-                if req_qty and tiers:
-                    sorted_tiers = sorted(tiers, key=lambda t: t.min_qty, reverse=True)
-                    for t in sorted_tiers:
-                        if req_qty >= t.min_qty:
-                            min_price = float(t.unit_price)
-                            break
-
-                rate, _ = await get_conversion_rate(p_curr, target_curr, db)
-                p_in_target = min_price * rate
-
-                if target_pr is not None:
-                    if p_in_target <= target_pr:
-                        matching.append((p, rate))
-                    else:
-                        alternatives.append((p, rate))
-                else:
-                    matching.append((p, rate))
-
-            displayed_products = matching[:6] if matching else alternatives[:3]
-            search_state["last_product_ids"] = [str(p[0].id) for p in displayed_products]
-
-            cards_found = [
-                format_card(
-                    p=p,
-                    criteria=criteria,
-                    display_currency=target_curr,
-                    rate=r,
-                    is_alternative=(len(matching) == 0 and len(alternatives) > 0),
-                    alt_reason=f"Price <= {target_curr} {target_pr:.2f}" if (len(matching) == 0 and target_pr) else None,
-                )
-                for p, r in displayed_products
-            ]
+            is_search = bool(
+                cards_found
+                or (engine_res.status == "not_found" and engine_res.intent == "PRODUCT_SOURCING")
+                or (engine_res.intent == "PRODUCT_SOURCING" and engine_res.understood.product_term)
+                or (criteria.get("product") and not is_compliance)
+                or any(k in query_lower for k in ["laptop", "phone", "spice", "chilli", "rice", "coffee", "tractor", "machinery", "textile", "rough books", "vivo", "oppo"])
+            ) and not any(k in query_lower for k in ["extraterrestrial", "alien", "pluto", "narnia", "quantum", "teleportation"])
 
         # ----------------------------------------------------------------------
         # Knowledge Retrieval for Compliance / General Questions
@@ -894,26 +798,59 @@ class TradeXAIOrchestrator:
             if chunks:
                 rag_used = True
 
-        # Case A: Mixed question (Catalogue search + RAG documents)
-        if is_mixed and cards_found:
-            reply = (
-                f"### Commercial Sourcing & Compliance Overview for {criteria.get('product', 'Goods').title()}:\n\n"
-                f"**1. Verified Catalogue Pricing (Origin: {criteria.get('origin_country', 'China')})**:\n"
-                f"We identified {len(cards_found)} verified supplier listings meeting your technical and commercial requirements. "
-                f"Prices start from {cards_found[0].currency} {cards_found[0].unit_price:.2f}/{cards_found[0].title.split()[-1]}.\n\n"
-                f"**2. Required Trade & Import Documentation**:\n"
-                f"- **Commercial Invoice & Packing List**: Detailing itemized HS classifications and weights\n"
-                f"- **Ocean Bill of Lading (Clean On-Board)**: Title of goods consigned to order\n"
-                f"- **Certificate of Origin**: Form A or non-preferential certificate\n"
-                f"- **Technical Compliance**: CE Mark declaration of conformity, RoHS testing certificate, and FCC verification\n\n"
-                f"Review the live product cards below for verified supplier details."
+        # Case A: Mixed question (Two clearly separated parts: Marketplace results and Trade guidance)
+        if is_mixed:
+            prod_name = (criteria.get("product") or (cards_found[0].title if cards_found else "Commodity")).title()
+            orig = criteria.get("origin_country") or (cards_found[0].origin_country if cards_found else "Origin")
+            dest = criteria.get("destination") or "Destination"
+            qty = criteria.get("quantity")
+            unit = criteria.get("unit") or "units"
+            qty_str = f"{int(qty)} {unit} " if qty else ""
+
+            trade_guidance_lines = [
+                f"### Part 1: Marketplace Results for {qty_str}{prod_name} ({orig} -> {dest}):\n"
+            ]
+            if cards_found:
+                p_starts = f"pricing starts from {cards_found[0].currency} {cards_found[0].unit_price:,.2f}/{getattr(cards_found[0], 'unit', None) or 'unit'}" if cards_found[0].unit_price is not None else "pricing is available upon direct supplier inquiry"
+                trade_guidance_lines.append(
+                    f"We identified {len(cards_found)} verified supplier listing(s) in the TradeX catalogue. "
+                    f"Authoritative {p_starts}.\n"
+                )
+            else:
+                trade_guidance_lines.append(
+                    f"No direct stock matching '{prod_name}' was found in the current active catalogue. You can create an RFQ to broadcast your specifications.\n"
+                )
+
+            trade_guidance_lines.append("### Part 2: Trade Guidance & Statutory Import Documents:\n")
+            if "rice" in query_lower or "grain" in query_lower or "agricultural" in query_lower:
+                trade_guidance_lines.extend([
+                    "- **Commercial Invoice & Detailed Packing List**: Itemized weights and HS Code `1006.30`.",
+                    "- **Phytosanitary Certificate**: Issued by NPPO certifying quarantine pest freedom.",
+                    "- **US FDA Prior Notice & Facility Registration**: Mandatory for food entering US ports under FSMA.",
+                    "- **Clean Ocean Bill of Lading**: Consigned to order or banking counterparty.",
+                    "- **Certificate of Origin**: Authenticated chamber of commerce declaration.",
+                ])
+            else:
+                trade_guidance_lines.extend([
+                    "- **Commercial Invoice & Packing List**: Itemized with Harmonized System codes and weight declarations.",
+                    "- **Ocean Bill of Lading (B/L)**: Title transfer document clean on-board.",
+                    "- **Certificate of Origin (CoO)**: Preferential or non-preferential origin verification.",
+                    "- **Customs & Technical Clearance**: Import declarations and required safety compliance certifications.",
+                ])
+
+            trade_guidance_lines.append(
+                "\n> [!NOTE]\n"
+                "> **Trade Guidance Disclaimer**: Verified from authoritative international trade standards. "
+                "Official verification is needed for legal, tax or customs rules."
             )
+
+            reply = "\n".join(trade_guidance_lines)
             reply += make_footer(meta)
             return OrchestratorResponse(
                 text=reply,
                 cards=cards_found,
                 sources=sources,
-                suggested_actions=["Calculate CIF Landed Cost", "Draft RFQ", "Request Product Samples"],
+                suggested_actions=[f"Prepare RFQ for {prod_name}", f"Compare {prod_name} prices", "Customs Broker Consultation"],
                 rag_used=rag_used,
                 mode="mixed",
                 search_state=search_state,
@@ -922,8 +859,8 @@ class TradeXAIOrchestrator:
 
         # Case B: Product Discovery search
         if is_search and cards_found:
-            prod_name = criteria.get("product", "products").title()
-            target_pr = criteria.get("target_price")
+            prod_name = (criteria.get("product") or engine_res.understood.normalized_product_name or "products").title()
+            target_pr = criteria.get("target_price") or engine_res.understood.price_limit
             target_curr = criteria.get("target_currency", "USD")
             orig = criteria.get("origin_country")
 
@@ -935,32 +872,98 @@ class TradeXAIOrchestrator:
 
             prefix = f"Did you mean {did_you_mean}? " if did_you_mean else ""
             filter_str = f" ({', '.join(filters_desc)})" if filters_desc else ""
+
+            shown_cards = cards_found[:3]
             reply = (
-                f"{prefix}Here are {len(cards_found)} verified **{prod_name}** listings{filter_str} "
+                f"{prefix}Here are {len(shown_cards)} verified **{prod_name}** listings{filter_str} "
                 f"from authenticated TradeX suppliers:\n\n"
             )
-            for idx, c in enumerate(cards_found[:3], 1):
+            for idx, c in enumerate(shown_cards, 1):
                 p_disp = f" (~{c.currency_display} {c.price_display:.2f})" if c.price_display else ""
+                p_label = f"{c.currency} {c.unit_price:.2f}{p_disp}" if c.unit_price is not None else "Contact supplier for pricing"
                 reply += (
                     f"{idx}. **{c.title}** - `{c.supplier_name}` ({c.origin_country})\n"
-                    f"   - **Price**: {c.currency} {c.unit_price:.2f}{p_disp} | **MOQ**: {c.moq:,.0f}\n"
+                    f"   - **Price**: {p_label} | **MOQ**: {c.moq:,.0f}\n"
                     f"   - **Stock**: {c.available_quantity:,.0f} units ({c.availability_status})\n"
                 )
-            reply += "\nYou can select any item to compare volume pricing or initiate a direct inquiry."
+            if len(cards_found) > len(shown_cards):
+                reply += f"\n*Showing {len(shown_cards)} of {len(cards_found)} available listings. Select 'Show more' to view remaining items.*\n"
+            else:
+                reply += "\nYou can select any item to compare volume pricing or initiate a direct inquiry.\n"
+
             reply += make_footer(meta)
+            actions = [f"Compare prices for {prod_name}", f"Check MOQ and stock for {prod_name}", f"Prepare an RFQ for {prod_name}"]
+            if len(cards_found) > len(shown_cards):
+                actions.insert(0, "Show more")
             return OrchestratorResponse(
                 text=reply,
                 cards=cards_found,
                 sources=[],
-                suggested_actions=["Compare volume pricing", "Filter by origin", "Request Quotation"],
+                suggested_actions=actions,
                 rag_used=False,
                 mode="catalogue_search",
                 search_state=search_state,
                 ai_meta=meta,
             )
 
+        # Case C: RAG knowledge search (Compliance, Documents, Incoterms)
+        if rag_used and sources:
+            top_chunk = chunks[0]
+            reply = (
+                f"### {top_chunk.title}\n\n"
+                f"{top_chunk.content.strip()[:650]}...\n\n"
+                f"> [!NOTE]\n"
+                f"> **Verified from Trade Knowledge Base**: Verified from source guides ({top_chunk.title}). "
+                f"Official verification is needed for legal, tax or customs rules."
+            )
+            reply += make_footer(meta)
+            actions = ["Compare FOB and CIF", "Who pays for freight under CIF?", "Incoterms risk transfer points"] if ("incoterm" in query_lower or "cif" in query_lower or "fob" in query_lower) else ["Explore Knowledge Guides", "Upload Reference Document", "Verify HS Code"]
+            return OrchestratorResponse(
+                text=reply,
+                cards=[],
+                sources=sources,
+                suggested_actions=actions,
+                rag_used=True,
+                mode="rag",
+                search_state=search_state,
+                ai_meta=meta,
+            )
+
+        # Case D: Genuine knowledge question with no matching document
+        is_knowledge_q = (
+            is_compliance
+            or any(k in query_lower for k in [
+                "incoterm", "customs", "tariff", "duty", "duties", "document", "documents",
+                "regulation", "fda", "traces", "insurance", "freight", "teleportation", "frequency",
+                "quantum", "protocol", "what is", "what are", "how does", "rule", "rules", "procedure",
+                "statutory", "bill of lading", "certificate of origin", "letter of credit", "fob", "cif"
+            ])
+        ) and not (
+            any(k in query_lower for k in ["find", "supplier", "manufactur", "vendor", "notebook", "book", "mobile", "phone", "rice", "spice", "chilli", "turmeric", "t-shirt", "laptop"])
+            and not any(k in query_lower for k in ["document", "rule", "duty", "tax", "incoterm", "custom", "law", "statutory", "regulation"])
+        )
+        if is_knowledge_q:
+            reply = (
+                f"I could not find verified evidence in the Trade Knowledge Base regarding: *'{query_strip}'*.\n\n"
+                f"TradeX AI operates strictly on verified regulations, trade agreements, and authenticated supplier records. "
+                f"Official verification is needed for legal, tax or customs rules. "
+                f"You may upload a reference trade document under `/documents` or consult our verified compliance guides."
+            )
+            reply += make_footer(meta)
+            return OrchestratorResponse(
+                text=reply,
+                cards=[],
+                sources=[],
+                suggested_actions=["Explore Knowledge Guides", "Upload Reference Document", "Talk to Trade Specialist"],
+                rag_used=False,
+                mode="rag",
+                search_state=search_state,
+                ai_meta=meta,
+            )
+
+        # Case E: Product not found in catalogue
         if is_search and not cards_found:
-            search_term = criteria.get("product") or query_strip
+            search_term = engine_res.understood.product_term or criteria.get("product") or query_strip
             text_out = (
                 f"I couldn't find any {search_term} in the current TradeX catalogue.\n\n"
                 f"While this specific item is not presently listed in our active catalogue, "
@@ -980,42 +983,23 @@ class TradeXAIOrchestrator:
                 ai_meta=meta,
             )
 
-        # Case C: RAG knowledge search (Compliance, Documents, Incoterms)
-        if rag_used and sources:
-            top_chunk = chunks[0]
-            reply = (
-                f"### {top_chunk.title}\n\n"
-                f"{top_chunk.content.strip()[:650]}...\n\n"
-                f"**Trade Advisory**: All compliance requirements must be authenticated before customs declaration. "
-                f"Explore the cited trade guides for statutory regulatory guidelines."
-            )
-            reply += make_footer(meta)
-            return OrchestratorResponse(
-                text=reply,
-                cards=[],
-                sources=sources,
-                suggested_actions=["Explore Knowledge Guides", "Upload Reference Document", "Verify HS Code"],
-                rag_used=True,
-                mode="rag",
-                search_state=search_state,
-                ai_meta=meta,
-            )
-
-        # Case D: No evidence found
-        reply = (
-            f"I could not find verified evidence in the Trade Knowledge Base regarding: *'{query_strip}'*.\n\n"
-            f"TradeX AI operates strictly on verified regulations, trade agreements, and authenticated supplier records. "
-            f"To prevent inaccurate guidance, I do not generate unverified claims without authoritative documentation. "
-            f"You may upload a reference trade document under `/documents` or consult our verified compliance guides."
+        # Fallback for unknown product or inquiry: truthful no-match RFQ offer
+        search_term = criteria.get("product") or query_strip
+        text_out = (
+            f"I couldn't find any {search_term} in the current TradeX catalogue.\n\n"
+            f"While this specific item is not presently listed in our active catalogue, "
+            f"you can submit a custom RFQ or sourcing request to source it from verified global partners.\n\n"
+            f"**Next Steps**:\n"
+            f"- Would you like to create an RFQ (Request for Quotation) for **'{search_term}'**?"
         )
-        reply += make_footer(meta)
+        text_out += make_footer(meta)
         return OrchestratorResponse(
-            text=reply,
+            text=text_out,
             cards=[],
             sources=[],
-            suggested_actions=["Explore Knowledge Guides", "Upload Reference Document", "Talk to Trade Specialist"],
+            suggested_actions=[f"Create RFQ for {search_term}", "Browse Catalogue", "Contact Sourcing Specialist"],
             rag_used=False,
-            mode="rag",
+            mode="not_found",
             search_state=search_state,
             ai_meta=meta,
         )

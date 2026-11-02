@@ -197,3 +197,24 @@ This drill proves that if a container build passes tests but fails at runtime on
     certbot/certbot renew --webroot -w /var/www/certbot
   docker exec nginx_proxy nginx -s reload
   ```
+
+---
+
+## 7. Scale & Demonstration Operations
+
+### 7.1 Seeding Production Scale Demo Data
+To deterministically populate 1,500 products across 60 suppliers, 150 buyers, 300 RFQs, and 200 orders:
+```bash
+docker compose exec backend python -m app.cli seed-scale \
+  --suppliers 60 --buyers 150 --products 1500 --rfqs 300 --orders 200
+```
+All records carry `is_demo=True` and show a "Demo data" badge on the frontend. The command is idempotent.
+
+### 7.2 Running 50-User Concurrency Load Tests
+To verify performance and response latency under high load:
+```bash
+docker cp scripts/load_test.py fastapi_app:/tmp/load_test.py
+docker exec fastapi_app python /tmp/load_test.py
+```
+Detailed results are output to `/tmp/load_test_results.json` and summarized in `docs/LOAD_TEST_RESULTS.md`.
+

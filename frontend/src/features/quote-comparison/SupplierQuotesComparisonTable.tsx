@@ -12,7 +12,9 @@ import {
   Award,
   FileSpreadsheet,
   FileText,
+  Share2,
 } from "lucide-react";
+import { apiClient } from "../../lib/api";
 import {
   QuoteComparisonData,
   AIQuoteRecommendationOutput,
@@ -48,6 +50,25 @@ export const SupplierQuotesComparisonTable: React.FC<SupplierQuotesComparisonTab
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [isAccepting, setIsAccepting] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
+
+  const handleShare = async () => {
+    setSharing(true);
+    try {
+      const res = await apiClient.post<any>(`/rfqs/${rfqId}/share`);
+      const fullUrl = `${window.location.origin}${res.data.share_url}`;
+      try {
+        await navigator.clipboard.writeText(fullUrl);
+        setActionSuccess(`Read-only share link copied to clipboard: ${fullUrl}`);
+      } catch {
+        setActionSuccess(`Share link created: ${fullUrl}`);
+      }
+    } catch (err) {
+      console.error("Share failed:", err);
+    } finally {
+      setSharing(false);
+    }
+  };
 
   const loadComparison = async (sort = sortBy) => {
     setLoading(true);
@@ -236,6 +257,20 @@ export const SupplierQuotesComparisonTable: React.FC<SupplierQuotesComparisonTab
               </div>
             )}
           </div>
+
+          {/* Share Button (Prompt 42) */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={sharing}
+            onClick={handleShare}
+            className="text-xs border-slate-200 text-slate-700 flex items-center gap-1.5 font-bold hover:bg-slate-50"
+            title="Create an expiring read-only link to share quote comparison with stakeholders"
+          >
+            <Share2 className="w-3.5 h-3.5 text-blue-500" />
+            <span>{sharing ? "Sharing..." : "Share"}</span>
+          </Button>
 
           {/* Compare with AI Button */}
           <Button

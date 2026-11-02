@@ -98,6 +98,7 @@ class Product(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     monthly_capacity: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     packaging: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     storage: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    search_keywords: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     export_details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     supported_destinations: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
     incoterms: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
@@ -115,6 +116,7 @@ class Product(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     category: Mapped["Category"] = relationship("Category", back_populates="products")
     images: Mapped[List["ProductImage"]] = relationship("ProductImage", back_populates="product", cascade="all, delete-orphan")
     price_tiers: Mapped[List["PriceTier"]] = relationship("PriceTier", back_populates="product", cascade="all, delete-orphan")
+    aliases: Mapped[List["ProductAlias"]] = relationship("ProductAlias", back_populates="product", cascade="all, delete-orphan")
 
 
 class ProductImage(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -190,3 +192,21 @@ class ExchangeRate(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     source: Mapped[str] = mapped_column(String(50), default="ECB_SIMULATED", nullable=False)
     is_simulated: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class ProductAlias(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "product_aliases"
+    __table_args__ = (
+        Index("idx_product_aliases_product_id", "product_id"),
+        Index("idx_product_aliases_alias", "alias"),
+    )
+
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    alias: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    alias_type: Mapped[str] = mapped_column(String(50), default="synonym", nullable=False)
+    is_approved: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    product: Mapped["Product"] = relationship("Product", back_populates="aliases")
+

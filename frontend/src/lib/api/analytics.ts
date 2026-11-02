@@ -61,10 +61,42 @@ export interface BuyerSpendMonth {
   orders_count: number;
 }
 
+export interface BuyerSpendCategory {
+  category: string;
+  total_spend: number;
+  orders_count: number;
+}
+
+export interface BuyerSpendSupplier {
+  supplier_name: string;
+  country: string;
+  total_spend: number;
+  orders_count: number;
+}
+
 export interface BuyerSpendResponse {
   buyer_id: string;
   total_spend_eur: number;
   spend_by_month: BuyerSpendMonth[];
+  spend_by_category?: BuyerSpendCategory[];
+  spend_by_supplier?: BuyerSpendSupplier[];
+}
+
+export interface SupplierScorecardResponse {
+  supplier_id: string | null;
+  verification_tier: string;
+  average_response_time_hours: number;
+  quote_win_rate_pct: number;
+  on_time_delivery_rate_pct: number;
+  trust_score: number;
+  total_quotes_submitted: number;
+  total_quotes_won: number;
+  total_orders_fulfilled: number;
+  benchmark_comparison: {
+    platform_avg_response_hours: number;
+    platform_avg_win_rate_pct: number;
+    platform_avg_on_time_pct: number;
+  };
 }
 
 export interface SupplierPerformanceResponse {

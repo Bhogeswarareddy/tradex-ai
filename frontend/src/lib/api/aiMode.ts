@@ -34,6 +34,8 @@ export interface ProductCardData {
   rate?: number;
   rate_as_of?: string;
   is_simulated?: boolean;
+  category_name?: string;
+  unit?: string;
 }
 
 export interface AIMessageData {

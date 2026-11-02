@@ -59,6 +59,8 @@ export interface ConversationDetail {
     content: string;
     sources?: CopilotSource[];
     suggested_actions?: Array<{ action: string }>;
+    cards?: any[];
+    ai_meta?: any;
     created_at: string;
   }>;
 }
@@ -112,6 +114,16 @@ export const copilotApi = {
       headers: authHeaders(),
     });
     if (!res.ok) throw new Error("Failed to fetch conversation");
+    return res.json();
+  },
+
+  async renameConversation(id: string, title: string): Promise<{ id: string; title: string }> {
+    const res = await fetch(`${API}/ai/copilot/conversations/${id}`, {
+      method: "PATCH",
+      headers: authHeaders(),
+      body: JSON.stringify({ title }),
+    });
+    if (!res.ok) throw new Error("Failed to rename conversation");
     return res.json();
   },
 

@@ -7,6 +7,7 @@ import { useLocation } from "react-router-dom";
 import { AlertCircle } from "lucide-react";
 import { CopilotDrawer } from "../../features/copilot";
 import { ErrorBoundary } from "../common/ErrorBoundary";
+import { RoleGuidedTour } from "../common/RoleGuidedTour";
 
 export interface AppLayoutProps {
   children: React.ReactNode;
@@ -79,6 +80,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
         {/* Global AI Trade Copilot Floating Drawer */}
         <CopilotDrawer />
+
+        {/* First-login Role Guided Tour & Replay Component */}
+        <RoleGuidedTour />
       </div>
     </div>
   );

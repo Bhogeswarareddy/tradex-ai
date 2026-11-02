@@ -1,24 +1,38 @@
 # TradeX AI: Intelligent B2B Cross-Border Trade & Supplier Discovery Platform
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen.svg)](Jenkinsfile)
+[![Tests: Pytest & Vitest](https://img.shields.io/badge/Tests-100%25%20Passing%20%2896%20FE%20%7C%2030%20Security%29-brightgreen.svg)](docs/FINAL_REPORT.md)
+[![Coverage: 75%+](https://img.shields.io/badge/Coverage-78.4%25-green.svg)](Jenkinsfile)
+[![Docker: 5 Containers Healthy](https://img.shields.io/badge/Docker-5%20Containers%20Healthy-blue.svg)](docs/DOCKER_VERIFICATION.md)
+[![AI Engine: Groq LLaMA--3.1](https://img.shields.io/badge/AI%20Engine-Groq%20LLaMA--3.1--8b-orange.svg)](docs/AI_FEATURE_MAP.md)
 [![CI/CD: Jenkins](https://img.shields.io/badge/CI%2FCD-Jenkins%20LTS-red.svg)](docs/JENKINS_SETUP.md)
-[![AWS: EC2 & ECR](https://img.shields.io/badge/AWS-EC2%20%7C%20ECR%20%7C%20SSM-orange.svg)](docs/AWS_DEPLOYMENT.md)
-[![Docker: Multi--Container](https://img.shields.io/badge/Docker-Compose%20%284%20Services%29-blue.svg)](docs/DOCKER_VERIFICATION.md)
-[![Monitoring: Prometheus & Grafana](https://img.shields.io/badge/Monitoring-Prometheus%20%26%20Grafana-purple.svg)](docker-compose.monitoring.yml)
+[![Monitoring: Prometheus & Grafana](https://img.shields.io/badge/Monitoring-Prometheus%20%26%20Grafana-purple.svg)](monitoring/grafana/dashboards/tradex_dashboard.json)
 
 ---
 
 ## 1. Executive Summary & Problem Statement
 
-Global B2B procurement in agricultural commodities, spices, and manufactured goods is hindered by fragmented supplier capabilities, opaque pricing, complex Incoterms, and unstructured trade compliance documents (Bills of Lading, Phytosanitary certificates, Certificates of Origin).
+Global B2B procurement in agricultural commodities, spices, electronics, and manufactured goods is hindered by fragmented supplier capabilities, opaque pricing, complex Incoterms, and unstructured trade compliance documents.
 
-**TradeX AI** is an enterprise-grade cloud platform engineered to streamline the entire international trade lifecycle:
-- **Intelligent Discovery**: Natural-language procurement intent translated into semantic vector queries and multi-attribute filters.
-- **Supplier Verification**: Rigorous 0–100 trust scoring, factory audit data, and real-time sanctions screening.
-- **RFQ & AI Quote Comparison**: Multi-vendor quotation bidding with landed-cost calculations (freight, duties, insurance, port fees).
-- **Document Intelligence**: Automated OCR & information extraction from PDF invoices, packing lists, and trade certificates.
-- **AI Trade Copilot**: 15 grounded international trade compliance guides operating via RAG with direct citations.
-- **Enterprise Operations**: Fully containerized multi-container stack with Nginx, HTTPS, Prometheus/Grafana monitoring, and automated Jenkins CI/CD on AWS EC2.
+**TradeX AI** is an enterprise-grade cloud platform engineered to streamline the entire international trade lifecycle using a **Deterministic-RAG Hybrid Architecture**:
+- **Deterministic Sourcing Engine**: Strict database-as-source-of-truth product matching with zero fabricated suppliers or hallucinated stock.
+- **Natural Language Parsing**: Groq LLaMA-3.1 extracts buyer entities, quantities, price ceilings, and Incoterms without inventing constraints.
+- **Trade Knowledge RAG Engine**: 15 ICC/WCO regulatory trade documents retrieved with confidence thresholds, source citation chips, and compliance disclaimers.
+- **Enterprise Features**: Global Command Palette (Cmd+K), Landed Cost Calculator, Supplier Verification Tiers (Gold/Silver/Basic), and HMAC-signed Public Quote Sharing.
+- **Operational Reliability**: 50-user concurrency tested, automated circuit breaking, multi-container Docker orchestration, and 10-stage Jenkins pipeline.
+
+---
+
+## 2. Feature Gallery
+
+| Global Interactive Trade Map & Dashboard | Cmd+K Global Command Palette |
+| :---: | :---: |
+| ![Trade Dashboard](docs/screenshots/dashboard_1440_dark.png) | ![Command Palette](docs/screenshots/prompt42_command_palette.png) |
+| **Landed Cost Breakdown Calculator** | **Supplier Verification Tier Modal** |
+| ![Landed Cost](docs/screenshots/prompt42_landed_cost.png) | ![Verification Tier](docs/screenshots/prompt42_verification_tier.png) |
+| **Advanced Sourcing Analytics** | **Role Guided Onboarding Tour** |
+| ![Analytics](docs/screenshots/prompt42_analytics.png) | ![Role Guided Tour](docs/screenshots/dashboard_role_guided_tour.png) |
 
 ---
 
@@ -193,10 +207,24 @@ To allow full offline and sandbox demonstration without live banking, satellite 
 
 ## 9. Comprehensive Documentation Directory
 
-- [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md): 10-minute live presentation script with click path and voiceover talking points.
-- [`docs/PRESENTATION_OUTLINE.md`](docs/PRESENTATION_OUTLINE.md): 12-slide executive presentation outline.
-- [`docs/DOCKER_VERIFICATION.md`](docs/DOCKER_VERIFICATION.md): Multi-container commands, resource limits, and persistence proofs.
-- [`docs/AWS_DEPLOYMENT.md`](docs/AWS_DEPLOYMENT.md): AWS EC2/ECR deployment guide with IAM role and SSM Parameter Store setup.
-- [`docs/AWS_UPGRADE_PATH.md`](docs/AWS_UPGRADE_PATH.md): Enterprise scaling roadmap to Aurora PostgreSQL, S3, ALB, and CloudFront.
-- [`docs/JENKINS_SETUP.md`](docs/JENKINS_SETUP.md): Jenkins controller deployment, webhook setup, and credentials guide.
-- [`docs/RUNBOOK.md`](docs/RUNBOOK.md): Operations runbook, rollback drills, backup restore, and disaster recovery.
+- **Architecture Decision Records (ADRs)**:
+  - [`docs/adr/0001-why-rag.md`](docs/adr/0001-why-rag.md): RAG for Trade Compliance & Incoterms.
+  - [`docs/adr/0002-why-pgvector.md`](docs/adr/0002-why-pgvector.md): Co-located PostgreSQL vector storage.
+  - [`docs/adr/0003-deterministic-matching-plus-llm-explanations.md`](docs/adr/0003-deterministic-matching-plus-llm-explanations.md): Zero-hallucination sourcing engine design.
+  - [`docs/adr/0004-database-source-of-truth.md`](docs/adr/0004-database-source-of-truth.md): PostgreSQL as authoritative truth.
+- **Specifications & Reference**:
+  - [`docs/API.md`](docs/API.md): OpenAPI specification and REST reference.
+  - [`docs/AI_FEATURE_MAP.md`](docs/AI_FEATURE_MAP.md): Audit and status of all LLM integrations across buyer and supplier surfaces.
+  - [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md): Local development workflow, code styles, and pull request gates.
+  - [`docs/CHANGELOG.md`](docs/CHANGELOG.md): Platform engineering version history and prompt milestones.
+- **Verification & Reports**:
+  - [`docs/FINAL_REPORT.md`](docs/FINAL_REPORT.md): Comprehensive Prompts 0 to 43 completion audit matrix.
+  - [`docs/LOAD_TEST_RESULTS.md`](docs/LOAD_TEST_RESULTS.md): 50-user concurrency test results, throughput, and latency percentiles.
+  - [`docs/FAILURE_DRILLS.md`](docs/FAILURE_DRILLS.md): Chaos engineering drills (Groq outage, PostgreSQL restart, worker failure).
+  - [`docs/DOCKER_VERIFICATION.md`](docs/DOCKER_VERIFICATION.md): Multi-container commands, resource limits, and persistence proofs.
+  - [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md): Database indexing, EXPLAIN plans, and sub-200ms query evidence.
+- **Operations & Demonstration**:
+  - [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md): 10-minute live presentation script, 2-minute elevator pitch, and Viva defense sheet.
+  - [`docs/RUNBOOK.md`](docs/RUNBOOK.md): Operations runbook, rollback drills, backup restore, and disaster recovery.
+  - [`docs/JENKINS_SETUP.md`](docs/JENKINS_SETUP.md): Jenkins controller deployment, webhook setup, and credentials guide.
+  - [`docs/AWS_DEPLOYMENT.md`](docs/AWS_DEPLOYMENT.md): AWS EC2/ECR deployment guide with IAM role and SSM Parameter Store setup.

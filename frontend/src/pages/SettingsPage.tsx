@@ -17,6 +17,7 @@ import {
   Trash2,
   AlertTriangle,
   KeyRound,
+  Compass,
 } from "lucide-react";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -501,6 +502,42 @@ export const SettingsPage: React.FC = () => {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      </Card>
+
+      {/* Guided Platform Tour Replay Card per Prompt 41 */}
+      <Card className="p-6">
+        <div className="flex items-start gap-4">
+          <div className="p-3 bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 rounded-xl">
+            <Compass className="w-6 h-6" />
+          </div>
+          <div className="flex-1">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                  Guided Onboarding Tour
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Replay the interactive walkthrough for your account role ({user?.role || "buyer"}). Learn how to utilize AI Search, Copilot, RFQs, and Escrow tracking.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (user?.role) {
+                    localStorage.removeItem(`tradex_tour_completed_${user.role}`);
+                  }
+                  window.dispatchEvent(new CustomEvent("tradex:replay-tour"));
+                  info("Launching guided tour...");
+                }}
+                className="shrink-0"
+              >
+                Replay Platform Tour
+              </Button>
+            </div>
           </div>
         </div>
       </Card>

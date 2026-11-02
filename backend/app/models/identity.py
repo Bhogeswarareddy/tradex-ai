@@ -74,6 +74,7 @@ class Company(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     verified_status: Mapped[str] = mapped_column(String(50), default="unverified", nullable=False)
     languages: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
     factory_details: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
 
     suppliers: Mapped[List["Supplier"]] = relationship("Supplier", back_populates="company")
     buyers: Mapped[List["Buyer"]] = relationship("Buyer", back_populates="company")
@@ -89,6 +90,7 @@ class Buyer(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     import_destinations: Mapped[Optional[List[str]]] = mapped_column(ARRAY(String), nullable=True)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
 
     company: Mapped["Company"] = relationship("Company", back_populates="buyers")
     user: Mapped["User"] = relationship("User", back_populates="buyers")
@@ -116,6 +118,11 @@ class Supplier(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     response_time_hours: Mapped[float] = mapped_column(Float, default=24.0, nullable=False)
     repeat_buyer_rate: Mapped[float] = mapped_column(Float, default=84.0, nullable=False)
     total_buyers_count: Mapped[int] = mapped_column(Integer, default=320, nullable=False)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    verification_tier: Mapped[str] = mapped_column(String(50), default="Bronze", nullable=False, index=True)
+    tier_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    kyc_status: Mapped[str] = mapped_column(String(50), default="verified", nullable=False, index=True)
+    kyc_documents: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     company: Mapped["Company"] = relationship("Company", back_populates="suppliers")
     user: Mapped["User"] = relationship("User", back_populates="suppliers")

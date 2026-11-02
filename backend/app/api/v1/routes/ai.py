@@ -177,18 +177,38 @@ async def copilot_chat(
     # 3. Persist conversation and messages
     conv_id = request.conversation_id
     if current_user:
+        # Prompt 38 real conversation titling
+        crit = resp.search_state.get("criteria", {}) if resp.search_state else {}
+        prod = crit.get("product")
+        qty = crit.get("quantity")
+        unit = crit.get("unit") or "units"
+        form = crit.get("form")
+
+        calculated_title = None
+        if prod:
+            prod_title = str(prod).title()
+            if form and str(form).lower() not in prod_title.lower():
+                prod_title = f"{prod_title} {str(form).title()}"
+            qty_part = f", {int(qty)} {unit}" if qty else ""
+            calculated_title = f"{prod_title}{qty_part}".strip()
+        elif resp.sources:
+            calculated_title = str(resp.sources[0].get("title", ""))[:50]
+        else:
+            clean_t = re.sub(r"^(?:bro\s+|i\s+need\s+|show\s+me\s+|find\s+|looking\s+for\s+|what\s+is\s+|how\s+to\s+)", "", request.message, flags=re.I).strip()
+            calculated_title = (clean_t[:40] or request.message[:40]).title()
+
         if not conv:
             conv = CopilotConversation(
                 user_id=current_user.id,
-                title=request.message[:60] if len(request.message) > 5 else "Trade Consultation",
+                title=calculated_title or "Trade Consultation",
+                search_state=resp.search_state,
             )
-            if hasattr(conv, "search_state"):
-                conv.search_state = resp.search_state
             db.add(conv)
             await db.flush()
         else:
-            if hasattr(conv, "search_state"):
-                conv.search_state = resp.search_state
+            conv.search_state = resp.search_state
+            if conv.title in ["New Trade Inquiry", "Trade Consultation", "New Conversation"] and calculated_title:
+                conv.title = calculated_title
 
         conv_id = str(conv.id)
 
@@ -206,6 +226,8 @@ async def copilot_chat(
             content=resp.text,
             sources=resp.sources,
             suggested_actions=[{"action": a} for a in resp.suggested_actions],
+            cards=[c.model_dump() for c in resp.cards],
+            ai_meta=resp.ai_meta,
         ))
         await db.commit()
 
@@ -270,11 +292,37 @@ async def get_copilot_conversation(
                 "content": m.content,
                 "sources": m.sources or [],
                 "suggested_actions": m.suggested_actions or [],
+                "cards": m.cards or [],
+                "ai_meta": m.ai_meta,
                 "created_at": m.created_at.isoformat() if m.created_at else None,
             }
             for m in conv.messages
         ],
     }
+
+
+class RenameCopilotConversationRequest(BaseModel):
+    title: str
+
+
+@router.patch("/copilot/conversations/{conversation_id}", summary="Rename a Copilot conversation")
+async def rename_copilot_conversation(
+    conversation_id: uuid.UUID,
+    payload: RenameCopilotConversationRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    stmt = (
+        select(CopilotConversation)
+        .where(CopilotConversation.id == conversation_id, CopilotConversation.user_id == current_user.id)
+    )
+    conv = (await db.execute(stmt)).scalar_one_or_none()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    conv.title = payload.title.strip()[:100]
+    await db.commit()
+    return {"id": str(conv.id), "title": conv.title, "status": "updated"}
 
 
 @router.delete("/copilot/conversations/{conversation_id}", summary="Delete a Copilot conversation")

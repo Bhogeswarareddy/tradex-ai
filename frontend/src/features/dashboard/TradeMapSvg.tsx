@@ -7,184 +7,212 @@ interface TradeNode {
   x: number;
   y: number;
   badge?: string;
+  port: string;
 }
 
 const NODES: TradeNode[] = [
-  { id: "usa", name: "New York Port", country: "USA", x: 210, y: 145, badge: "Import Hub" },
-  { id: "germany", name: "Hamburg Port", country: "Germany", x: 465, y: 115, badge: "EU Destination" },
-  { id: "uae", name: "Jebel Ali Port", country: "UAE", x: 580, y: 180, badge: "Transit Hub" },
-  { id: "india", name: "Mundra Port", country: "India", x: 660, y: 205, badge: "Export Origin" },
-  { id: "singapore", name: "Jurong Port", country: "Singapore", x: 750, y: 260, badge: "Asia Gateway" },
+  { id: "usa", name: "New York Port", country: "USA", port: "New York", x: 195, y: 135, badge: "US East Hub" },
+  { id: "germany", name: "Hamburg Port", country: "Germany", port: "Hamburg", x: 470, y: 105, badge: "EU Gateway" },
+  { id: "uae", name: "Jebel Ali Port", country: "UAE", port: "Jebel Ali", x: 580, y: 175, badge: "Middle East Hub" },
+  { id: "india", name: "Mundra Port", country: "India", port: "Mundra", x: 655, y: 195, badge: "Export Epicenter" },
+  { id: "singapore", name: "Jurong Port", country: "Singapore", port: "Jurong", x: 755, y: 250, badge: "APAC Hub" },
 ];
 
 export const TradeMapSvg: React.FC<{ className?: string }> = ({ className = "" }) => {
   return (
-    <div className={`relative w-full h-[320px] sm:h-[380px] lg:h-[420px] overflow-hidden rounded-2xl select-none ${className}`}>
-      {/* SVG Canvas */}
+    <div
+      className={`relative w-full h-[340px] sm:h-[400px] lg:h-[440px] overflow-hidden rounded-3xl select-none pointer-events-none ${className}`}
+      aria-hidden="true"
+      role="presentation"
+    >
       <svg
-        viewBox="0 0 920 400"
+        viewBox="0 0 960 420"
         className="w-full h-full object-cover"
         preserveAspectRatio="xMidYMid slice"
       >
         <defs>
-          {/* Subtle world map dots pattern */}
-          <pattern id="grid-dots" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
-            <circle cx="2" cy="2" r="0.75" fill="#38BDF8" fillOpacity="0.08" />
+          {/* Subtle trade coordinate dots pattern */}
+          <pattern id="grid-dots" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
+            <circle cx="2" cy="2" r="0.8" fill="#38BDF8" fillOpacity="0.09" />
           </pattern>
 
-          {/* Gradients */}
-          <linearGradient id="route-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#2563EB" stopOpacity="0.8" />
-            <stop offset="50%" stopColor="#38BDF8" stopOpacity="1" />
-            <stop offset="100%" stopColor="#10B981" stopOpacity="0.8" />
+          {/* Glowing Gradients */}
+          <linearGradient id="route-gradient-ocean" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#10B981" stopOpacity="0.85" />
+            <stop offset="50%" stopColor="#38BDF8" stopOpacity="0.95" />
+            <stop offset="100%" stopColor="#3B82F6" stopOpacity="0.85" />
           </linearGradient>
 
-          <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="3" result="blur" />
+          <linearGradient id="route-gradient-air" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#818CF8" stopOpacity="0.75" />
+            <stop offset="100%" stopColor="#C084FC" stopOpacity="0.8" />
+          </linearGradient>
+
+          <filter id="svg-glow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="3.5" result="blur" />
             <feComposite in="SourceGraphic" in2="blur" operator="over" />
           </filter>
         </defs>
 
-        {/* Background Grid */}
+        {/* Background Dot Matrix */}
         <rect width="100%" height="100%" fill="url(#grid-dots)" />
 
-        {/* Abstract World Continents Silhouettes */}
-        <g fill="#1E293B" fillOpacity="0.35">
-          {/* North America outline */}
-          <path d="M 120 70 Q 160 60 240 80 Q 270 120 250 170 Q 210 200 160 170 Q 110 130 120 70 Z" />
-          {/* South America outline */}
-          <path d="M 230 210 Q 280 230 270 310 Q 240 370 210 320 Q 200 250 230 210 Z" />
-          {/* Europe outline */}
-          <path d="M 430 70 Q 500 65 520 120 Q 480 150 440 140 Q 410 110 430 70 Z" />
-          {/* Africa outline */}
-          <path d="M 440 160 Q 520 160 520 250 Q 480 340 440 280 Q 420 210 440 160 Z" />
-          {/* Asia outline */}
-          <path d="M 540 60 Q 720 50 780 140 Q 720 240 620 200 Q 540 140 540 60 Z" />
-          {/* Australia outline */}
-          <path d="M 740 290 Q 820 290 810 360 Q 750 370 730 330 Z" />
+        {/* Global Continental Geography Paths (Dark Modern Silhouettes) */}
+        <g fill="#1E293B" fillOpacity="0.45" stroke="#334155" strokeWidth="0.5" strokeOpacity="0.3">
+          {/* North America */}
+          <path d="M 90 65 L 120 50 L 175 45 L 235 60 L 260 90 L 250 130 L 210 160 L 190 190 L 165 170 L 150 130 L 115 110 L 80 85 Z" />
+          {/* Greenland */}
+          <path d="M 310 35 L 350 30 L 370 55 L 340 75 L 305 60 Z" />
+          {/* Central & South America */}
+          <path d="M 195 200 L 225 210 L 255 240 L 275 290 L 265 350 L 235 375 L 210 330 L 195 260 L 180 220 Z" />
+          {/* Europe */}
+          <path d="M 430 75 L 480 65 L 515 80 L 525 110 L 495 130 L 450 135 L 420 110 L 415 85 Z" />
+          {/* Scandinavia & UK */}
+          <path d="M 410 70 L 425 60 L 420 85 Z" />
+          <path d="M 460 35 L 485 30 L 495 65 L 470 70 Z" />
+          {/* Africa */}
+          <path d="M 435 150 L 510 145 L 540 185 L 530 250 L 505 320 L 465 330 L 430 270 L 415 200 L 435 150 Z" />
+          {/* Asia & Middle East */}
+          <path d="M 535 75 L 610 60 L 730 65 L 815 110 L 800 170 L 740 210 L 685 240 L 650 220 L 620 180 L 570 170 L 535 125 Z" />
+          {/* Southeast Asia Islands & Japan */}
+          <path d="M 820 120 L 840 140 L 830 170 Z" />
+          <path d="M 740 240 L 775 250 L 795 280 L 755 295 L 725 260 Z" />
+          {/* Australia & New Zealand */}
+          <path d="M 745 300 L 830 295 L 850 345 L 810 380 L 740 360 L 725 320 Z" />
+          <path d="M 870 340 L 890 370 L 865 385 Z" />
         </g>
 
-        {/* Curved Glowing Trade Routes */}
-        {/* Route 1: India -> Germany (Primary Turmeric Route) */}
+        {/* Primary Glowing Trade Routes */}
+        {/* Route 1: India (Mundra) -> UAE (Jebel Ali) -> Germany (Hamburg) Ocean Corridor */}
         <path
-          d="M 660 205 Q 560 90 465 115"
+          d="M 655 195 Q 615 180 580 175"
           fill="none"
-          stroke="url(#route-gradient)"
+          stroke="url(#route-gradient-ocean)"
+          strokeWidth="2.5"
+          strokeDasharray="5 4"
+          filter="url(#svg-glow)"
+          className="animate-[dash_15s_linear_infinite] motion-reduce:animate-none"
+        />
+        <path
+          d="M 580 175 Q 515 140 470 105"
+          fill="none"
+          stroke="url(#route-gradient-ocean)"
           strokeWidth="2.5"
           strokeDasharray="6 4"
-          filter="url(#glow)"
-          className="animate-[dash_20s_linear_infinite]"
+          filter="url(#svg-glow)"
+          className="animate-[dash_20s_linear_infinite] motion-reduce:animate-none"
         />
 
-        {/* Route 2: Germany -> USA */}
+        {/* Route 2: Germany (Hamburg) -> USA (New York) Transatlantic Corridor */}
         <path
-          d="M 465 115 Q 330 80 210 145"
+          d="M 470 105 Q 320 75 195 135"
           fill="none"
           stroke="#38BDF8"
-          strokeOpacity="0.5"
+          strokeOpacity="0.75"
           strokeWidth="2"
           strokeDasharray="5 5"
+          filter="url(#svg-glow)"
+          className="animate-[dash_25s_linear_infinite] motion-reduce:animate-none"
         />
 
-        {/* Route 3: India -> UAE */}
+        {/* Route 3: India (Mundra) -> Singapore (Jurong) Maritime Silk Route */}
         <path
-          d="M 660 205 Q 620 180 580 180"
+          d="M 655 195 Q 705 220 755 250"
           fill="none"
-          stroke="#10B981"
-          strokeOpacity="0.7"
+          stroke="url(#route-gradient-air)"
           strokeWidth="2"
           strokeDasharray="4 4"
+          className="animate-[dash_18s_linear_infinite] motion-reduce:animate-none"
         />
 
-        {/* Route 4: UAE -> Germany */}
+        {/* Route 4: Singapore (Jurong) -> USA West Coast / Trans-Pacific */}
         <path
-          d="M 580 180 Q 520 135 465 115"
-          fill="none"
-          stroke="#38BDF8"
-          strokeOpacity="0.5"
-          strokeWidth="1.75"
-          strokeDasharray="4 4"
-        />
-
-        {/* Route 5: India -> Singapore */}
-        <path
-          d="M 660 205 Q 710 235 750 260"
-          fill="none"
-          stroke="#38BDF8"
-          strokeOpacity="0.6"
-          strokeWidth="2"
-          strokeDasharray="4 4"
-        />
-
-        {/* Route 6: India -> USA (Trans-Atlantic) */}
-        <path
-          d="M 660 205 Q 400 40 210 145"
+          d="M 755 250 Q 860 210 930 170"
           fill="none"
           stroke="#60A5FA"
-          strokeOpacity="0.3"
+          strokeOpacity="0.45"
           strokeWidth="1.5"
           strokeDasharray="4 4"
         />
 
-        {/* Moving Cargo Plane along India -> Germany Route */}
-        <g transform="translate(560, 130) rotate(-22)">
+        {/* Route 5: India (Mundra) -> USA Direct Airfreight Corridor */}
+        <path
+          d="M 655 195 Q 410 20 195 135"
+          fill="none"
+          stroke="#93C5FD"
+          strokeOpacity="0.3"
+          strokeWidth="1.5"
+          strokeDasharray="3 3"
+        />
+
+        {/* Moving Cargo Vessel Icon along Arabian Sea / Suez (India to UAE/Hamburg) */}
+        <g transform="translate(615, 184) rotate(-10)" className="motion-reduce:hidden">
+          <circle cx="0" cy="0" r="13" fill="#10B981" fillOpacity="0.2" className="animate-ping" />
+          <circle cx="0" cy="0" r="8" fill="#047857" />
+          {/* Cargo Vessel Ship SVG Symbol */}
+          <path
+            d="M -5 -2 L 5 -2 L 3 3 L -3 3 Z M -2 -5 L 1 -5 L 1 -2 L -2 -2 Z"
+            fill="#FFFFFF"
+          />
+        </g>
+
+        {/* Moving Cargo Plane Icon along Transatlantic (Europe to USA) */}
+        <g transform="translate(325, 100) rotate(12)" className="motion-reduce:hidden">
           <circle cx="0" cy="0" r="14" fill="#2563EB" fillOpacity="0.25" />
           <circle cx="0" cy="0" r="9" fill="#2563EB" />
+          {/* Plane Symbol */}
           <path
-            d="M -4 -4 L 4 0 L -4 4 L -2 0 Z"
+            d="M 0 -5 L 2 -1 L 5 1 L 2 1 L 1 4 L -1 4 L -2 1 L -5 1 L -2 -1 Z"
             fill="#FFFFFF"
             className="animate-pulse"
           />
         </g>
 
-        {/* Pulsing Trade Nodes (Pins) */}
+        {/* Pulsing Trade Hub Pins */}
         {NODES.map((node) => (
           <g key={node.id} transform={`translate(${node.x}, ${node.y})`}>
-            {/* Outer Pulse Ring */}
-            <circle cx="0" cy="0" r="12" fill="#38BDF8" fillOpacity="0.2" className="animate-ping" />
-            {/* Middle Circle */}
-            <circle cx="0" cy="0" r="6" fill="#2563EB" />
-            {/* Center Core */}
-            <circle cx="0" cy="0" r="3" fill="#FFFFFF" />
+            {/* Outer animated radar ping ring */}
+            <circle
+              cx="0"
+              cy="0"
+              r="14"
+              fill="#38BDF8"
+              fillOpacity="0.22"
+              className="animate-ping motion-reduce:hidden"
+            />
+            {/* Intermediate glow circle */}
+            <circle cx="0" cy="0" r="7" fill="#1D4ED8" />
+            {/* Glowing core */}
+            <circle cx="0" cy="0" r="3.5" fill="#38BDF8" />
 
-            {/* Node Label Pin */}
+            {/* Hub Floating Tag */}
             <g transform="translate(0, -18)">
               <rect
-                x="-40"
-                y="-12"
-                width="80"
-                height="16"
-                rx="4"
-                fill="#0F172A"
-                fillOpacity="0.85"
+                x="-42"
+                y="-13"
+                width="84"
+                height="17"
+                rx="4.5"
+                fill="#0B132B"
+                fillOpacity="0.9"
                 stroke="#334155"
                 strokeWidth="1"
               />
               <text
                 x="0"
-                y="0"
+                y="-1"
                 textAnchor="middle"
                 fill="#F8FAFC"
-                fontSize="8.5"
-                fontWeight="bold"
-                fontFamily="sans-serif"
+                fontSize="9"
+                fontWeight="700"
+                fontFamily="system-ui, -apple-system, sans-serif"
               >
-                {node.country}
+                {node.country} ({node.port})
               </text>
             </g>
           </g>
         ))}
       </svg>
-
-      {/* Floating Active Corridor Badge */}
-      <div className="absolute bottom-3 left-4 bg-slate-900/80 backdrop-blur-md border border-slate-700/60 rounded-xl px-3 py-1.5 flex items-center gap-2 text-xs text-slate-300">
-        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-        <span className="font-semibold text-white">Live Corridor:</span>
-        <span className="text-slate-400">Mundra Port (IN) &rarr; Hamburg Port (DE)</span>
-        <span className="hidden sm:inline-block text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-mono">
-          Transit: 21 Days
-        </span>
-      </div>
     </div>
   );
 };

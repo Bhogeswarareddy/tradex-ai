@@ -30,7 +30,7 @@ class ProductCardItem(BaseModel):
     title: str
     supplier_name: str
     origin_country: str
-    unit_price: float
+    unit_price: Optional[float] = None
     price_range: Optional[str] = None
     currency: str = "USD"
     price_status: str = "current"  # current, unconfirmed, stale
@@ -50,6 +50,14 @@ class ProductCardItem(BaseModel):
     rate: Optional[float] = None
     rate_as_of: Optional[str] = None
     is_simulated: Optional[bool] = None
+    supplier_id: Optional[str] = None
+    supplier_country: Optional[str] = None
+    unit: Optional[str] = "units"
+    stock_available: Optional[int] = None
+    category_name: Optional[str] = None
+    brand: Optional[str] = None
+    description: Optional[str] = None
+    slug: Optional[str] = None
 
 
 class MessageInput(BaseModel):

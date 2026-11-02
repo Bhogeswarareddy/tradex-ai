@@ -36,6 +36,16 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    host: "0.0.0.0",
+    port: 5173,
+    proxy: {
+      "/api": {
+        target: backendUrl,
+        changeOrigin: true,
+      },
+    },
+  },
   // @ts-expect-error - Vitest config in Vite defineConfig
   test: {
     include: ["src/tests/**/*.{test,spec}.ts"],

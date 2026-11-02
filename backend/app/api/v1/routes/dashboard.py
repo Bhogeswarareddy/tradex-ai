@@ -49,12 +49,22 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)) -> Dashboard
 
     db_trade_val = await db.scalar(select(func.sum(Order.total_amount))) or 0.0
 
-    # Stats panel spec: 2,847 Verified Suppliers, 12,430 Global Buyers, 1,250 Active Shipments, 98 Countries Covered
+    db_countries = await db.scalar(select(func.count(func.distinct(Company.country)))) or 5
+
+    # Stats panel: seeded enterprise network scale labeled "Demo network", with actual database table counts provided
     hero_stats = HeroStats(
         verified_suppliers=2847,
         global_buyers=12430,
         active_shipments=1250,
         countries_covered=98,
+        network_label="Demo network",
+        is_demo_network=True,
+        real_db_counts={
+            "suppliers": db_suppliers,
+            "buyers": db_buyers,
+            "shipments": db_shipments,
+            "countries": max(1, db_countries),
+        },
     )
 
     trade_val_str = (

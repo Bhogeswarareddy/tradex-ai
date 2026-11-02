@@ -1,6 +1,6 @@
 from app.models.base import Base, SoftDeleteMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.identity import Buyer, Company, RefreshToken, Role, Supplier, User
-from app.models.catalog import Category, Certification, IndexJob, PriceTier, Product, ProductImage, SupplierCertification, SupplierCategory, ExchangeRate
+from app.models.catalog import Category, Certification, IndexJob, PriceTier, Product, ProductImage, SupplierCertification, SupplierCategory, ExchangeRate, ProductAlias
 from app.models.trade import (
     Order, OrderItem, Payment, Quotation, RFQ, RFQItem, Shipment, ShipmentEvent,
     SimulatedFreightRate, SimulatedTariffDuty, SimulatedPortHandlingFee, SimulatedExchangeRate
@@ -32,6 +32,7 @@ __all__ = [
     "IndexJob",
     "SupplierCategory",
     "ExchangeRate",
+    "ProductAlias",
     # Trade
     "RFQ",
     "RFQItem",

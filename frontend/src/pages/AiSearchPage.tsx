@@ -32,7 +32,7 @@ export const AiSearchPage: React.FC = () => {
   const [searchResponse, setSearchResponse] = useState<AiSearchResponse | null>(null);
   const [editedRequirement, setEditedRequirement] = useState<ExtractedRequirement | null>(null);
 
-  const [activeTab, setActiveTab] = useState<"suppliers" | "products">("suppliers");
+  const [activeTab, setActiveTab] = useState<"suppliers" | "products">("products");
   const [isSaved, setIsSaved] = useState(false);
   const [savedSearchId, setSavedSearchId] = useState<string | null>(null);
   const [breakdownSupplier, setBreakdownSupplier] = useState<any | null>(null);
@@ -138,48 +138,16 @@ export const AiSearchPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryParam]);
 
-  // Filtered suppliers: use response suppliers with fallback
-  const filteredSuppliers = useMemo(() => {
+  // Authoritative products and suppliers from searchResponse
+  const displayedSuppliers = useMemo(() => {
     if (!searchResponse) return [];
-    if (!editedRequirement) return searchResponse.suppliers;
+    return searchResponse.suppliers;
+  }, [searchResponse]);
 
-    return searchResponse.suppliers.filter((s) => {
-      if (
-        editedRequirement.origin_country &&
-        !s.country.toLowerCase().includes(editedRequirement.origin_country.toLowerCase())
-      ) {
-        return false;
-      }
-      return true;
-    });
-  }, [searchResponse, editedRequirement]);
-
-  const filteredProducts = useMemo(() => {
+  const displayedProducts = useMemo(() => {
     if (!searchResponse) return [];
-    if (!editedRequirement) return searchResponse.products;
-
-    return searchResponse.products.filter((p) => {
-      if (editedRequirement.product) {
-        const needle = editedRequirement.product.toLowerCase();
-        const inName = p.name.toLowerCase().includes(needle);
-        const inCat = p.category_name.toLowerCase().includes(needle);
-        if (!inName && !inCat) return false;
-      }
-      if (
-        editedRequirement.origin_country &&
-        !p.origin_country.toLowerCase().includes(editedRequirement.origin_country.toLowerCase())
-      ) {
-        return false;
-      }
-      if (
-        editedRequirement.delivery_days !== undefined &&
-        p.lead_time_days > editedRequirement.delivery_days
-      ) {
-        return false;
-      }
-      return true;
-    });
-  }, [searchResponse, editedRequirement]);
+    return searchResponse.products;
+  }, [searchResponse]);
 
   // Handle client-side requirement chip modification: immediately re-query structured filter endpoint
   const handleRequirementChange = async (updated: ExtractedRequirement) => {
@@ -332,6 +300,8 @@ export const AiSearchPage: React.FC = () => {
           {editedRequirement && (
             <ErrorBoundary level="widget" fallbackTitle="Requirement details display encountered an issue">
               <UnderstoodRequirementCard
+                query={searchResponse.query || currentQuery}
+                status={searchResponse.status || "success"}
                 requirement={editedRequirement}
                 missingFields={searchResponse.missing_fields}
                 clarifyingQuestions={searchResponse.clarifying_questions}
@@ -349,20 +319,29 @@ export const AiSearchPage: React.FC = () => {
           {/* Filter Relaxation Suggestions if matches are scarce */}
           {searchResponse.relaxation_suggestions &&
             searchResponse.relaxation_suggestions.length > 0 &&
-            (filteredSuppliers.length === 0 || filteredProducts.length === 0) && (
+            (displayedSuppliers.length === 0 || displayedProducts.length === 0) && (
               <FilterRelaxationSuggestions
                 suggestions={searchResponse.relaxation_suggestions}
                 onApplySuggestion={handleApplyRelaxation}
               />
             )}
 
-          {/* Results Tabs: Suppliers & Products */}
+          {/* Results Tabs: Products & Suppliers */}
           <ErrorBoundary level="widget" fallbackTitle="Marketplace search matches encountered an issue">
             <AiSearchResultsTabs
               activeTab={activeTab}
               onTabChange={setActiveTab}
-              suppliers={filteredSuppliers}
-              products={filteredProducts}
+              suppliers={displayedSuppliers}
+              products={displayedProducts}
+              requestedQuantity={editedRequirement?.quantity}
+              requestedUnit={editedRequirement?.unit}
+              query={currentQuery}
+              onClearOrRefine={() => {
+                setCurrentQuery("");
+                setSearchResponse(null);
+                setSearchParams({});
+              }}
+              onCreateRfq={handleCreateRfq}
               onRequestQuote={handleRequestQuote}
               onOpenBreakdown={setBreakdownSupplier}
             />

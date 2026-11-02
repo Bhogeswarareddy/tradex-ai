@@ -83,6 +83,9 @@ seed:
 	docker compose exec backend python -m app.seed
 	docker compose exec backend python -m app.services.market_data
 
+seed-scale:
+	docker compose exec backend python -m app.cli seed-scale
+
 test: test-backend test-frontend
 
 test-backend:
@@ -96,6 +99,9 @@ clean:
 
 ai-check:
 	docker compose exec backend python -m app.cli ai-check
+
+ai-check-all:
+	docker compose exec backend python -m app.scripts.ai_check_all
 
 ai-eval:
 	docker compose exec backend python -m app.cli ai-eval

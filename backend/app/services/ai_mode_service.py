@@ -922,12 +922,36 @@ async def handle_user_message(
     conversation.search_state = search_state
     conversation.updated_at = datetime.now(timezone.utc)
 
-    # Title conversation if new
+    # Title conversation from first real request (Prompt 37)
     criteria = search_state.get("criteria", {})
-    if conversation.title in ["New Conversation", "TradeX Sourcing Session", "Untitled Conversation"] and criteria.get("product"):
-        prod_title = criteria["product"].title()
-        origin_suffix = f" ({criteria['origin_country']})" if criteria.get("origin_country") else ""
-        conversation.title = f"{prod_title}{origin_suffix} Sourcing"
+    default_titles = [
+        "New Conversation",
+        "TradeX Sourcing Session",
+        "Untitled Conversation",
+        "New Trade Session",
+        "Trade Sourcing Session",
+    ]
+    if conversation.title in default_titles:
+        prod = criteria.get("product") or (orch_resp.understood.product_term if hasattr(orch_resp, "understood") and orch_resp.understood else None)
+        form = criteria.get("form")
+        qty = criteria.get("quantity") or (orch_resp.understood.quantity if hasattr(orch_resp, "understood") and orch_resp.understood else None)
+        unit = criteria.get("unit") or (orch_resp.understood.unit if hasattr(orch_resp, "understood") and orch_resp.understood else None)
+
+        if not qty:
+            qm = re.search(r"\b(\d+(?:\.\d+)?)\s*(kg|tons?|tonnes?|units?|pcs?|pieces?|boxes?|cartons?|mt|metric tons?)\b", user_content, re.IGNORECASE)
+            if qm:
+                qty = float(qm.group(1))
+                unit = qm.group(2)
+
+        if prod:
+            prod_title = prod.title()
+            if form and form.lower() not in prod_title.lower():
+                prod_title = f"{prod_title} {form.title()}"
+            qty_part = f", {int(qty)} {unit or 'units'}".strip() if qty else ""
+            conversation.title = f"{prod_title}{qty_part}".strip()
+        else:
+            clean_t = re.sub(r"^(?:bro\s+|i\s+need\s+|show\s+me\s+|find\s+|looking\s+for\s+)", "", user_content, flags=re.I).strip()
+            conversation.title = (clean_t[:36] or user_content[:36]).title()
 
     # 1. User message
     user_msg = AIMessage(
@@ -943,16 +967,22 @@ async def handle_user_message(
     db.add(user_msg)
     await db.flush()
 
-    # Active filters
+    # Active filters: ONLY stated filters from SourcingEngine
     active_filters: List[Dict[str, str]] = []
-    if criteria.get("product"):
-        active_filters.append({"label": "Product", "value": criteria["product"].title()})
-    if criteria.get("origin_country"):
-        active_filters.append({"label": "Origin", "value": criteria["origin_country"]})
-    if criteria.get("target_price"):
-        active_filters.append({"label": "Max Price", "value": f"{criteria.get('target_currency', 'USD')} {criteria['target_price']:.2f}"})
-    if criteria.get("destination"):
-        active_filters.append({"label": "Destination", "value": criteria["destination"]})
+    if getattr(orch_resp, "active_filters", None):
+        for k, v in orch_resp.active_filters.items():
+            if v and str(v).lower() not in ["none", "trade"]:
+                lbl = "Max Price" if k == "max_price" else k.replace("_", " ").title()
+                active_filters.append({"label": lbl, "value": str(v)})
+    else:
+        if criteria.get("product"):
+            active_filters.append({"label": "Product", "value": str(criteria["product"]).title()})
+        if criteria.get("origin_country"):
+            active_filters.append({"label": "Origin", "value": criteria["origin_country"]})
+        if criteria.get("target_price"):
+            active_filters.append({"label": "Max Price", "value": f"{criteria.get('target_currency', 'USD')} {criteria['target_price']:.2f}"})
+        if criteria.get("destination") and criteria["destination"].lower() not in ["trade", "me", "export", "sale"]:
+            active_filters.append({"label": "Destination", "value": criteria["destination"]})
 
     # 2. Assistant message
     structured_payload = {

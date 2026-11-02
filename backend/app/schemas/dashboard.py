@@ -7,6 +7,9 @@ class HeroStats(BaseModel):
     global_buyers: int = Field(12430, description="Count of active global buyers")
     active_shipments: int = Field(1250, description="Shipments currently active or in transit")
     countries_covered: int = Field(98, description="Global countries actively trading")
+    network_label: str = Field("Demo network", description="Label explaining seeded vs live platform scale")
+    is_demo_network: bool = Field(True, description="Whether network metrics reflect seeded scale")
+    real_db_counts: Optional[Dict[str, int]] = Field(default=None, description="Actual table counts in database")
 
 
 class KPICard(BaseModel):

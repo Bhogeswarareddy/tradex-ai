@@ -99,6 +99,11 @@ export interface SupplierProfileResponse {
   certifications: SupplierCertificationItem[];
   factory_details: FactoryDetails;
   is_saved: boolean;
+  verification_tier?: string;
+  tier_reason?: string;
+  kyc_status?: string;
+  kyc_documents?: Record<string, any>;
+  is_demo?: boolean;
 }
 
 export interface SupplierReviewItem {

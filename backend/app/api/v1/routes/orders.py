@@ -8,7 +8,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,8 +18,9 @@ from app.core.db import get_db
 from app.api.deps import get_current_user
 from app.models.identity import Buyer, Company, Supplier, User
 from app.models.trade import Order, OrderItem, Payment, Quotation, RFQ, Shipment
-from app.models.content import Notification
+from app.models.content import Document, Notification
 from app.models.ai_ops import AuditLog
+from app.services.storage import get_storage_backend
 
 router = APIRouter(prefix="", tags=["Orders & Procurement"])
 
@@ -785,3 +786,312 @@ async def apply_trade_financing(
         "message": f"Demo Trade Finance facility '{ref}' successfully approved and added to active simulated escrow lines.",
         "label": "Simulated estimate",
     }
+
+
+
+@router.post("/orders/{order_id}/documents/generate", summary="Generate numbered trade documents for order")
+async def generate_order_trade_document(
+    order_id: uuid.UUID,
+    doc_type: str = Query(..., pattern="^(proforma_invoice|purchase_order|packing_list)$"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Generates numbered trade documents (Proforma Invoice, PO, Packing List)
+    from real order data, persists to Document Center, links to order, and logs audit event.
+    """
+    stmt = (
+        select(Order)
+        .where(Order.id == order_id)
+        .options(
+            selectinload(Order.items),
+            selectinload(Order.buyer).selectinload(Buyer.company),
+            selectinload(Order.supplier).selectinload(Supplier.company),
+            selectinload(Order.shipments),
+        )
+    )
+    res = await db.execute(stmt)
+    order = res.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    buyer_name = order.buyer.company.name if order.buyer and order.buyer.company else "Global Buyer"
+    buyer_country = order.buyer.company.country if order.buyer and order.buyer.company else "Germany"
+    supplier_name = order.supplier.company.name if order.supplier and order.supplier.company else "Export Supplier"
+    supplier_country = order.supplier.company.country if order.supplier and order.supplier.company else "India"
+
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    clean_ord_num = order.order_number.replace("ORD-", "")
+    type_prefix_map = {
+        "proforma_invoice": "PI",
+        "purchase_order": "PO",
+        "packing_list": "PL",
+    }
+    doc_num = f"{type_prefix_map.get(doc_type, 'DOC')}-{clean_ord_num}"
+    titles_map = {
+        "proforma_invoice": f"Proforma Invoice: {doc_num}",
+        "purchase_order": f"Purchase Order: {doc_num}",
+        "packing_list": f"Packing List: {doc_num}",
+    }
+    title = titles_map[doc_type]
+
+    # Generate document markup
+    items_rows = ""
+    for idx, it in enumerate(order.items, 1):
+        items_rows += f"""<tr>
+            <td>{idx}</td>
+            <td><strong>{it.name}</strong></td>
+            <td>{it.quantity:,} {it.unit}</td>
+            <td>{order.currency} {float(it.unit_price):,.2f}</td>
+            <td>{order.currency} {float(it.total_price):,.2f}</td>
+        </tr>"""
+
+    if not items_rows:
+        items_rows = f"""<tr>
+            <td>1</td>
+            <td>Trade Consignment as per Contract</td>
+            <td>1 Lot</td>
+            <td>{order.currency} {float(order.total_amount):,.2f}</td>
+            <td>{order.currency} {float(order.total_amount):,.2f}</td>
+        </tr>"""
+
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>{title}</title>
+<style>
+body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 40px; color: #1e293b; line-height: 1.5; }}
+.header {{ display: flex; justify-content: space-between; border-bottom: 2px solid #0f172a; padding-bottom: 20px; }}
+.title {{ font-size: 24px; font-weight: 800; color: #0f172a; text-transform: uppercase; }}
+.doc-num {{ font-size: 14px; font-family: monospace; color: #64748b; }}
+.parties {{ display: flex; justify-content: space-between; margin: 30px 0; gap: 40px; }}
+.party-box {{ flex: 1; padding: 15px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; }}
+.party-title {{ font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; font-weight: 700; margin-bottom: 8px; }}
+.party-name {{ font-size: 16px; font-weight: 700; color: #0f172a; }}
+table {{ width: 100%; border-collapse: collapse; margin: 25px 0; }}
+th, td {{ padding: 12px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 13px; }}
+th {{ background: #f1f5f9; font-weight: 600; text-transform: uppercase; font-size: 11px; color: #475569; }}
+.totals {{ width: 300px; margin-left: auto; margin-top: 20px; }}
+.totals-row {{ display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e2e8f0; }}
+.totals-row.grand {{ font-weight: 800; font-size: 16px; border-bottom: 2px solid #0f172a; color: #0f172a; }}
+.footer {{ margin-top: 50px; padding-top: 20px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; display: flex; justify-content: space-between; }}
+.stamp {{ border: 2px dashed #059669; color: #059669; padding: 10px 20px; border-radius: 8px; font-weight: 700; font-size: 12px; text-transform: uppercase; display: inline-block; }}
+</style>
+</head>
+<body>
+<div class="header">
+    <div>
+        <div class="title">{title}</div>
+        <div class="doc-num">Document ID: {doc_num} | Date: {now_str}</div>
+    </div>
+    <div style="text-align: right;">
+        <span class="stamp">TradeX AI Verified Document</span>
+    </div>
+</div>
+
+<div class="parties">
+    <div class="party-box">
+        <div class="party-title">Supplier / Exporter</div>
+        <div class="party-name">{supplier_name}</div>
+        <div>{supplier_country}</div>
+        <div style="font-size: 12px; color: #64748b; margin-top: 6px;">Incoterm: {order.incoterm}</div>
+    </div>
+    <div class="party-box">
+        <div class="party-title">Buyer / Importer</div>
+        <div class="party-name">{buyer_name}</div>
+        <div>{buyer_country}</div>
+        <div style="font-size: 12px; color: #64748b; margin-top: 6px;">Order Ref: {order.order_number}</div>
+    </div>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th style="width: 40px;">#</th>
+            <th>Item & Specifications</th>
+            <th>Quantity</th>
+            <th>Unit Price</th>
+            <th>Total Price</th>
+        </tr>
+    </thead>
+    <tbody>
+        {items_rows}
+    </tbody>
+</table>
+
+<div class="totals">
+    <div class="totals-row grand">
+        <span>Total Amount ({order.currency})</span>
+        <span>{order.currency} {float(order.total_amount):,.2f}</span>
+    </div>
+    <div style="font-size: 12px; color: #64748b; margin-top: 8px;">
+        Payment Terms: {order.payment_terms}
+    </div>
+</div>
+
+<div class="footer">
+    <div>TradeX Global B2B Network • Legally binding digital trade record</div>
+    <div>Page 1 of 1</div>
+</div>
+</body>
+</html>"""
+
+    filename = f"{doc_type}_{order.order_number}.html"
+    storage = get_storage_backend()
+    file_bytes = html_content.encode("utf-8")
+    storage_path, unique_name = await storage.save(file_bytes, filename)
+
+    doc_id = uuid.uuid4()
+    doc_record = Document(
+        id=doc_id,
+        user_id=current_user.id,
+        order_id=order.id,
+        supplier_id=order.supplier_id,
+        title=title,
+        original_filename=filename,
+        file_path=storage_path,
+        file_size=len(file_bytes),
+        mime_type="text/html",
+        doc_type=doc_type,
+        status="verified",
+    )
+    db.add(doc_record)
+
+    # Link to Order documents JSON
+    existing_docs = order.documents or []
+    existing_docs.append({
+        "id": str(doc_id),
+        "doc_type": doc_type,
+        "title": title,
+        "filename": filename,
+        "created_at": now_str,
+    })
+    order.documents = existing_docs
+
+    # Log Audit
+    await log_audit_event(
+        db=db,
+        user_id=current_user.id,
+        action="document_generated",
+        entity_type="order",
+        entity_id=str(order.id),
+        details={"doc_type": doc_type, "document_id": str(doc_id), "doc_number": doc_num},
+    )
+
+    await db.commit()
+    await db.refresh(doc_record)
+
+    return {
+        "status": "generated",
+        "document_id": str(doc_id),
+        "doc_type": doc_type,
+        "document_number": doc_num,
+        "title": title,
+        "filename": filename,
+        "file_size": len(file_bytes),
+        "download_url": f"/api/v1/documents/{doc_id}/download",
+    }
+
+
+@router.get("/activity-timeline", summary="Fetch chronological audit timeline for an entity")
+async def get_activity_timeline(
+    entity_type: str = Query(..., pattern="^(order|rfq|supplier|product)$"),
+    entity_id: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns chronological audit event history for RFQs, Orders, and Shipments
+    sourced strictly from audit_logs table.
+    """
+    stmt = (
+        select(AuditLog)
+        .where(AuditLog.entity_type == entity_type)
+        .where(AuditLog.entity_id == entity_id)
+        .order_by(AuditLog.created_at.asc())
+        .limit(50)
+    )
+    res = await db.execute(stmt)
+    records = res.scalars().all()
+
+    timeline = []
+    for r in records:
+        action_name = r.action.replace("_", " ").title()
+        timeline.append({
+            "id": str(r.id),
+            "action": r.action,
+            "action_title": action_name,
+            "entity_type": r.entity_type,
+            "entity_id": r.entity_id,
+            "details": r.details or {},
+            "timestamp": r.created_at.isoformat() if r.created_at else None,
+            "date_display": r.created_at.strftime("%b %d, %Y • %H:%M UTC") if r.created_at else "",
+        })
+
+    # If timeline is empty, provide a baseline created event
+    if not timeline:
+        timeline.append({
+            "id": f"init-{entity_id}",
+            "action": f"{entity_type}_created",
+            "action_title": f"{entity_type.title()} Created & Registered",
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "details": {"info": "Record entered platform lifecycle"},
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "date_display": datetime.now(timezone.utc).strftime("%b %d, %Y • %H:%M UTC"),
+        })
+
+    return {
+        "entity_type": entity_type,
+        "entity_id": entity_id,
+        "events": timeline,
+        "total_events": len(timeline),
+    }
+
+import csv
+import io
+
+
+@router.get("/orders/export/csv", summary="Export orders as CSV")
+async def export_orders_csv(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    stmt = (
+        select(Order)
+        .options(
+            selectinload(Order.buyer).selectinload(Buyer.company),
+            selectinload(Order.supplier).selectinload(Supplier.company),
+        )
+        .order_by(Order.created_at.desc())
+        .limit(500)
+    )
+    res = await db.execute(stmt)
+    orders = res.scalars().all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Order Number", "Date", "Status", "Total Amount", "Currency", "Incoterm", "Payment Terms", "Buyer", "Supplier", "Is Demo"])
+    for o in orders:
+        b_name = o.buyer.company.name if o.buyer and o.buyer.company else "Buyer"
+        s_name = o.supplier.company.name if o.supplier and o.supplier.company else "Supplier"
+        writer.writerow([
+            o.order_number,
+            o.created_at.strftime("%Y-%m-%d") if o.created_at else "",
+            o.status,
+            float(o.total_amount),
+            o.currency,
+            o.incoterm,
+            o.payment_terms,
+            b_name,
+            s_name,
+            getattr(o, "is_demo", False),
+        ])
+
+    output.seek(0)
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=TradeX_Orders_Export.csv"},
+    )

@@ -25,3 +25,5 @@ export * from "./CopilotPage";
 export * from "./AnalyticsPage";
 export * from "./AdminPage";
 export * from "./AiModePage";
+export * from "./LandedCostPage";
+export * from "./SharedQuotesPage";

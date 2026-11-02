@@ -30,10 +30,13 @@ const CopilotPage = lazy(() => import("../pages/CopilotPage").then(m => ({ defau
 const AnalyticsPage = lazy(() => import("../pages/AnalyticsPage").then(m => ({ default: m.AnalyticsPage })));
 const AdminPage = lazy(() => import("../pages/AdminPage").then(m => ({ default: m.AdminPage })));
 const NotFoundPage = lazy(() => import("../pages/NotFoundPage").then(m => ({ default: m.NotFoundPage })));
+const ServerErrorPage = lazy(() => import("../pages/ServerErrorPage").then(m => ({ default: m.ServerErrorPage })));
 const CompanyPage = lazy(() => import("../pages/CompanyPage").then(m => ({ default: m.CompanyPage })));
 const SettingsPage = lazy(() => import("../pages/SettingsPage").then(m => ({ default: m.SettingsPage })));
 const SavedPage = lazy(() => import("../pages/SavedPage").then(m => ({ default: m.SavedPage })));
 const AiModePage = lazy(() => import("../pages/AiModePage").then(m => ({ default: m.AiModePage })));
+const LandedCostPage = lazy(() => import("../pages/LandedCostPage").then(m => ({ default: m.LandedCostPage })));
+const SharedQuotesPage = lazy(() => import("../pages/SharedQuotesPage").then(m => ({ default: m.SharedQuotesPage })));
 
 const RouteLoadingFallback: React.FC = () => (
   <div className="min-h-[50vh] flex flex-col items-center justify-center p-8 text-center" role="status" aria-label="Loading page">
@@ -61,6 +64,7 @@ export const AppRoutes: React.FC = () => {
 
         {/* Dedicated Standalone AI Mode Screen (Prompt 19) */}
         <Route path="/ai-mode" element={<AiModePage />} />
+        <Route path="/shared/quotes/:token" element={<SharedQuotesPage />} />
 
         {/* Main Dashboard Pages (Inside AppLayout) */}
         <Route element={<LayoutWrapper />}>
@@ -88,6 +92,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="/shipments" element={<ShipmentsPage />} />
           <Route path="/shipments/:id" element={<ShipmentDetailPage />} />
           <Route path="/trade-finance" element={<TradeFinancePage />} />
+          <Route path="/landed-cost" element={<LandedCostPage />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/messages" element={<MessagesPage />} />
@@ -109,6 +114,7 @@ export const AppRoutes: React.FC = () => {
             }
           />
 
+          <Route path="/500" element={<ServerErrorPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

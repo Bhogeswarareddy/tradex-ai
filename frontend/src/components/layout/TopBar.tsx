@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Avatar } from "../ui/Avatar";
 import { Badge } from "../ui/Badge";
+import { CommandPaletteModal } from "../common/CommandPaletteModal";
 import { NotificationBellDropdown } from "../../features/communication";
 import {
   useSettings,
@@ -49,6 +50,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   const [langOpen, setLangOpen] = useState(false);
   const [currOpen, setCurrOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const profileRef = useRef<HTMLDivElement>(null);
   const langRef = useRef<HTMLDivElement>(null);
@@ -74,6 +76,10 @@ export const TopBar: React.FC<TopBarProps> = ({
         setProfileOpen(false);
         setLangOpen(false);
         setCurrOpen(false);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((prev) => !prev);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -159,7 +165,11 @@ export const TopBar: React.FC<TopBarProps> = ({
         </button>
 
         {/* Global Search Input with keyboard shortcut */}
-        <form onSubmit={handleSearchSubmit} className="relative flex-1">
+        <form
+          onSubmit={handleSearchSubmit}
+          onClick={() => setPaletteOpen(true)}
+          className="relative flex-1 cursor-pointer"
+        >
           <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
             <Search className="w-4 h-4" />
           </div>
@@ -167,11 +177,11 @@ export const TopBar: React.FC<TopBarProps> = ({
             type="search"
             value={searchValue}
             onChange={(e) => setSearchValue(e.target.value)}
-            placeholder="Search products, suppliers, HS codes, RFQs..."
-            className="w-full pl-10 pr-14 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl placeholder:text-slate-400 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-all"
+            placeholder="Search products, suppliers, HS codes, RFQs... (⌘K)"
+            className="w-full pl-10 pr-14 py-2 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-xl placeholder:text-slate-400 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-all"
           />
           <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-            <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono text-slate-400 bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded shadow-xs">
+            <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono text-slate-500 bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded shadow-xs">
               ⌘K
             </kbd>
           </div>
@@ -440,6 +450,9 @@ export const TopBar: React.FC<TopBarProps> = ({
           )}
         </div>
       </div>
+
+      {/* Global Command Palette (⌘K) */}
+      <CommandPaletteModal isOpen={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </header>
   );
 };

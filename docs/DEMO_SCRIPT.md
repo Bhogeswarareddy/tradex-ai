@@ -1,134 +1,101 @@
-# TradeX AI: 10-Minute Executive Live Demonstration Script
+# TradeX AI: Official Demo Package & Viva Presentation Guide
 
-This script guides presenters through a compelling, end-to-end 10-minute live demonstration of the TradeX AI platform, highlighting AI intelligence, international trade compliance, containerization, and operations.
-
----
-
-## Demonstration Timeline & Click Path
-
-```
-  00:00 - 01:15  |  Introduction & Architecture
-  01:15 - 03:00  |  AI Natural Language Discovery & Matching
-  03:00 - 04:30  |  Supplier Intelligence & Factory Verification
-  04:30 - 06:00  |  RFQ, Multi-Quote Comparison & Landed-Cost Analysis
-  06:00 - 07:15  |  Order Execution, Simulated Payments & Vessel Tracking
-  07:15 - 08:30  |  Document Intelligence OCR & Trade Copilot RAG
-  08:30 - 09:15  |  Market Intelligence & Macro Analytics
-  09:15 - 10:00  |  Admin Console, Prometheus Monitoring & AWS Architecture
-```
+This guide equips you to deliver a flawless, production-grade presentation of TradeX AI to investors, academic evaluators, and enterprise stakeholders.
 
 ---
 
-### Act 1: Introduction & Architecture (00:00 – 01:15)
-
-- **Screen**: Browser opened to `https://localhost` (or `https://api.tradex.ai`).
-- **Action**: Display the TradeX AI homepage. Note the active HTTPS lock badge and modern Alibaba/IndiaMART enterprise aesthetic.
-- **Presenter Script**:
-  > *"Welcome to TradeX AI. Cross-border B2B trade represents over $20 trillion annually, yet discovering compliant suppliers, negotiating landed costs, and verifying complex customs documents remains slow and fragmented.*
-  >
-  > *TradeX AI is an end-to-end intelligent procurement platform. Behind this single interface is a hardened, multi-container architecture running Nginx reverse proxying, a React 19 single-page app, a FastAPI asynchronous Python backend with pgvector 16, and real-time Prometheus monitoring. Let's walk the entire international trade journey."*
+## Part 1: The 2-Minute Elevator Pitch
+> *"Cross-border B2B trade represents over \$35 trillion annually, yet it remains plagued by fragmented communication, opaque pricing, complex Incoterms compliance, and supplier discovery friction. Traditional marketplaces like Alibaba offer massive directories but zero transactional intelligence.*
+>
+> *TradeX AI changes this with the world's first **Deterministic-RAG Hybrid Sourcing Platform**. Unlike naive AI wrappers that hallucinate non-existent suppliers and prices, TradeX combines **strict database-as-source-of-truth matching** with **live LLM intelligence via Groq LLaMA-3.1**.
+>
+> *Buyers can state complex sourcing needs in natural language—like 'I need 20 MT organic turmeric powder with curcumin > 5% delivered to Hamburg under CIF'—and instantly receive verified suppliers with live stock, landed cost breakdowns, and automated compliance documents. From search to RFQ, multi-quote comparison, negotiation, and milestone tracking, TradeX orchestrates the entire international trade journey."*
 
 ---
 
-### Act 2: AI Natural Language Discovery & Matching (01:15 – 03:00)
+## Part 2: The 10-Minute Walkthrough Click Path
 
-- **Screen**: Click **AI Search** (`/search`).
-- **Action**: Paste the canonical procurement prompt into the natural language input box:
-  ```
-  Looking for 20 MT organic turmeric powder with curcumin > 5% for shipment to Hamburg
-  ```
-- **Action**: Press Enter or click **Search with AI**.
-- **Action**: Point out the parsed requirements extracted by the AI engine:
-  - Commodity: *Organic Turmeric Powder*
-  - Quantity: *20 MT (Metric Tons)*
-  - Chemical Specification: *Curcumin > 5%*
-  - Destination Port: *Port of Hamburg (DEHAM), Germany*
-- **Presenter Script**:
-  > *"Notice how the AI immediately parsed unstructured commercial intent into structured vector parameters. It evaluated our 60 seeded products and matched top enterprise exporters like Kerala Spices Exports and Western Ghats Bio-Agro.*
-  >
-  > *Crucially, TradeX doesn't just match keywords—it computes a multi-attribute match score blending vector cosine similarity, trust scores, and certification compliance (EU Organic, ISO 22000, FSSAI). With one click, the buyer can generate an instant RFQ directly from this prompt."*
+### Step 1: Boot & Landing Page (0:00 - 1:30)
+- **Action**: Launch application via `make demo` and navigate to `https://localhost` (or `http://localhost:5173`).
+- **Showcase**:
+  - The animated World Trade Map with glowing trade routes connecting major global logistics hubs (Mundra, Hamburg, Singapore, New York).
+  - The live corridor ticker (*Mundra Port (IN) to Hamburg Port (DE)*).
+  - Live platform KPIs showing real database aggregates with the *"Demo network"* badge.
+  - Role-guided onboarding tour popup.
 
----
+### Step 2: Global Command Palette (1:30 - 2:30)
+- **Action**: Press `Ctrl+K` or `Cmd+K` anywhere in the app.
+- **Showcase**:
+  - Instant modal appearance with keyboard navigation.
+  - Type `rice` to see categorized quick matches across Products, Suppliers, and Navigation routes.
+  - Select *Landed Cost Calculator* to jump directly to the tool.
 
-### Act 3: Supplier Intelligence & Factory Verification (03:00 – 04:30)
+### Step 3: Natural Language AI Search (2:30 - 4:00)
+- **Action**: Navigate to `/ai-search` and input:
+  `"I need 500 kg basmati rice for shipment to Hamburg under CIF"`
+- **Showcase**:
+  - **Understood Requirement Card**: Shows extracted entity (`basmati rice`), quantity (`500 kg`), destination (`Germany`), and Incoterm (`CIF`).
+  - **Zero Hallucination Guarantee**: Note that supplier count strictly matches the distinct suppliers of matching products. Unstated criteria (like lead time) are shown as follow-up suggestions, not phantom filters.
+  - **Live Inventory Check**: Product card verifies whether supplier's stock meets the requested 500 kg.
+  - **Verification Tiers**: Gold and Silver verification badges with inspection credentials.
 
-- **Screen**: Click into **Kerala Spices Exports** profile (`/suppliers/1`).
-- **Action**: Show the Trust Score badge (94/100), verified licenses (APEDA, ISO 22000, EU Organic), and factory profile tabs:
-  - Overview: export history, revenue, export destinations.
-  - Products: catalog of certified organic spices.
-  - Factory & Machinery: processing capacity (50 MT/day), pulverizers, steam sterilizers.
-  - Certifications: verified certificate badges with issuing authority details.
-- **Presenter Script**:
-  > *"On traditional trade portals, verifying whether a supplier is a legitimate manufacturer or a broker takes weeks. In TradeX AI, each supplier has a verified digital storefront backed by factory audit data, production capacity, and verifiable trade licenses.*
-  >
-  > *This supplier boasts a 94 Trust Score, 50 MT/day capacity, and pre-verified TRACES NT EU organic compliance."*
+### Step 4: AI Mode & Copilot with Trade Knowledge RAG (4:00 - 6:00)
+- **Action**: Navigate to `/ai-mode` and test:
+  1. Product inquiry: `"I need 20 Apple mobiles"` -> Returns exact Apple electronics listings.
+  2. Follow-up: `"I need more help"` -> Contextually prompts next steps (price comparison or RFQ drafting).
+  3. Knowledge inquiry: `"Explain FOB vs CIF and required documents to export rice to USA"` -> RAG pipeline returns verified Incoterms guidance with source document chips and official compliance disclaimer.
 
----
+### Step 5: RFQ Creation & Quote Comparison (6:00 - 7:30)
+- **Action**: Click *"Create RFQ"* from the matched product card.
+- **Showcase**:
+  - Auto-drafted specifications populated by AI.
+  - Navigate to `/quotes/compare/:rfq_id`.
+  - Side-by-side comparison matrix of supplier quotes with unit prices, lead times, payment terms, and AI Deal Assist recommendation.
+  - Click *"Share Comparison"* to generate a cryptographically signed public link (`/shared/quotes/:token`).
 
-### Act 4: RFQs, Multi-Quote Comparison & Landed-Cost Analysis (04:30 – 06:00)
+### Step 6: Landed Cost Calculator (7:30 - 8:30)
+- **Action**: Navigate to `/landed-cost`.
+- **Showcase**:
+  - Input product cost, origin port (IN MUN), destination (DE HAM), and shipping mode.
+  - Interactive breakdown of FOB base, ocean freight, customs tariff (HS Code based), marine insurance, and port handling.
 
-- **Screen**: Switch to **RFQs** (`/rfqs`) $\rightarrow$ View Seeded RFQ `RFQ-2026-0001`.
-- **Action**: Highlight the multi-vendor quotation comparison table.
-- **Action**: Click **Compare Quotes with AI**.
-- **Action**: Toggle **Landed-Cost Calculator**. Show how FOB price ($2,400/MT) expands to CIF Hamburg ($2,720/MT) including customs duty (7.7%), ocean freight, marine insurance, and terminal handling charges.
-- **Presenter Script**:
-  > *"Here we see two competitive quotations submitted for our turmeric inquiry. Instead of manual spreadsheet math, our AI Quote Evaluator benchmarks lead times, Incoterms, and payment terms.*
-  >
-  > *Furthermore, our Landed-Cost Engine calculates the exact final landed cost at Hamburg Port—accounting for EU Common Customs Tariff, ocean container freight, and marine cargo insurance. Let's award this quote to Kerala Spices Exports and generate an order."*
-
----
-
-### Act 5: Order Execution, Simulated Payments & Vessel Tracking (06:00 – 07:15)
-
-- **Screen**: Navigate to **Orders** (`/orders`) $\rightarrow$ Click `ORD-2026-0001`.
-- **Action**: Show order state transition flow: *Confirmed $\rightarrow$ In Production $\rightarrow$ Quality Check $\rightarrow$ Shipped*.
-- **Action**: Click **Simulate Payment** (Advance 30% / Escrow release).
-- **Action**: Navigate to **Shipments** (`/shipments`) $\rightarrow$ Click `EX2026-1024`.
-- **Action**: Display the interactive maritime map showing vessel *MV Ocean Star* traversing the 14-waypoint corridor from Nhava Sheva / Chennai through the Red Sea and Suez Canal to Hamburg.
-- **Presenter Script**:
-  > *"The order progresses through strict role-aware status transitions. Notice the payment simulator: it generates verifiable simulated escrow milestones with full transaction references.*
-  >
-  > *Under Shipments, our real-time simulator advances vessel MV Ocean Star along the 14 nautical waypoints between India and Europe, updating ETA, coordinates, and transit events in real time."*
+### Step 7: Advanced Trade Analytics (8:30 - 10:00)
+- **Action**: Navigate to `/analytics`.
+- **Showcase**:
+  - Monthly sourcing volume trends, landed cost distribution pie chart, and the Supplier Performance Scorecard.
 
 ---
 
-### Act 6: Document Intelligence OCR & Trade Copilot RAG (07:15 – 08:30)
+## Part 3: 12-Slide Presentation Outline
 
-- **Screen**: Navigate to **Documents** (`/documents`).
-- **Action**: View an uploaded Commercial Invoice / Certificate. Click **AI Extraction**.
-- **Action**: Display extracted JSON fields: Seller, Buyer, HS Code `0910.30`, Invoice Total, Container Number, and Confidence Score.
-- **Screen**: Click the floating or sidebar **Copilot** (`/copilot`).
-- **Action**: Submit query:
-  ```
-  What are the mandatory document requirements for importing organic turmeric into Germany under EU 2018/848?
-  ```
-- **Action**: Show the streaming answer grounded in the 15 international trade compliance guides, highlighting the clickable citation badge: `[Verified Guide: EU Organic Regulations & TRACES NT]`.
-- **Presenter Script**:
-  > *"Document processing is the biggest bottleneck in international trade. Our Document Intelligence engine extracts structured line items, weights, and container numbers with confidence scores.*
-  >
-  > *And our AI Trade Copilot is grounded in a retrieval-augmented generation engine spanning 15 international trade guides—including Incoterms 2020, UCP 600 Letters of Credit, and EU organic regulations. Every answer cites verified legal sources."*
-
----
-
-### Act 7: Market Intelligence & Macro Analytics (08:30 – 09:15)
-
-- **Screen**: Navigate to **Analytics** (`/analytics`).
-- **Action**: Show 24 months of price trends and demand growth curves (Turmeric +42%, Basmati Rice +35%).
-- **Action**: Point out the AI Macro Insights summary box citing real statistics from the underlying dataset.
-- **Presenter Script**:
-  > *"Our Market Intelligence dashboard visualizes 24 months of time-series data across top export commodities and global destination ports, paired with an AI macro-economic summarizer that analyzes real trends."*
+1. **Slide 1: Title & Vision**: *TradeX AI: Enterprise AI-Powered Cross-Border Trade Platform*.
+2. **Slide 2: The Problem**: $35T B2B market crippled by communication silos, customs hurdles, and directory spam.
+3. **Slide 3: The Solution**: Hybrid Deterministic-RAG Architecture combining conversational intelligence with database truth.
+4. **Slide 4: System Architecture**: Multi-container topology (Alpine Nginx, React 18, FastAPI, PostgreSQL 16 + pgvector, Celery).
+5. **Slide 5: Zero-Hallucination AI Search**: How structured entity extraction separates database facts from LLM narrative.
+6. **Slide 6: Trade Compliance RAG**: Verifiable Incoterms 2020 and customs intelligence with source citations.
+7. **Slide 7: Complete Trade Lifecycle**: From AI Discovery to RFQ, Negotiation, Orders, and Logistics Milestones.
+8. **Slide 8: Financial Intelligence**: Landed Cost Calculator & Public Shareable Quote Comparisons.
+9. **Slide 9: Security & Governance**: Strict RBAC (Buyer, Supplier, Admin), object-level authorization, and secret scanning.
+10. **Slide 10: Scalability & Performance**: 1,500 products, 60 suppliers, < 200ms SQL execution, and 50-user load test verification.
+11. **Slide 11: Production Hardening & CI/CD**: 10-stage Jenkins pipeline, Prometheus metrics, and automated rollback fast-path.
+12. **Slide 12: Roadmap & Conclusion**: Live banking API integration, blockchain bill of lading, and future expansion.
 
 ---
 
-### Act 8: Admin Console, Prometheus Monitoring & AWS Architecture (09:15 – 10:00)
+## Part 4: Viva Voce Q&A Sheet (Examiner & Evaluator Defense)
 
-- **Screen**: Log in as `admin@tradex.ai` $\rightarrow$ Navigate to **Admin Console** (`/admin`).
-- **Action**: Show user management, supplier verification toggles, and tamper-evident audit logs.
-- **Screen**: Switch tab to Grafana (`http://localhost:3001`).
-- **Action**: Show real-time HTTP request rate, p95 latency curve, container memory usage, and `/metrics` Prometheus integration.
-- **Presenter Script**:
-  > *"Finally, as platform administrator, we have complete platform governance, sanctions review, and tamper-evident audit logs.*
-  >
-  > *Under the hood, Prometheus scrapes our custom /metrics endpoint every 15 seconds, visualized on our Grafana dashboard. The entire stack is packaged with Docker Compose, hardened with non-root containers and isolated networks, and automated via a declarative 11-stage Jenkins CI/CD pipeline on AWS EC2.*
-  >
-  > *That concludes the demonstration of TradeX AI. Thank you."*
+### Q1: Why didn't you just let an LLM search the database using text-to-SQL?
+> **Answer**: *"Text-to-SQL on an open B2B platform presents severe security vulnerabilities (SQL injection, accidental schema leakage) and unpredictable query structures that can bypass tenant isolation. Furthermore, LLMs frequently hallucinate join logic or fabricate where-clauses for complex cross-border logistics. We adopted a deterministic parsing layer where the LLM extracts structured intent entities into a strict schema, and parameterized, indexed SQL queries execute the match with 100% predictability."*
+
+### Q2: What happens if Groq API goes down or hits rate limits during live trade negotiations?
+> **Answer**: *"TradeX incorporates an automated Circuit Breaker pattern (`CircuitBreaker` in `backend/app/ai/circuit_breaker.py`). If Groq returns 429, 500, or times out beyond 20 seconds, the circuit opens and requests seamlessly fail over to our local deterministic rule-based engine. The UI remains fully functional, sets the honest badge `meta.ai_mode = 'demo'`, and returns real database products without interrupting the user."*
+
+### Q3: How do you prevent suppliers from seeing competitor RFQ quotes?
+> **Answer**: *"We enforce Object-Level Authorization in FastAPI dependencies (`app/core/permissions.py`). An authenticated supplier can only query quotes submitted by their own organization ID. Any attempt to read or modify another supplier's quote returns an immediate HTTP 403 Forbidden. This is enforced at the database query level and verified by our automated security test suite (`test_auth_and_rbac.py`)."*
+
+### Q4: Why use pgvector in PostgreSQL instead of a specialized vector DB like Pinecone?
+> **Answer**: *"Pinecone introduces distributed state: synchronizing deletions, updates, and transaction rollbacks between two separate databases creates eventual consistency issues. With `pgvector`, embeddings live directly inside our `products` and `knowledge_chunks` tables. We can execute hybrid queries that combine vector cosine similarity with relational filters (e.g. `stock >= requested_qty AND verified = true`) in a single ACID transaction."*
+
+### Q5: What aspects of the system are simulated versus production-ready?
+> **Answer**: *"All application layers—multi-container orchestration, PostgreSQL schemas, JWT authentication, RBAC, search indexing, Groq LLM inference, RAG retrieval, and UI workflows—are fully functional and production-grade. The external carrier API integrations (e.g. live Maersk vessel telemetry) and international banking wire confirmations are simulated through our state machine tracking engine for demonstration repeatability."*

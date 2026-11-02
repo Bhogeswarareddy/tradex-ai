@@ -54,6 +54,10 @@ class SupplierListItem(BaseModel):
     main_products: List[str] = []
     certifications: List[str] = []
     is_saved: bool = False
+    verification_tier: Optional[str] = "silver"
+    tier_reason: Optional[str] = None
+    kyc_status: Optional[str] = "verified"
+    is_demo: bool = False
 
 
 class PaginatedSuppliersResponse(BaseModel):
@@ -103,6 +107,11 @@ class SupplierProfileResponse(BaseModel):
     certifications: List[SupplierCertificationItem] = []
     factory_details: FactoryDetails
     is_saved: bool = False
+    verification_tier: Optional[str] = "silver"
+    tier_reason: Optional[str] = None
+    kyc_status: Optional[str] = "verified"
+    kyc_documents: Optional[Dict[str, Any]] = None
+    is_demo: bool = False
 
 
 class SupplierReviewItem(BaseModel):

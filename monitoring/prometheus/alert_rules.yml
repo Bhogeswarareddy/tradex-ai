@@ -1,0 +1,42 @@
+groups:
+  - name: tradex_production_alerts
+    rules:
+      - alert: HighRequestLatencyP95
+        expr: histogram_quantile(0.95, sum(rate(tradex_http_request_duration_seconds_bucket[5m])) by (le)) > 2.0
+        for: 2m
+        labels:
+          severity: warning
+          tier: api
+        annotations:
+          summary: "TradeX API p95 latency is above 2.0s"
+          description: "API p95 latency has exceeded 2.0 seconds for more than 2 minutes."
+
+      - alert: HighErrorRate5xx
+        expr: (sum(rate(tradex_http_errors_total[5m])) / sum(rate(tradex_http_requests_total[5m]))) * 100 > 1.0
+        for: 1m
+        labels:
+          severity: critical
+          tier: api
+        annotations:
+          summary: "TradeX API 5xx error rate exceeded 1%"
+          description: "High error rate observed in FastAPI application cluster."
+
+      - alert: AIProviderDegradation
+        expr: sum(rate(tradex_ai_calls_total{status="fallback"}[5m])) > 5
+        for: 2m
+        labels:
+          severity: warning
+          tier: ai-service
+        annotations:
+          summary: "AI Service fallback rate elevated"
+          description: "More than 5 LLM/RAG calls per minute falling back to rule-based engine due to provider timeout or circuit breaker."
+
+      - alert: BackgroundQueueDepthHigh
+        expr: tradex_background_queue_size > 100
+        for: 5m
+        labels:
+          severity: warning
+          tier: worker
+        annotations:
+          summary: "Celery / background indexing queue depth > 100"
+          description: "Background worker may be struggling to process vector indexing or document ingestion tasks."

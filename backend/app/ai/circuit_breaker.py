@@ -93,6 +93,7 @@ class CircuitBreaker:
         self.failure_count = 0
         self.last_failure_time = None
         self.last_error = None
+        self.rate_limit_errors = 0
         self.last_state_change = time.time()
 
     def get_stats(self) -> dict:

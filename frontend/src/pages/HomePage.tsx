@@ -16,8 +16,11 @@ import {
 } from "../features/dashboard";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import { Button } from "../components/ui/Button";
+import { usePageMeta } from "../hooks/usePageMeta";
 
 export const HomePage: React.FC = () => {
+  usePageMeta("Home Dashboard", "Autonomous B2B trade marketplace and supplier discovery engine");
+
   const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
   const [suppliers, setSuppliers] = useState<RecommendedSupplierCard[]>([]);
   const [supplierTab, setSupplierTab] = useState("top_match");

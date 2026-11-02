@@ -8,9 +8,13 @@ import {
   FileText,
   DollarSign,
   ChevronRight,
+  Download,
+  FileCheck,
 } from "lucide-react";
 import { ordersApi, OrderDetail } from "../lib/api/orders";
 import { LoadingSpinner } from "../components/LoadingSpinner";
+import { ActivityTimeline } from "../components/common/ActivityTimeline";
+import { apiClient } from "../lib/api";
 
 const STEP_FLOW = [
   "confirmed",
@@ -50,6 +54,27 @@ export const OrderDetailPage: React.FC = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentType, setPaymentType] = useState("advance");
   const [customAmount, setCustomAmount] = useState<number | "">("");
+
+  // Document Generation State
+  const [generatingDoc, setGeneratingDoc] = useState(false);
+  const [docSuccess, setDocSuccess] = useState<string | null>(null);
+
+  const handleGenerateDoc = async (docType: string) => {
+    if (!id) return;
+    setGeneratingDoc(true);
+    setDocSuccess(null);
+    try {
+      const res = await apiClient.post<any>(`/orders/${id}/documents/generate?doc_type=${docType}`);
+      const docNum = res?.document_number || res?.data?.document_number || "Doc";
+      const docTitle = res?.title || res?.data?.title || docType;
+      setDocSuccess(`Generated: ${docNum} (${docTitle})`);
+      fetchOrder();
+    } catch (err) {
+      console.error("Document generation failed:", err);
+    } finally {
+      setGeneratingDoc(false);
+    }
+  };
 
   const fetchOrder = useCallback(async () => {
     if (!id) return;
@@ -338,6 +363,82 @@ export const OrderDetailPage: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Trade Documents Generator & Linked Documents (Prompt 42) */}
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <FileCheck className="w-4 h-4 text-emerald-600" />
+                    Trade Documents & Compliance
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Generate legally structured, numbered export documents from real order data.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    disabled={generatingDoc}
+                    onClick={() => handleGenerateDoc("proforma_invoice")}
+                    className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-colors"
+                  >
+                    + Proforma Invoice
+                  </button>
+                  <button
+                    disabled={generatingDoc}
+                    onClick={() => handleGenerateDoc("purchase_order")}
+                    className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-colors"
+                  >
+                    + Purchase Order
+                  </button>
+                  <button
+                    disabled={generatingDoc}
+                    onClick={() => handleGenerateDoc("packing_list")}
+                    className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 transition-colors"
+                  >
+                    + Packing List
+                  </button>
+                </div>
+              </div>
+
+              {docSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg flex items-center justify-between">
+                  <span>{docSuccess}</span>
+                  <button onClick={() => setDocSuccess(null)} className="text-emerald-600 font-bold">×</button>
+                </div>
+              )}
+
+              {/* Document items list */}
+              {(!order.documents || order.documents.length === 0) ? (
+                <div className="text-xs text-slate-400 py-3 text-center border border-dashed border-slate-200 rounded-lg">
+                  No documents generated yet. Click above to generate Proforma Invoice, PO, or Packing List.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {order.documents.map((doc: any, dIdx: number) => (
+                    <div key={doc.id || dIdx} className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between text-xs">
+                      <div className="min-w-0 pr-2">
+                        <span className="font-semibold text-slate-800 block truncate">{doc.title}</span>
+                        <span className="text-[10px] text-slate-400 font-mono uppercase">{doc.doc_type?.replace("_", " ")}</span>
+                      </div>
+                      <a
+                        href={`/api/v1/documents/${doc.id}/download`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-1.5 rounded bg-white text-slate-700 border border-slate-300 hover:bg-slate-100 shrink-0"
+                        title="Download / View Document"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Audit Activity Timeline (Prompt 42) */}
+            <ActivityTimeline entityType="order" entityId={order.id} />
 
             {/* Linked Shipment */}
             {order.shipment && (

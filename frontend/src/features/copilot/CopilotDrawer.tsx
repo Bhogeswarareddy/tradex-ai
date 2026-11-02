@@ -1,5 +1,6 @@
 import React, { useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
 import {
   Bot,
   X,
@@ -206,7 +207,9 @@ export const CopilotDrawer: React.FC = () => {
                       : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-tl-none"
                   }`}
                 >
-                  {m.text}
+                  <div className="prose prose-xs dark:prose-invert max-w-none text-xs leading-relaxed">
+                    <ReactMarkdown>{m.text}</ReactMarkdown>
+                  </div>
 
                   {/* Sources Cited */}
                   {m.sources && m.sources.length > 0 && (

@@ -1,5 +1,6 @@
 import csv
 import io
+import json
 import os
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -11,6 +12,7 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.ai.structured import generate_structured
 from app.api.deps import get_current_user, get_db, require_role
 from app.core.config import settings
 from app.core.freshness import get_product_freshness_metadata
@@ -19,6 +21,14 @@ from app.models.content import Message, Thread
 from app.models.identity import Buyer, Company, Supplier, User
 from app.models.trade import Order, OrderItem, Quotation, RFQ, RFQItem, Shipment, ShipmentEvent
 from app.services.indexer import enqueue_index_job
+from app.schemas.ai_features import (
+    InquiryReplyRequest,
+    InquiryReplyResponse,
+    ListingWriterRequest,
+    ListingWriterResponse,
+    ProfileTipsResponse,
+    RFQOpportunityResponse,
+)
 from app.schemas.suppliers import (
     AddCertificationRequest,
     AddDocumentRequest,
@@ -2320,3 +2330,142 @@ async def upload_file(
         "size": len(contents),
         "message": "File uploaded successfully",
     }
+
+
+# --- 11. Supplier AI Assistants (Prompt 40) ---
+
+@router.post("/ai/generate-listing", response_model=ListingWriterResponse, summary="AI product listing writer")
+async def generate_listing_draft(
+    payload: ListingWriterRequest,
+    supplier: Supplier = Depends(get_current_supplier),
+    db: AsyncSession = Depends(get_db),
+) -> ListingWriterResponse:
+    """Drafts commercial catalog descriptions, specifications, keywords, and aliases from informal notes."""
+    comp_name = supplier.company.name if supplier.company else "Verified Manufacturer"
+    user_input = (
+        f"Product Name: {payload.product_name or 'Export Commodity'}\n"
+        f"Category: {payload.category or 'General Trade'}\n"
+        f"Origin Country: {payload.origin_country or 'India'}\n"
+        f"Manufacturer / Exporter: {comp_name}\n"
+        f"Raw Notes: {payload.notes or 'High-quality export grade supply'}"
+    )
+    return await generate_structured(
+        prompt_name="listing_writer.v1",
+        variables={"supplier_input": user_input},
+        pydantic_model=ListingWriterResponse,
+        session=db,
+        feature_name="listing_writer",
+    )
+
+
+@router.post("/ai/reply-draft", response_model=InquiryReplyResponse, summary="AI reply draft for buyer inquiries")
+async def generate_inquiry_reply_draft(
+    payload: InquiryReplyRequest,
+    supplier: Supplier = Depends(get_current_supplier),
+    db: AsyncSession = Depends(get_db),
+) -> InquiryReplyResponse:
+    """Drafts professional B2B inquiry responses with suggested next steps and logistics clarifications."""
+    comp_name = supplier.company.name if supplier.company else "Verified Manufacturer"
+    prod_info = "General Catalog Line"
+    if payload.product_id:
+        try:
+            p_uuid = uuid.UUID(payload.product_id)
+            p_row = (await db.execute(select(Product).where(Product.id == p_uuid))).scalar_one_or_none()
+            if p_row:
+                prod_info = f"{p_row.name} (MOQ {p_row.moq} {p_row.unit}, Lead time {p_row.lead_time_days} days)"
+        except Exception:
+            pass
+
+    inquiry_ctx = (
+        f"Supplier: {comp_name}\n"
+        f"Product: {prod_info}\n"
+        f"Buyer Inquiry: {payload.buyer_message}\n"
+        f"Supplier Private Notes: {payload.supplier_notes or 'Standard commercial CIF/FOB terms available'}"
+    )
+
+    return await generate_structured(
+        prompt_name="inquiry_reply.v1",
+        variables={"inquiry_context": inquiry_ctx},
+        pydantic_model=InquiryReplyResponse,
+        session=db,
+        feature_name="inquiry_reply",
+    )
+
+
+@router.get("/ai/profile-tips", response_model=ProfileTipsResponse, summary="AI supplier profile completeness tips")
+async def get_profile_completeness_tips(
+    supplier: Supplier = Depends(get_current_supplier),
+    db: AsyncSession = Depends(get_db),
+) -> ProfileTipsResponse:
+    """Evaluates supplier storefront attributes and returns prioritized recommendations to boost conversion."""
+    comp = supplier.company
+    cert_count_res = await db.execute(
+        select(func.count(SupplierCertification.id)).where(SupplierCertification.supplier_id == supplier.id)
+    )
+    cert_count = cert_count_res.scalar() or 0
+
+    prod_count_res = await db.execute(
+        select(func.count(Product.id)).where(Product.supplier_id == supplier.id, Product.deleted_at.is_(None))
+    )
+    prod_count = prod_count_res.scalar() or 0
+
+    profile_ctx = (
+        f"Company Name: {comp.name if comp else 'Supplier'}\n"
+        f"Country: {comp.country if comp else 'India'}\n"
+        f"Years in Business: {comp.years_in_business if comp else 5}\n"
+        f"Verification Status: {comp.verified_status if comp else 'verified'}\n"
+        f"Description: {comp.description if comp else ''}\n"
+        f"Certifications Count: {cert_count}\n"
+        f"Published Products: {prod_count}\n"
+        f"Export Capacity: {supplier.capacity_per_month or 'Standard capacity'}\n"
+        f"Export Countries: {', '.join(supplier.export_countries or ['Global'])}"
+    )
+
+    return await generate_structured(
+        prompt_name="profile_tips.v1",
+        variables={"profile_data": profile_ctx},
+        pydantic_model=ProfileTipsResponse,
+        session=db,
+        feature_name="profile_tips",
+    )
+
+
+@router.get("/rfqs/{rfq_id}/ai-summary", response_model=RFQOpportunityResponse, summary="AI RFQ opportunity assessment")
+@router.get("/ai/rfq-opportunity/{rfq_id}", response_model=RFQOpportunityResponse, summary="AI RFQ opportunity assessment alias")
+async def get_rfq_opportunity_ai_summary(
+    rfq_id: str,
+    supplier: Supplier = Depends(get_current_supplier),
+    db: AsyncSession = Depends(get_db),
+) -> RFQOpportunityResponse:
+    """Evaluates buyer RFQ requirements against supplier capabilities and advises bid strategy."""
+    try:
+        r_uuid = uuid.UUID(rfq_id)
+        rfq_stmt = select(RFQ).where(RFQ.id == r_uuid).options(selectinload(RFQ.items))
+        rfq = (await db.execute(rfq_stmt)).scalar_one_or_none()
+    except ValueError:
+        rfq = None
+
+    if not rfq:
+        raise HTTPException(status_code=404, detail="RFQ not found")
+
+    items_summary = ", ".join([f"{it.item_name} ({it.quantity} {it.unit})" for it in rfq.items]) if rfq.items else rfq.title
+    comp = supplier.company
+    rfq_ctx = (
+        f"RFQ Title: {rfq.title}\n"
+        f"Items: {items_summary}\n"
+        f"Destination: {rfq.destination_port or ''}, {rfq.destination_country or ''}\n"
+        f"Incoterms: {rfq.incoterm or 'CIF'}\n"
+        f"Target Budget: {rfq.target_price or 'Market benchmark'} {rfq.currency or 'USD'}\n"
+        f"Required Certifications: {', '.join(rfq.certifications or ['Standard Export Quality'])}\n"
+        f"Supplier Company: {comp.name if comp else 'Exporter'}\n"
+        f"Supplier Capacity: {supplier.capacity_per_month or 'Standard capacity'}\n"
+        f"Supplier Export Destinations: {', '.join(supplier.export_countries or ['Global'])}"
+    )
+
+    return await generate_structured(
+        prompt_name="rfq_opportunity.v1",
+        variables={"rfq_context": rfq_ctx},
+        pydantic_model=RFQOpportunityResponse,
+        session=db,
+        feature_name="rfq_opportunity",
+    )

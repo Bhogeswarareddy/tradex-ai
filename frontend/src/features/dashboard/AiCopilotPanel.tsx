@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
 import { Bot, Send, Sparkles, ArrowRight, ExternalLink } from "lucide-react";
 import { dashboardApi, SuggestedPromptItem } from "../../lib/api/dashboard";
 
@@ -39,7 +40,6 @@ export const AiCopilotPanel: React.FC<AiCopilotPanelProps> = ({ suggestedPrompts
     const text = messageText.trim();
     if (!text || loading) return;
 
-    // Add user message
     setMessages((prev) => [...prev, { sender: "user", text }]);
     setInputVal("");
     setLoading(true);
@@ -69,20 +69,20 @@ export const AiCopilotPanel: React.FC<AiCopilotPanelProps> = ({ suggestedPrompts
   };
 
   return (
-    <div className="bg-white rounded-[12px] border border-slate-200 shadow-sm p-5 flex flex-col justify-between space-y-4">
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-5 flex flex-col justify-between space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
         <div className="flex items-center gap-3">
           <div className="relative">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center shadow-md shadow-blue-500/20">
               <Bot className="w-5 h-5 text-white" />
             </div>
-            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full" />
+            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-slate-900 rounded-full" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="font-bold text-slate-900 text-sm">AI Trade Copilot</h3>
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <h3 className="font-bold text-slate-900 dark:text-white text-sm">AI Trade Copilot</h3>
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                 Online
               </span>
@@ -92,7 +92,7 @@ export const AiCopilotPanel: React.FC<AiCopilotPanelProps> = ({ suggestedPrompts
         </div>
         <Link
           to="/copilot"
-          className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition-colors"
+          className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/40 px-2.5 py-1 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
         >
           Full Copilot
           <ExternalLink className="w-3 h-3" />
@@ -110,17 +110,17 @@ export const AiCopilotPanel: React.FC<AiCopilotPanelProps> = ({ suggestedPrompts
               key={item.id}
               type="button"
               onClick={() => handleSend(item.prompt)}
-              className="text-left p-2.5 rounded-xl border border-slate-200 hover:border-blue-400 bg-slate-50/70 hover:bg-blue-50/40 text-xs text-slate-700 hover:text-[#2563EB] transition-colors flex items-center justify-between group"
+              className="text-left p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 bg-slate-50/70 dark:bg-slate-800/40 hover:bg-blue-50/40 dark:hover:bg-slate-800 text-xs text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center justify-between group focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
             >
               <span className="line-clamp-1">{item.prompt}</span>
-              <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#2563EB] shrink-0 ml-1.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 shrink-0 ml-1.5 opacity-0 group-hover:opacity-100 transition-opacity" />
             </button>
           ))}
         </div>
       </div>
 
       {/* Interactive Chat Stream */}
-      <div className="bg-slate-50/80 rounded-xl p-3 max-h-56 overflow-y-auto space-y-3 text-xs border border-slate-100">
+      <div className="bg-slate-50/80 dark:bg-slate-950/70 rounded-xl p-3 max-h-56 overflow-y-auto space-y-3 text-xs border border-slate-100 dark:border-slate-800">
         {messages.map((msg, i) => (
           <div
             key={i}
@@ -129,11 +129,13 @@ export const AiCopilotPanel: React.FC<AiCopilotPanelProps> = ({ suggestedPrompts
             <div
               className={`p-3 rounded-2xl max-w-[90%] leading-relaxed ${
                 msg.sender === "user"
-                  ? "bg-[#2563EB] text-white rounded-br-none shadow-sm"
-                  : "bg-white text-slate-800 border border-slate-200 rounded-bl-none shadow-sm"
+                  ? "bg-blue-600 text-white rounded-br-none shadow-sm"
+                  : "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-bl-none shadow-sm"
               }`}
             >
-              <div className="whitespace-pre-line">{msg.text}</div>
+              <div className="prose prose-xs dark:prose-invert max-w-none text-xs leading-relaxed">
+                <ReactMarkdown>{msg.text}</ReactMarkdown>
+              </div>
             </div>
 
             {/* Suggested actions from Copilot */}
@@ -144,7 +146,7 @@ export const AiCopilotPanel: React.FC<AiCopilotPanelProps> = ({ suggestedPrompts
                     key={act}
                     type="button"
                     onClick={() => handleSend(act)}
-                    className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white border border-blue-200 text-[#2563EB] hover:bg-blue-50 transition-colors"
+                    className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-900 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
                   >
                     {act} &rarr;
                   </button>
@@ -169,17 +171,19 @@ export const AiCopilotPanel: React.FC<AiCopilotPanelProps> = ({ suggestedPrompts
         }}
         className="relative flex items-center pt-1"
       >
+        <label htmlFor="dashboard-copilot-input" className="sr-only">Ask AI Trade Copilot</label>
         <input
+          id="dashboard-copilot-input"
           type="text"
           value={inputVal}
           onChange={(e) => setInputVal(e.target.value)}
           placeholder="Ask anything about global trade..."
-          className="w-full pl-3.5 pr-12 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-colors"
+          className="w-full pl-3.5 pr-12 py-2.5 text-xs sm:text-sm bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-xl placeholder:text-slate-400 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
         />
         <button
           type="submit"
           disabled={!inputVal.trim() || loading}
-          className="absolute right-1.5 p-2 rounded-lg bg-[#2563EB] text-white hover:bg-[#1D4ED8] disabled:opacity-40 transition-colors shadow-sm"
+          className="absolute right-1.5 p-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 transition-colors shadow-sm focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none"
           aria-label="Send message"
         >
           <Send className="w-3.5 h-3.5" />

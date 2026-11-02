@@ -126,6 +126,15 @@ async def list_conversations(
     )
     conversations = (await db.execute(stmt)).scalars().all()
 
+    # Clean up empty stale conversations (Prompt 37)
+    now_utc = datetime.now(timezone.utc)
+    active_convs = []
+    for c in conversations:
+        has_msgs = len(c.messages) > 0
+        is_fresh = (now_utc - c.created_at).total_seconds() < 900
+        if has_msgs or is_fresh:
+            active_convs.append(c)
+
     return [
         ConversationListItem(
             id=str(c.id),
@@ -136,7 +145,7 @@ async def list_conversations(
             messages_count=len(c.messages),
             selected_count=len(c.selected_products),
         )
-        for c in conversations
+        for c in active_convs
     ]
 
 

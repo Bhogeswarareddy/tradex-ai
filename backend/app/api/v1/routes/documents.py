@@ -416,6 +416,7 @@ class ExtractionResultSchema(BaseModel):
     field_confidences: Optional[Dict[str, float]] = None
     confidence_score: Optional[float] = 0.95
     status: Optional[str] = "extracted"
+    ai_label: str = "AI generated"
 
 
 @router.post("/documents/{document_id}/extract")
@@ -426,7 +427,7 @@ async def extract_document_entities(
 ) -> Dict[str, Any]:
     """
     Executes AI Document Intelligence extraction (doc_extract.v1 prompt)
-    returning structured trade entities and per-field confidence metrics.
+    with vision or OCR parsing, returning structured trade entities and confidence metrics.
     """
     stmt = (
         select(Document)
@@ -443,16 +444,42 @@ async def extract_document_entities(
     doc.status = "processing"
     await db.commit()
 
+    # Read physical file content if available
+    storage = get_storage_backend()
+    file_bytes: Optional[bytes] = None
+    try:
+        if doc.file_path:
+            file_bytes = await storage.get(doc.file_path)
+    except Exception:
+        file_bytes = None
+
+    is_image = bool(doc.mime_type and doc.mime_type.startswith("image/"))
+    doc_text_sample = f"Document Title: {doc.title}\nDoc Type: {doc.doc_type}\nOriginal Filename: {doc.original_filename}"
+
+    if file_bytes:
+        if is_image:
+            doc_text_sample += f"\nImage scan detected ({doc.mime_type}, {len(file_bytes)} bytes). Extract all legible trade entities."
+        else:
+            try:
+                text_preview = file_bytes[:15000].decode("utf-8", errors="ignore").strip()
+                if text_preview:
+                    doc_text_sample += f"\nDocument Text:\n{text_preview}"
+            except Exception:
+                pass
+
+    model_speed = "vision" if is_image else "smart"
+
     # Call AI Service Layer
-    doc_text_sample = f"Document: {doc.title}\nType: {doc.doc_type}\nFilename: {doc.original_filename}"
     res = await generate_structured(
         prompt_name="doc_extract.v1",
         variables={"document_text": doc_text_sample, "doc_type": doc.doc_type},
         pydantic_model=ExtractionResultSchema,
         session=db,
-        feature_name="document_intelligence",
+        feature_name="doc_extract",
+        model_speed=model_speed,
     )
     data = res.model_dump()
+    data["ai_label"] = "AI generated"
 
     doc.status = "needs_review"
     overall_conf = float(data.get("confidence_score") or 0.95)
@@ -473,6 +500,7 @@ async def extract_document_entities(
         "extraction_id": str(extraction.id),
         "data": data,
         "confidence_score": overall_conf,
+        "ai_label": "AI generated",
     }
 
 

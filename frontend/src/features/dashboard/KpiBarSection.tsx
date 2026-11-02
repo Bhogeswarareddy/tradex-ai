@@ -19,53 +19,53 @@ export const KpiBarSection: React.FC<KpiBarSectionProps> = ({ kpis = DEFAULT_KPI
   const displayKpis = kpis && kpis.length === 5 ? kpis : DEFAULT_KPIS;
 
   const icons = [
-    <FileText key="rfq" className="w-5 h-5 text-[#2563EB]" />,
-    <CheckCircle2 key="ord" className="w-5 h-5 text-emerald-600" />,
-    <Truck key="shp" className="w-5 h-5 text-sky-600" />,
-    <DollarSign key="val" className="w-5 h-5 text-indigo-600" />,
-    <UserPlus key="sup" className="w-5 h-5 text-amber-600" />,
+    <FileText key="rfq" className="w-5 h-5 text-blue-600 dark:text-blue-400" />,
+    <CheckCircle2 key="ord" className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />,
+    <Truck key="shp" className="w-5 h-5 text-sky-600 dark:text-sky-400" />,
+    <DollarSign key="val" className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />,
+    <UserPlus key="sup" className="w-5 h-5 text-amber-600 dark:text-amber-400" />,
   ];
 
   const iconBgs = [
-    "bg-blue-50 text-[#2563EB]",
-    "bg-emerald-50 text-emerald-600",
-    "bg-sky-50 text-sky-600",
-    "bg-indigo-50 text-indigo-600",
-    "bg-amber-50 text-amber-600",
+    "bg-blue-50 dark:bg-blue-950/50",
+    "bg-emerald-50 dark:bg-emerald-950/50",
+    "bg-sky-50 dark:bg-sky-950/50",
+    "bg-indigo-50 dark:bg-indigo-950/50",
+    "bg-amber-50 dark:bg-amber-950/50",
   ];
 
   return (
-    <section className="-mt-8 sm:-mt-10 relative z-20 px-2 sm:px-4">
+    <section className="-mt-8 sm:-mt-10 relative z-20 px-2 sm:px-4" aria-label="Key Performance Indicators">
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
         {displayKpis.map((kpi, index) => (
           <div
             key={kpi.title}
-            className="bg-white rounded-[12px] p-4 sm:p-5 border border-slate-200/90 shadow-lg shadow-slate-900/5 hover:shadow-xl hover:border-blue-300 transition-all flex flex-col justify-between"
+            className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 shadow-lg shadow-slate-900/5 dark:shadow-slate-950/40 hover:shadow-xl hover:border-blue-400 dark:hover:border-blue-600 transition-all flex flex-col justify-between"
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                 {kpi.title}
               </span>
-              <div className={`p-2 rounded-lg ${iconBgs[index % iconBgs.length]}`}>
+              <div className={`p-2 rounded-xl ${iconBgs[index % iconBgs.length]}`}>
                 {icons[index % icons.length]}
               </div>
             </div>
 
             <div>
-              <div className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
                 {isLoading ? (
-                  <div className="h-7 w-16 bg-slate-100 rounded animate-pulse" />
+                  <div className="h-7 w-16 bg-slate-100 dark:bg-slate-800 rounded animate-pulse" />
                 ) : (
                   kpi.value
                 )}
               </div>
               <div className="flex items-center gap-1.5 mt-1 text-xs">
-                <span className="inline-flex items-center font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+                <span className="inline-flex items-center font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded-md">
                   <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" />
                   {kpi.delta_percentage}
                 </span>
                 {kpi.subtext && (
-                  <span className="text-[10px] text-slate-400 truncate hidden sm:inline">
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate hidden sm:inline">
                     {kpi.subtext}
                   </span>
                 )}

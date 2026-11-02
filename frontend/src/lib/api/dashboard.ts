@@ -5,6 +5,14 @@ export interface HeroStats {
   global_buyers: number;
   active_shipments: number;
   countries_covered: number;
+  network_label?: string;
+  is_demo_network?: boolean;
+  real_db_counts?: {
+    suppliers?: number;
+    buyers?: number;
+    shipments?: number;
+    countries?: number;
+  };
 }
 
 export interface KPICardData {

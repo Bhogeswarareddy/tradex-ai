@@ -22,7 +22,9 @@ import {
   Clock,
   Package,
   Store,
+  Search,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import {
   aiModeApi,
   ConversationItem,
@@ -76,8 +78,15 @@ export const AiModePage: React.FC = () => {
   const [sendLoading, setSendLoading] = useState(false);
   const [negotiateSuccess, setNegotiateSuccess] = useState(false);
 
+  const [historySearch, setHistorySearch] = useState("");
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-scroll to newest message
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isLoading]);
 
   // 1. Initial Load: list conversations
   useEffect(() => {
@@ -379,7 +388,7 @@ export const AiModePage: React.FC = () => {
     }
   };
 
-  // Group conversations by Today, Yesterday, Earlier
+  // Group conversations by Today, Yesterday, Earlier (Prompt 37)
   const groupConversations = () => {
     const today = new Date();
     const yesterday = new Date();
@@ -391,7 +400,13 @@ export const AiModePage: React.FC = () => {
       earlier: [],
     };
 
-    conversations.forEach((conv) => {
+    const filtered = historySearch.trim()
+      ? conversations.filter((c) =>
+          c.title.toLowerCase().includes(historySearch.trim().toLowerCase())
+        )
+      : conversations;
+
+    filtered.forEach((conv) => {
       const cDate = new Date(conv.updated_at || conv.created_at);
       if (cDate.toDateString() === today.toDateString()) {
         groups.today.push(conv);
@@ -475,6 +490,18 @@ export const AiModePage: React.FC = () => {
             <Plus className="w-4 h-4" />
             <span>New Chat</span>
           </button>
+
+          {/* History Search Input (Prompt 37) */}
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+            <input
+              type="text"
+              placeholder="Search chat history..."
+              value={historySearch}
+              onChange={(e) => setHistorySearch(e.target.value)}
+              className="w-full pl-8 pr-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-orange-400 transition-colors"
+            />
+          </div>
         </div>
 
         {/* History Grouped List */}
@@ -748,15 +775,53 @@ export const AiModePage: React.FC = () => {
                       )}
                     </div>
 
-                    {/* AI Reply Text */}
+                    {/* AI Reply Text: Rendered with Markdown so **bold** and *bullets* render cleanly (Prompt 37) */}
                     <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 shadow-2xs max-w-3xl text-xs sm:text-sm text-slate-800 dark:text-slate-100 leading-relaxed">
-                      <div>{m.content}</div>
-                      {/* AI Reply Footer: provider, model, latency, fallback reason (Prompt 30) */}
+                      <div className="prose prose-sm dark:prose-invert max-w-none break-words text-xs sm:text-sm">
+                        <ReactMarkdown>{m.content}</ReactMarkdown>
+                      </div>
+
+                      {/* No-Match Action Buttons (Prompt 37: Refine Search, Browse Categories, Create RFQ) */}
+                      {(!m.structured?.product_cards || m.structured.product_cards.length === 0) &&
+                        (m.content.toLowerCase().includes("not find") ||
+                          m.content.toLowerCase().includes("no matching") ||
+                          m.structured?.classification === "not_found") && (
+                          <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => textareaRef.current?.focus()}
+                              className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5"
+                            >
+                              <Edit2 className="w-3.5 h-3.5 text-slate-500" />
+                              <span>Refine Search</span>
+                            </button>
+                            <Link to="/marketplace">
+                              <button
+                                type="button"
+                                className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-1.5"
+                              >
+                                <Package className="w-3.5 h-3.5 text-slate-500" />
+                                <span>Browse Categories</span>
+                              </button>
+                            </Link>
+                            <Link to={`/rfq?product=${encodeURIComponent(messages.filter(msg => msg.role === "user").slice(-1)[0]?.content || "")}`}>
+                              <button
+                                type="button"
+                                className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-xl transition shadow-xs flex items-center gap-1.5"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>Create RFQ</span>
+                              </button>
+                            </Link>
+                          </div>
+                        )}
+
+                      {/* AI Reply Footer: provider, model, latency, fallback reason (Prompt 30 & 37) */}
                       <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
                         <span data-testid="ai-reply-footer">
                           {m.is_demo
                             ? `Demo AI (reason: ${m.fallback_reason || (m.structured as any)?.ai_meta?.fallback_reason || "Deterministic catalogue engine"})`
-                            : `Live AI: ${m.model || (m.structured as any)?.ai_meta?.model || aiStatus?.model || "qwen/qwen3.8-27b"}, ${((m.latency_ms || (m.structured as any)?.ai_meta?.latency_ms || aiStatus?.last_latency || 1200) / 1000).toFixed(1)} s`}
+                            : `Live AI: ${m.model || (m.structured as any)?.ai_meta?.model || aiStatus?.model || "llama-3.3-70b-versatile"}, ${((m.latency_ms || (m.structured as any)?.ai_meta?.latency_ms || aiStatus?.last_latency || 1200) / 1000).toFixed(1)} s`}
                         </span>
                         <span className="text-[10px] font-mono uppercase text-slate-400">
                           {m.provider || (m.structured as any)?.ai_meta?.provider || (m.is_demo ? "demo" : "groq")}
@@ -1324,6 +1389,42 @@ export const AiModePage: React.FC = () => {
   }
 };
 
+const getCategoryPlaceholder = (categoryName?: string, productName?: string): string => {
+  const text = `${categoryName || ""} ${productName || ""}`.toLowerCase();
+  if (
+    text.includes("laptop") ||
+    text.includes("computer") ||
+    text.includes("mobile") ||
+    text.includes("phone") ||
+    text.includes("electronic")
+  ) {
+    return "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?auto=format&fit=crop&w=600&q=80";
+  }
+  if (
+    text.includes("chilli") ||
+    text.includes("spice") ||
+    text.includes("pepper") ||
+    text.includes("turmeric") ||
+    text.includes("rice") ||
+    text.includes("grain") ||
+    text.includes("tea")
+  ) {
+    return "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=600&q=80";
+  }
+  if (text.includes("book") || text.includes("stationery") || text.includes("paper")) {
+    return "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=600&q=80";
+  }
+  if (
+    text.includes("tractor") ||
+    text.includes("machin") ||
+    text.includes("tool") ||
+    text.includes("industrial")
+  ) {
+    return "https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=600&q=80";
+  }
+  return "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80";
+};
+
 /* ============================================================ */
 /* SUB-COMPONENT: ProductCard (Matching Reference Layout)        */
 /* ============================================================ */
@@ -1345,7 +1446,10 @@ const ProductCard: React.FC<ProductCardProps> = ({
   chatFeedback,
 }) => {
   const { formatPrice } = useCurrency();
-  const priceRes = formatPrice(card.unit_price, card.currency || "USD");
+  const hasPrice = card.unit_price !== undefined && card.unit_price !== null && card.unit_price > 0;
+  const priceRes = formatPrice(card.unit_price || 0, card.currency || "USD");
+  const placeholderImg = getCategoryPlaceholder(card.category_name, card.title);
+
   return (
     <div
       className={`relative bg-white rounded-2xl border transition-all duration-150 flex flex-col overflow-hidden hover:shadow-md ${
@@ -1355,16 +1459,11 @@ const ProductCard: React.FC<ProductCardProps> = ({
       {/* Product Image & Select Checkbox */}
       <div className="relative aspect-4/3 w-full bg-slate-50 flex items-center justify-center overflow-hidden border-b border-slate-100">
         <img
-          src={
-            card.image && card.image.trim() !== ""
-              ? card.image
-              : "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80"
-          }
+          src={card.image && card.image.trim() !== "" ? card.image : placeholderImg}
           alt={card.title}
           className="w-full h-full object-cover"
           onError={(e) => {
-            (e.target as HTMLImageElement).src =
-              "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80";
+            (e.target as HTMLImageElement).src = placeholderImg;
           }}
         />
 
@@ -1400,8 +1499,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
         )}
 
         {card.is_alternative && (
-          <span className="absolute top-2.5 left-2.5 bg-indigo-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-2xs">
-            Alternative
+          <span className="absolute top-2.5 left-2.5 bg-amber-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-2xs">
+            Similar product
           </span>
         )}
 
@@ -1441,34 +1540,42 @@ const ProductCard: React.FC<ProductCardProps> = ({
               className="flex items-baseline gap-1.5 flex-wrap"
               title={priceRes.approx ? `Original: ${card.currency} ${card.unit_price.toFixed(2)}` : undefined}
             >
-              <span className="font-bold text-sm sm:text-base text-slate-900">
-                {priceRes.formatted}
-              </span>
-              {card.currency_display && card.currency_original && card.currency_display !== card.currency_original && card.price_display !== undefined && (
-                <span className="text-[10px] text-slate-500 font-medium">
-                  (approx. {card.currency_display} {card.price_display.toFixed(2)})
+              {hasPrice ? (
+                <>
+                  <span className="font-bold text-sm sm:text-base text-slate-900">
+                    {priceRes.formatted}
+                  </span>
+                  {card.currency_display && card.currency_original && card.currency_display !== card.currency_original && card.price_display !== undefined && (
+                    <span className="text-[10px] text-slate-500 font-medium">
+                      (approx. {card.currency_display} {card.price_display.toFixed(2)})
+                    </span>
+                  )}
+                  <span
+                    className={`text-[9px] font-semibold px-1 rounded ${
+                      card.price_status === "current"
+                        ? "text-emerald-700 bg-emerald-50"
+                        : "text-amber-700 bg-amber-50"
+                    }`}
+                  >
+                    {card.price_status === "current" ? "confirmed" : card.price_status}
+                  </span>
+                </>
+              ) : (
+                <span className="font-semibold text-xs text-amber-700 italic">
+                  Contact supplier for pricing
                 </span>
               )}
-              <span
-                className={`text-[9px] font-semibold px-1 rounded ${
-                  card.price_status === "current"
-                    ? "text-emerald-700 bg-emerald-50"
-                    : "text-amber-700 bg-amber-50"
-                }`}
-              >
-                {card.price_status === "current" ? "confirmed" : card.price_status}
-              </span>
             </div>
-            {priceRes.approx && (
+            {hasPrice && priceRes.approx && (
               <span className="text-[10px] text-slate-400 block font-normal">
                 Orig: {card.currency} {card.unit_price.toFixed(2)}
               </span>
             )}
             <div className="flex items-center justify-between text-[11px] text-slate-500 mt-1">
-              <span>Min. order: {card.moq} units</span>
+              <span>Min. order: {card.moq} {card.unit || "units"}</span>
               {card.available_quantity !== undefined && card.available_quantity !== null && (
                 <span className="font-semibold text-slate-700">
-                  Stock: {card.available_quantity.toLocaleString()}
+                  Stock: {card.available_quantity.toLocaleString()} {card.unit || "units"}
                 </span>
               )}
             </div>

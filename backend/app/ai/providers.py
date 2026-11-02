@@ -22,10 +22,11 @@ class LLMProvider(ABC):
     async def complete(
         self,
         system: str,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         json_schema: Optional[Dict[str, Any]] = None,
         max_tokens: int = 2048,
         temperature: float = 0.0,
+        **kwargs: Any,
     ) -> LLMResponse:
         """Generate text completion from system prompt and message history."""
         pass
@@ -72,10 +73,11 @@ class MockProvider(LLMProvider):
     async def complete(
         self,
         system: str,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         json_schema: Optional[Dict[str, Any]] = None,
         max_tokens: int = 2048,
         temperature: float = 0.0,
+        **kwargs: Any,
     ) -> LLMResponse:
         t0 = time.time()
 
@@ -113,13 +115,29 @@ class MockProvider(LLMProvider):
         schema_str = json.dumps(json_schema or {})
         prompt_lower = prompt_text.lower()
 
-        if "quote_compare" in prompt_lower or "quotes_data" in prompt_lower or "winner_supplier_name" in schema_str or "trade_offs" in schema_str:
+        if "inquiry_reply" in prompt_lower or "reply_draft" in schema_str or "suggested_next_steps" in schema_str:
+            res_json = self._mock_inquiry_reply(prompt_text)
+        elif "listing_writer" in prompt_lower or "search_keywords" in schema_str or "aliases" in schema_str:
+            res_json = self._mock_listing_writer(prompt_text)
+        elif "profile_tips" in prompt_lower or "completeness_score" in schema_str or "actionable_tips" in schema_str:
+            res_json = self._mock_profile_tips(prompt_text)
+        elif "rfq_opportunity" in prompt_lower or "capability_match_summary" in schema_str or "recommended_bid_strategy" in schema_str:
+            res_json = self._mock_rfq_opportunity(prompt_text)
+        elif "moderation" in prompt_lower or "violation_categories" in schema_str or "recommended_action" in schema_str:
+            res_json = self._mock_moderation_summary(prompt_text)
+        elif "product_summary" in prompt_lower or ("key_points" in schema_str and "caution" in schema_str):
+            res_json = self._mock_product_summary(prompt_text)
+        elif "supplier_match_explain" in prompt_lower or "compliance_alignment" in schema_str or "key_strengths" in schema_str:
+            res_json = self._mock_supplier_match_explain(prompt_text)
+        elif "rfq_generate" in prompt_lower or "buyer_request" in prompt_lower or "target_price_min" in schema_str or "delivery_days" in schema_str:
+            res_json = self._mock_rfq_generate(prompt_text)
+        elif "quote_compare" in prompt_lower or "quotes_data" in prompt_lower or "winner_supplier_name" in schema_str or "trade_offs" in schema_str:
             res_json = self._mock_quote_compare(prompt_text)
         elif "negotiation" in prompt_lower or "chat_history" in prompt_lower or "draft_message_to_counterparty" in schema_str:
             res_json = self._mock_negotiation_assist(prompt_text)
-        elif "shipment" in prompt_lower or "tracking_events" in prompt_lower or "delay_risk_level" in schema_str:
+        elif "tracking_events" in prompt_lower or "delay_risk_level" in schema_str:
             res_json = self._mock_shipment_summary(prompt_text)
-        elif "doc_extract" in prompt_lower or "document_text" in prompt_lower or "certificate_number" in schema_str or "invoice_amount" in schema_str:
+        elif "doc_extract" in prompt_lower or "certificate_number" in schema_str or "invoice_amount" in schema_str:
             res_json = self._mock_doc_extract(prompt_text)
         elif "market_insight" in prompt_lower or "market context" in prompt_lower or "insights" in schema_str or "demand_index" in prompt_lower:
             res_json = self._mock_market_insight(prompt_text)
@@ -286,6 +304,137 @@ class MockProvider(LLMProvider):
             "compromise_terms": "Counter-offer of €3.05/kg with 25 days lead time and standard 30% advance LC terms.",
             "reasoning": "Compromise price splits the difference between the €3.00/kg buyer budget and €3.10/kg supplier quote, securing €1,000 net savings on a 20 MT volume contract.",
             "draft_message_to_counterparty": "Thank you for the detailed offer. Given our 20 MT order volume and recurring import cycle, we propose meeting at €3.05/kg CIF Hamburg with a 25-day delivery window. We can issue the Purchase Order and LC draft immediately upon confirmation.",
+        }
+
+    def _mock_product_summary(self, text: str) -> Dict[str, Any]:
+        """Deterministic product summary."""
+        return {
+            "key_points": [
+                "Direct verified sourcing with accredited export lab certification and moisture compliance.",
+                "Standard export packaging and containerized shipment readiness supported under CIF/FOB terms.",
+                "Verified production batch reliability with complete batch traceability and phytosanitary verification.",
+            ],
+            "caution": "Bulk cargo shipments require moisture-lock packaging to prevent humidity degradation during maritime transit.",
+            "ai_label": "AI generated",
+        }
+
+    def _mock_listing_writer(self, text: str) -> Dict[str, Any]:
+        """Deterministic supplier listing copywriter output."""
+        return {
+            "title": "Export-Grade Commercial Commodity - Certified Standard",
+            "description": "High-purity commercial grade export supply adhering to rigorous international trade standards. Processed under hygienic ISO/HACCP certified conditions with batch-tested quality parameters suitable for global containerized distribution.",
+            "specifications": {
+                "Grade": "Commercial Export Grade A",
+                "Purity": ">= 99.5%",
+                "Moisture": "<= 9.0%",
+                "Packaging": "25kg multi-wall paper bags / vacuum sealed",
+                "Origin": "India",
+            },
+            "search_keywords": ["export quality", "certified wholesale", "bulk shipment", "international grade", "b2b supply"],
+            "aliases": ["commercial grade supply", "industrial wholesale pack", "containerized export batch"],
+            "ai_label": "AI generated",
+        }
+
+    def _mock_inquiry_reply(self, text: str) -> Dict[str, Any]:
+        """Deterministic supplier inquiry reply draft."""
+        return {
+            "reply_draft": "Thank you for your inquiry and interest in our export catalog. We confirm our production capacity can comfortably fulfill your volume requirement with ISO/HACCP certified export packaging. We would be pleased to prepare a formal CIF commercial proforma quote.",
+            "suggested_next_steps": [
+                "Confirm preferred Incoterm (CIF vs FOB) and destination port",
+                "Dispatch courier quality sample for lab evaluation",
+                "Issue binding proforma invoice with scheduled shipping window",
+            ],
+            "clarifications_requested": [
+                "What is your target shipping date or expected delivery window?",
+                "Do you have specific private-label packaging requirements?",
+            ],
+            "ai_label": "AI generated",
+        }
+
+    def _mock_profile_tips(self, text: str) -> Dict[str, Any]:
+        """Deterministic supplier profile completeness tips."""
+        return {
+            "completeness_score": 85,
+            "strengths": [
+                "Verified business registration and audited facility status",
+                "Active catalog listings with published MOQs and export pricing",
+                "Valid export certifications uploaded to trust repository",
+            ],
+            "actionable_tips": [
+                "Upload factory facility inspection photos to reach 95% trust score",
+                "Specify supported Incoterms (CIF, FOB) and preferred discharge seaports",
+                "Add batch Certificate of Analysis (COA) documents to increase RFQ bid conversion",
+            ],
+            "priority_area": "Upload factory inspection photos and laboratory COA documents",
+            "ai_label": "AI generated",
+        }
+
+    def _mock_rfq_opportunity(self, text: str) -> Dict[str, Any]:
+        """Deterministic supplier RFQ opportunity assessment."""
+        return {
+            "match_score": 92,
+            "capability_match_summary": "Strong alignment with buyer's requested volume, destination port logistics, and product quality specifications. Factory capacity exceeds required monthly volume.",
+            "recommended_bid_strategy": "Quote competitive CIF landed pricing with standard 25-day delivery window and 30% advance LC milestone terms to secure preferred supplier ranking.",
+            "risk_factors": [
+                "Peak season maritime container freight rates may fluctuate by +/- 5%",
+                "Ensure destination port customs clearance documents match EU/US import regulations",
+            ],
+            "ai_label": "AI generated",
+        }
+
+    def _mock_moderation_summary(self, text: str) -> Dict[str, Any]:
+        """Deterministic admin moderation summary."""
+        return {
+            "risk_level": "low",
+            "summary": "Catalog listing contains standard commercial specifications and verified supplier credentials. No prohibited keywords, hazardous items, or misleading certifications detected.",
+            "violation_categories": [],
+            "recommended_action": "approve",
+            "reasoning": "Product details and claims conform to TradeX platform trade guidelines and international B2B commerce compliance standards.",
+            "ai_label": "AI generated (Advisory only - Human decides)",
+        }
+
+    def _mock_supplier_match_explain(self, text: str) -> Dict[str, Any]:
+        """Deterministic supplier match explanation."""
+        return {
+            "match_score": 94,
+            "key_strengths": [
+                "Accredited ISO and Organic export certifications",
+                "Proven container logistics to destination discharge port",
+                "Audited factory capacity directly accommodates order volume",
+            ],
+            "compliance_alignment": "Full adherence to international export standards and laboratory COA testing.",
+            "risk_factors": [
+                "High seasonal demand requires booking shipping containers 2 weeks in advance",
+            ],
+            "two_sentence_explanation": "Supplier holds verified compliance certifications and proven maritime logistics to the requested destination port. Their monthly production capacity comfortably satisfies the target volume with strict laboratory COA compliance.",
+            "ai_label": "AI generated",
+        }
+
+    def _mock_rfq_generate(self, text: str) -> Dict[str, Any]:
+        """Deterministic RFQ drafting output."""
+        return {
+            "title": "Commercial B2B Procurement Request",
+            "product": "Organic Turmeric Powder",
+            "category": "Spices & Herbs",
+            "quantity": 20000,
+            "unit": "kg",
+            "specifications": {
+                "Grade": "Commercial Export Grade A",
+                "Purity": ">= 99.0%",
+                "Packaging": "25kg vacuum sealed export bags",
+            },
+            "quality_requirements": "Eurofins certified pesticide residue free with valid COA inspection certificate.",
+            "required_certifications": ["EU Organic", "ISO 22000", "HACCP"],
+            "destination_country": "Germany",
+            "destination_port": "Hamburg",
+            "incoterm": "CIF",
+            "target_price_min": 2.80,
+            "target_price_max": 3.20,
+            "currency": "EUR",
+            "payment_terms": "LC at sight, 30% advance",
+            "delivery_days": 25,
+            "suggested_supplier_criteria": ["ISO 9001", "EU Organic accredited", "Port of Hamburg experience"],
+            "ai_label": "AI generated",
         }
 
     def _extract_search_requirement(self, text: str) -> Dict[str, Any]:
@@ -545,10 +694,11 @@ class ClaudeProvider(LLMProvider):
     async def complete(
         self,
         system: str,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         json_schema: Optional[Dict[str, Any]] = None,
         max_tokens: int = 2048,
         temperature: float = 0.0,
+        **kwargs: Any,
     ) -> LLMResponse:
         t0 = time.time()
         if not self.api_key:
@@ -649,10 +799,11 @@ class OllamaProvider(LLMProvider):
     async def complete(
         self,
         system: str,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         json_schema: Optional[Dict[str, Any]] = None,
         max_tokens: int = 2048,
         temperature: float = 0.0,
+        **kwargs: Any,
     ) -> LLMResponse:
         t0 = time.time()
         final_system = system
@@ -763,10 +914,11 @@ class OpenRouterProvider(LLMProvider):
     async def complete(
         self,
         system: str,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         json_schema: Optional[Dict[str, Any]] = None,
         max_tokens: int = 2048,
         temperature: float = 0.0,
+        **kwargs: Any,
     ) -> LLMResponse:
         if not self.api_key:
             logger.info("No OPENROUTER_API_KEY configured; utilizing MockProvider with 'Demo AI' label.")
@@ -841,7 +993,8 @@ class OpenRouterProvider(LLMProvider):
         )
 
     async def embed(self, texts: List[str]) -> List[List[float]]:
-        return await self.mock_fallback.embed(texts)
+        from app.ai.embeddings import embed_batch
+        return await embed_batch(texts)
 
 
 class GroqProvider(LLMProvider):
@@ -864,11 +1017,13 @@ class GroqProvider(LLMProvider):
     async def complete(
         self,
         system: str,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         json_schema: Optional[Dict[str, Any]] = None,
         max_tokens: int = 2048,
         temperature: float = 0.0,
+        model_name: Optional[str] = None,
     ) -> LLMResponse:
+        effective_model = model_name or self.model_name
         if not self.api_key:
             logger.info("No GROQ_API_KEY configured; utilizing MockProvider with 'Demo AI' label.")
             resp = await self.mock_fallback.complete(system, messages, json_schema, max_tokens, temperature)
@@ -894,7 +1049,7 @@ class GroqProvider(LLMProvider):
             "Content-Type": "application/json",
         }
         payload = {
-            "model": self.model_name,
+            "model": effective_model,
             "messages": payload_msgs,
             "max_tokens": max_tokens,
             "temperature": temperature,
@@ -902,12 +1057,35 @@ class GroqProvider(LLMProvider):
         if json_schema:
             payload["response_format"] = {"type": "json_object"}
 
-        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-            resp = await client.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload)
-            if resp.status_code == 429:
-                raise RuntimeError("Groq Rate Limit exceeded (HTTP 429)")
-            resp.raise_for_status()
-            data = resp.json()
+        model_candidates = [effective_model]
+        if "8b" in effective_model or "fast" in effective_model:
+            if "openai/gpt-oss-20b" not in model_candidates:
+                model_candidates.append("openai/gpt-oss-20b")
+        elif "vision" in effective_model or "11b" in effective_model:
+            if "qwen/qwen3.8-27b" not in model_candidates:
+                model_candidates.append("qwen/qwen3.8-27b")
+        else:
+            if "openai/gpt-oss-120b" not in model_candidates:
+                model_candidates.append("openai/gpt-oss-120b")
+
+        last_exc: Optional[Exception] = None
+        data: Dict[str, Any] = {}
+        for candidate in model_candidates:
+            payload["model"] = candidate
+            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                resp = await client.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload)
+                if resp.status_code == 429:
+                    raise RuntimeError("Groq Rate Limit exceeded (HTTP 429)")
+                if resp.status_code == 404 and candidate != model_candidates[-1]:
+                    logger.warning(f"Groq model '{candidate}' not found on endpoint (404); attempting reachable '{model_candidates[-1]}'")
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+                effective_model = candidate
+                break
+        else:
+            if last_exc:
+                raise last_exc
 
         latency = (time.time() - t0) * 1000
         content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
@@ -933,14 +1111,15 @@ class GroqProvider(LLMProvider):
             completion_tokens=completion_tokens,
             total_tokens=prompt_tokens + completion_tokens,
             latency_ms=latency,
-            model=self.model_name,
+            model=effective_model,
             provider="groq",
             fallback=False,
             is_mock=False,
         )
 
     async def embed(self, texts: List[str]) -> List[List[float]]:
-        return await self.mock_fallback.embed(texts)
+        from app.ai.embeddings import embed_batch
+        return await embed_batch(texts)
 
 
 class GeminiProvider(LLMProvider):
@@ -963,10 +1142,11 @@ class GeminiProvider(LLMProvider):
     async def complete(
         self,
         system: str,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         json_schema: Optional[Dict[str, Any]] = None,
         max_tokens: int = 2048,
         temperature: float = 0.0,
+        **kwargs: Any,
     ) -> LLMResponse:
         if not self.api_key:
             logger.info("No GEMINI_API_KEY configured; utilizing MockProvider with 'Demo AI' label.")
@@ -1041,5 +1221,6 @@ class GeminiProvider(LLMProvider):
         )
 
     async def embed(self, texts: List[str]) -> List[List[float]]:
-        return await self.mock_fallback.embed(texts)
+        from app.ai.embeddings import embed_batch
+        return await embed_batch(texts)
 

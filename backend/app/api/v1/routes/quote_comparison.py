@@ -604,3 +604,123 @@ th {{ background-color: #f8fafc; font-weight: bold; }}
             media_type="text/html",
             headers={"Content-Disposition": f"attachment; filename={filename}"},
         )
+
+
+class LandedCostCalculateRequest(BaseModel):
+    product_price: float = Field(..., gt=0, description="Unit product price")
+    quantity: float = Field(default=1000.0, gt=0, description="Order quantity")
+    currency: str = Field(default="USD", description="Currency code (USD, EUR, GBP, INR)")
+    origin_port: str = Field(default="Chennai", description="Port of departure")
+    destination_port: str = Field(default="Hamburg", description="Port of arrival")
+    destination_country: str = Field(default="Germany", description="Destination country")
+    incoterm: str = Field(default="CIF", description="Incoterm (FOB, CIF, EXW, DDP, CFR)")
+    hs_code: Optional[str] = Field(default="0910.30", description="HS Code for tariff duty rate")
+    freight_override: Optional[float] = None
+    duty_override: Optional[float] = None
+
+
+@router.post("/landed-cost/calculate", summary="Calculate line-by-line landed cost estimate")
+async def calculate_custom_landed_cost(payload: LandedCostCalculateRequest):
+    """
+    Computes deterministic line-by-line landed cost based on stored simulated freight rates,
+    customs tariffs by HS code, terminal handling, insurance, and incoterm adjustments.
+    """
+    est = calculate_landed_cost(
+        unit_price=payload.product_price,
+        quantity=payload.quantity,
+        currency=payload.currency,
+        origin_port=payload.origin_port,
+        destination_port=payload.destination_port,
+        destination_country=payload.destination_country,
+        incoterm=payload.incoterm,
+        hs_code=payload.hs_code,
+        freight_rate_override=payload.freight_override,
+        duty_rate_override=payload.duty_override,
+    )
+    res = est.to_dict()
+    res["currency"] = payload.currency
+    res["rates_source"] = "Stored simulated rates (TradeX Global Trade DB)"
+    return res
+
+import secrets
+from datetime import timedelta
+
+
+@router.post("/rfqs/{rfq_id}/share", summary="Generate expiring read-only share link for quote comparison")
+async def generate_quote_share_link(
+    rfq_id: uuid.UUID,
+    days_valid: int = Query(7, ge=1, le=30),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    rfq = await db.get(RFQ, rfq_id)
+    if not rfq:
+        raise HTTPException(status_code=404, detail="RFQ not found")
+
+    token = secrets.token_urlsafe(24)
+    rfq.share_token = token
+    rfq.share_expires_at = datetime.now(timezone.utc) + timedelta(days=days_valid)
+
+    await db.commit()
+    await db.refresh(rfq)
+
+    return {
+        "share_token": token,
+        "share_url": f"/shared/quotes/{token}",
+        "expires_at": rfq.share_expires_at.isoformat(),
+        "days_valid": days_valid,
+    }
+
+
+@router.get("/shared/quotes/{token}", summary="Public read-only quote comparison by share token")
+async def get_shared_quote_comparison(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = (
+        select(RFQ)
+        .where(RFQ.share_token == token)
+        .where(RFQ.share_expires_at > datetime.now(timezone.utc))
+        .options(
+            selectinload(RFQ.quotations).selectinload(Quotation.supplier).selectinload(Supplier.company),
+        )
+    )
+    res = await db.execute(stmt)
+    rfq = res.scalar_one_or_none()
+    if not rfq:
+        raise HTTPException(status_code=404, detail="Shared quote comparison link is invalid or has expired")
+
+    # Return read-only quote list
+    quotes_data = []
+    for q in rfq.quotations:
+        supp_name = q.supplier.company.name if q.supplier and q.supplier.company else "Supplier"
+        supp_country = q.supplier.company.country if q.supplier and q.supplier.company else "Global"
+        quotes_data.append({
+            "quote_id": str(q.id),
+            "quote_number": q.quote_number,
+            "supplier_name": supp_name,
+            "supplier_country": supp_country,
+            "unit_price": float(q.unit_price),
+            "landed_cost": float(q.landed_cost),
+            "lead_time_days": q.lead_time_days,
+            "currency": q.currency,
+            "status": q.status,
+            "ai_score": q.ai_score,
+            "notes": q.notes,
+        })
+
+    # Sort by AI score descending
+    quotes_data.sort(key=lambda x: x["ai_score"], reverse=True)
+
+    return {
+        "rfq_id": str(rfq.id),
+        "rfq_number": rfq.rfq_number,
+        "product": rfq.product or rfq.title,
+        "quantity": rfq.quantity,
+        "unit": rfq.unit,
+        "destination_country": rfq.destination_country,
+        "incoterm": rfq.incoterm,
+        "is_shared_view": True,
+        "quotes": quotes_data,
+        "total_quotes": len(quotes_data),
+    }

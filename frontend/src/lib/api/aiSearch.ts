@@ -49,6 +49,8 @@ export interface AiMatchedSupplier {
 export interface AiMatchedProduct {
   id: string;
   name: string;
+  brand?: string;
+  description?: string;
   slug: string;
   category_name: string;
   hs_code?: string;
@@ -64,6 +66,8 @@ export interface AiMatchedProduct {
   supplier_name: string;
   supplier_country: string;
   stock_available: number;
+  match_explanation?: { summary?: string };
+  is_alternative?: boolean;
 }
 
 export interface AiSearchResponse {

@@ -29,7 +29,10 @@ class Settings(BaseSettings):
 
     # AI Provider & Models
     AI_PROVIDER: str = "mock"  # mock, ollama, openrouter, groq, gemini, anthropic
-    AI_MODEL: str = "qwen2.5:3b"
+    AI_MODEL: str = "llama-3.3-70b-versatile"
+    AI_MODEL_FAST: str = "llama-3.1-8b-instant"  # Classification, intent, short tips
+    AI_MODEL_SMART: str = "llama-3.3-70b-versatile"  # Reasoning, drafting, analysis
+    AI_MODEL_VISION: str = "llama-3.2-11b-vision-preview"  # Vision/image document extraction
     AI_MODEL_INTENT: str = ""
     AI_MODEL_ANSWER: str = ""
     AI_PROVIDER_PRIORITY: str = "groq,openrouter,ollama,gemini"
@@ -38,15 +41,38 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_MODEL: str = "meta-llama/llama-3.1-8b-instruct:free"
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "llama-3.1-8b-instant"
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-1.5-flash"
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "qwen2.5:3b"
-    EMBEDDING_PROVIDER: str = "mock"  # mock, ollama, openai
-    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    EMBEDDING_PROVIDER: str = "local"  # local, ollama, openai, mock
+    EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     EMBEDDING_DIM: int = 1536
     AI_TIMEOUT_SECONDS: float = 30.0
+    AI_DAILY_BUDGET: int = 10000
+
+    # AI Feature Flags (Enable/Disable per feature dynamically)
+    AI_FLAG_SEARCH: bool = True
+    AI_FLAG_AI_MODE: bool = True
+    AI_FLAG_COPILOT: bool = True
+    AI_FLAG_RFQ_DRAFT: bool = True
+    AI_FLAG_QUOTE_COMPARE: bool = True
+    AI_FLAG_NEGOTIATION: bool = True
+    AI_FLAG_PRODUCT_SUMMARY: bool = True
+    AI_FLAG_SHIPMENT_SUMMARY: bool = True
+    AI_FLAG_ANALYTICS: bool = True
+    AI_FLAG_LISTING_WRITER: bool = True
+    AI_FLAG_INQUIRY_REPLY: bool = True
+    AI_FLAG_PROFILE_TIPS: bool = True
+    AI_FLAG_RFQ_OPPORTUNITY: bool = True
+    AI_FLAG_DOC_EXTRACTION: bool = True
+    AI_FLAG_MODERATION: bool = True
+
+    def is_feature_enabled(self, feature: str) -> bool:
+        clean = feature.upper().replace("-", "_").replace(" ", "_")
+        key = f"AI_FLAG_{clean}"
+        return getattr(self, key, True)
 
     # Storage
     STORAGE_BACKEND: str = "local"
