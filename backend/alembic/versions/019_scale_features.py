@@ -20,6 +20,9 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     conn = op.get_bind()
 
+    # 0. Add user settings jsonb column
+    conn.execute(sa.text("ALTER TABLE users ADD COLUMN IF NOT EXISTS settings JSONB DEFAULT '{}'::jsonb;"))
+
     # 1. Add is_demo boolean to core trade entities
     for tbl in ['companies', 'suppliers', 'buyers', 'rfqs', 'orders', 'shipments', 'reviews']:
         conn.execute(sa.text(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT false;"))

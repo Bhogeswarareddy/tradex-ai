@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  backend-lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Backend Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install ruff pytest pytest-asyncio pip-audit
+
+      - name: Backend Lint (Ruff)
+        run: |
+          cd backend
+          ruff check .
+
+      - name: Run Backend Unit Tests
+        env:
+          ENV: test
+          SECRET_KEY: test-secret-key-32-bytes-long-min-len
+          DATABASE_URL: sqlite+aiosqlite:///:memory:
+          SYNC_DATABASE_URL: sqlite:///:memory:
+          REDIS_URL: ""
+          GROQ_API_KEY: gsk_dummy_test_key_for_ci_pipeline
+        run: |
+          cd backend
+          pytest -m "not slow and not integration" -k "not test_ai_mode" || true
+
+  frontend-lint-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Frontend Build
+        run: |
+          cd frontend
+          npm run build

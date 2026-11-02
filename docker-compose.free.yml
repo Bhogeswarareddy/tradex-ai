@@ -1,0 +1,157 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: pg_db
+    restart: unless-stopped
+    command: postgres -c shared_buffers=64MB -c max_connections=25 -c work_mem=4MB
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tradex}
+      POSTGRES_USER: ${POSTGRES_USER:-tradex_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tradex_password}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - backend_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tradex_user} -d ${POSTGRES_DB:-tradex}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "0.8"
+          memory: 256M
+
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: tradex-ai-backend:latest
+    container_name: tradex_migrate
+    command: ["/bin/bash", "-c", "alembic upgrade head && python -m app.seed && python -m app.services.market_data"]
+    environment:
+      ENV: production
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://tradex_user:tradex_password@db:5432/tradex}
+      SYNC_DATABASE_URL: ${SYNC_DATABASE_URL:-postgresql+psycopg2://tradex_user:tradex_password@db:5432/tradex}
+      SECRET_KEY: ${SECRET_KEY}
+      DEMO_MODE: ${DEMO_MODE:-true}
+    volumes:
+      - uploads:/app/storage
+    networks:
+      - backend_net
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: tradex-ai-backend:latest
+    container_name: fastapi_app
+    restart: unless-stopped
+    command: ["gunicorn", "app.main:app", "-w", "1", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000", "--timeout", "120"]
+    environment:
+      ENV: production
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://tradex_user:tradex_password@db:5432/tradex}
+      SYNC_DATABASE_URL: ${SYNC_DATABASE_URL:-postgresql+psycopg2://tradex_user:tradex_password@db:5432/tradex}
+      SECRET_KEY: ${SECRET_KEY}
+      LOCAL_STORAGE_PATH: /app/storage
+      WORKER_INLINE: "true"
+      EMBEDDINGS_ENABLED: "false"
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      DEMO_MODE: ${DEMO_MODE:-true}
+    volumes:
+      - uploads:/app/storage
+    networks:
+      - frontend_net
+      - backend_net
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 384M
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: tradex-ai-frontend:latest
+    container_name: react_app
+    restart: unless-stopped
+    networks:
+      - frontend_net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.4"
+          memory: 64M
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    image: tradex-ai-nginx:latest
+    container_name: nginx_proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./certs:/etc/nginx/certs:ro
+      - certbot_conf:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+      - nginx_logs:/var/log/nginx
+      - uploads:/app/storage:ro
+    networks:
+      - frontend_net
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -k -f https://localhost/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.4"
+          memory: 64M
+
+networks:
+  frontend_net:
+    driver: bridge
+  backend_net:
+    driver: bridge
+
+volumes:
+  pgdata:
+    name: tradex_free_pgdata
+  uploads:
+    name: tradex_free_uploads
+  nginx_logs:
+    name: tradex_free_nginx_logs
+  certbot_conf:
+    name: tradex_free_certbot_conf
+  certbot_www:
+    name: tradex_free_certbot_www

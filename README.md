@@ -228,3 +228,27 @@ To allow full offline and sandbox demonstration without live banking, satellite 
   - [`docs/RUNBOOK.md`](docs/RUNBOOK.md): Operations runbook, rollback drills, backup restore, and disaster recovery.
   - [`docs/JENKINS_SETUP.md`](docs/JENKINS_SETUP.md): Jenkins controller deployment, webhook setup, and credentials guide.
   - [`docs/AWS_DEPLOYMENT.md`](docs/AWS_DEPLOYMENT.md): AWS EC2/ECR deployment guide with IAM role and SSM Parameter Store setup.
+
+
+---
+
+## How to Stay at Zero Cost (AWS Free Tier Guide)
+
+TradeX AI is provisioned strictly within AWS Free Tier allowances in region `ap-south-1`:
+
+1. **Stop the EC2 Instance When Not Demoing**:
+   - The `t3.micro` instance gets 750 free hours per month for the first 12 months.
+   - Run `./scripts/aws-stop.sh` from your terminal whenever you are not evaluating or presenting.
+   - To resume, run `./scripts/aws-start.sh`.
+2. **Delete IAM Access Keys Once Setup Is Complete**:
+   - The EC2 instance uses an attached IAM Instance Profile (`tradex-ec2-profile`) to read SSM parameters and pull from ECR. It does not need hardcoded user access keys.
+   - You can deactivate and delete temporary operator access keys in the AWS IAM Console (`Users` -> `bhogeswar-admin` -> `Security credentials`).
+3. **AWS Budgets Alert Protection**:
+   - An AWS Budget named `tradex-ai-monthly-1usd` is active with a strict **$1.00 USD** limit.
+   - Automated email alerts are configured to notify `katakambhogeswarareddy138@gmail.com` at 80% ($0.80) and 100% ($1.00) spend.
+4. **Permanent Teardown / Clean Up**:
+   - If you want to remove all created AWS resources completely, execute:
+     ```bash
+     ./scripts/aws-destroy.sh
+     ```
+     This cleanly removes the EC2 instance, security group, IAM role, and private ECR repositories after a typed confirmation.
