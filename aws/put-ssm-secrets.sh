@@ -1,58 +1,78 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REGION="ap-south-1"
+REGION="${AWS_REGION:-ap-south-1}"
 
 echo "==> Storing production secrets in AWS SSM Parameter Store as standard SecureString (free)..."
 
-~/.local/bin/aws ssm put-parameter \
+# Prompt for secrets securely if not passed in environment
+if [[ -z "${ADMIN_EMAIL:-}" ]]; then
+    read -p "Enter Production Admin Email: " ADMIN_EMAIL
+fi
+
+if [[ -z "${ADMIN_PASSWORD:-}" ]]; then
+    read -s -p "Enter Production Admin Password: " ADMIN_PASSWORD
+    echo ""
+fi
+
+if [[ -z "${SECRET_KEY:-}" ]]; then
+    read -s -p "Enter App Secret Key (min 32 chars): " SECRET_KEY
+    echo ""
+fi
+
+if [[ -z "${GROQ_API_KEY:-}" ]]; then
+    read -s -p "Enter Groq API Key: " GROQ_API_KEY
+    echo ""
+fi
+
+if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
+    read -s -p "Enter PostgreSQL Database Password: " POSTGRES_PASSWORD
+    echo ""
+fi
+
+aws ssm put-parameter \
     --name "/tradex/prod/secret_key" \
-    --value "development-secret-key-tradex-32bytes-secure" \
+    --value "${SECRET_KEY}" \
     --type "SecureString" \
     --overwrite \
     --region "${REGION}" \
+    --tags "Key=Project,Value=tradex-ai" \
     --no-cli-pager
 
-~/.local/bin/aws ssm put-parameter \
+aws ssm put-parameter \
     --name "/tradex/prod/groq_api_key" \
-    --value "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" \
+    --value "${GROQ_API_KEY}" \
     --type "SecureString" \
     --overwrite \
     --region "${REGION}" \
+    --tags "Key=Project,Value=tradex-ai" \
     --no-cli-pager
 
-~/.local/bin/aws ssm put-parameter \
+aws ssm put-parameter \
     --name "/tradex/prod/admin_email" \
-    --value "katakambhogeswarareddy138@gmail.com" \
+    --value "${ADMIN_EMAIL}" \
     --type "String" \
     --overwrite \
     --region "${REGION}" \
+    --tags "Key=Project,Value=tradex-ai" \
     --no-cli-pager
 
-~/.local/bin/aws ssm put-parameter \
+aws ssm put-parameter \
     --name "/tradex/prod/admin_password" \
-    --value 'Bhogi$1385AWS' \
+    --value "${ADMIN_PASSWORD}" \
     --type "SecureString" \
     --overwrite \
     --region "${REGION}" \
+    --tags "Key=Project,Value=tradex-ai" \
     --no-cli-pager
 
-~/.local/bin/aws ssm put-parameter \
+aws ssm put-parameter \
     --name "/tradex/prod/postgres_password" \
-    --value "tradex_prod_secure_pass_992" \
+    --value "${POSTGRES_PASSWORD}" \
     --type "SecureString" \
     --overwrite \
     --region "${REGION}" \
+    --tags "Key=Project,Value=tradex-ai" \
     --no-cli-pager
 
-echo "==> Tagging SSM parameters Project=tradex-ai..."
-for p in secret_key groq_api_key admin_email admin_password postgres_password; do
-    ~/.local/bin/aws ssm add-tags-to-resource \
-        --resource-type "Parameter" \
-        --resource-id "/tradex/prod/${p}" \
-        --tags Key=Project,Value=tradex-ai \
-        --region "${REGION}" \
-        --no-cli-pager || true
-done
-
-echo "SSM_PARAMETERS_STORED_SUCCESSFULLY"
+echo "==> All parameters successfully synchronized to AWS SSM Parameter Store."

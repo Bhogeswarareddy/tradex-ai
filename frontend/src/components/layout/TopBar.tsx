@@ -132,7 +132,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   };
 
   const displayName = currentUser?.fullName || "Bhogeswara Reddy";
-  const displayEmail = currentUser?.email || "bhogeswara@tradex.ai";
+  const displayEmail = currentUser?.email || "";
   const displayRole = currentUser?.role || "buyer";
   const displayCompany = currentUser?.companyName || "Global Traders Corp";
 

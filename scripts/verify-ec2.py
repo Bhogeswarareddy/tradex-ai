@@ -1,18 +1,40 @@
-import httpx
+import os
+import subprocess
 import sys
+import httpx
 
-base_url = "http://127.0.0.1:8000"
+base_url = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 client = httpx.Client(verify=False, timeout=30.0)
 
 # 1. Healthcheck
 r_health = client.get(f"{base_url}/api/health")
 print(f"1. Healthcheck: HTTP {r_health.status_code} - {r_health.json()}")
 
-# 2. Login test
-password = "Bhogi" + chr(36) + "1385AWS"
+# 2. Login test - retrieve credentials securely from SSM or environment
+admin_email = os.getenv("ADMIN_EMAIL")
+if not admin_email:
+    try:
+        admin_email = subprocess.check_output(
+            ["aws", "ssm", "get-parameter", "--name", "/tradex/prod/admin_email", "--query", "Parameter.Value", "--output", "text"],
+            text=True
+        ).strip()
+    except Exception:
+        admin_email = "admin@tradex.ai"
+
+admin_password = os.getenv("ADMIN_PASSWORD")
+if not admin_password:
+    try:
+        admin_password = subprocess.check_output(
+            ["aws", "ssm", "get-parameter", "--name", "/tradex/prod/admin_password", "--with-decryption", "--query", "Parameter.Value", "--output", "text"],
+            text=True
+        ).strip()
+    except Exception as e:
+        print(f"Error fetching admin password from SSM: {e}")
+        sys.exit(1)
+
 r_login = client.post(f"{base_url}/api/v1/auth/login", json={
-    "email": "katakambhogeswarareddy138@gmail.com",
-    "password": password
+    "email": admin_email,
+    "password": admin_password
 })
 print(f"2. Admin Login: HTTP {r_login.status_code}")
 if r_login.status_code == 200:

@@ -1,3 +1,4 @@
+import os
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict
@@ -62,6 +63,42 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Production Security Invariant Check: Refuse startup if any known demo account is active
+    if os.getenv("ENV", "").lower() == "production":
+        try:
+            from app.database import async_session_factory
+            from app.models.user import User
+            from sqlalchemy import select
+            
+            DEMO_PROHIBITED_EMAILS = {
+                "admin@tradex.ai",
+                "bhogeswara@tradex.ai",
+                "supplier@sribharat.com",
+                "buyer@speisekammer.de",
+                "supplier@keralaspices.com",
+            }
+            async with async_session_factory() as session:
+                result = await session.execute(
+                    select(User).where(
+                        User.is_active == True,
+                        User.email.in_(DEMO_PROHIBITED_EMAILS),
+                    )
+                )
+                active_demos = result.scalars().all()
+                if active_demos:
+                    demo_list = [u.email for u in active_demos]
+                    logger.critical(
+                        f"CRITICAL SECURITY ENFORCEMENT: Server refusing to start in production! "
+                        f"Active seeded demo accounts detected: {demo_list}"
+                    )
+                    raise RuntimeError(
+                        f"Production startup blocked: active demo accounts present: {demo_list}"
+                    )
+        except RuntimeError:
+            raise
+        except Exception as e:
+            logger.warning(f"Could not complete production demo check: {e}")
+
     # Startup: Start Celery-free APScheduler background jobs
     try:
         from app.services.scheduler import start_scheduler

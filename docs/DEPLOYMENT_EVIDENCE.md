@@ -189,3 +189,70 @@ Response: HTTP 200 OK
   * `scripts/aws-stop.sh`: Stops instance to pause compute hours
   * `scripts/aws-destroy.sh`: Cleanly purges all AWS resources
   * `scripts/rollback.sh`: Reverts container stack to previous image tag upon failure
+
+---
+
+## 8. Production Security Hardening & Zero-Exposure Evidence
+
+**Execution Date**: 2026-11-03  
+**Verified Live Against**: `https://43.204.214.188`
+
+### A. Frontend Build Credential Scrubbing & Dist Grep
+In accordance with production hardening rules, `VITE_DEMO_LOGIN=false` is enforced across `frontend/Dockerfile` and `docker-compose.free.yml`. The UI completely suppresses the 'Quick Demo Logins' component when this flag is false, and all hardcoded demo credentials have been stripped from source files.
+
+Post-build verification of `frontend/dist`:
+```bash
+$ grep -rnE "bhogeswara@tradex.ai|buyer123|Password123|admin123|supplier123|admin@tradex.ai|supplier@sribharat.com|speisekammer|keralaspices" frontend/dist/
+# Output: (empty - 0 matches found)
+```
+Status: **GREP_DIST_CLEAN_NO_DEMO_CREDENTIALS: PASS**
+
+### B. Live Public Verification Results (7/7 Passed)
+The automated verification suite (`test_security_verification.py`) executed against `https://43.204.214.188`:
+
+```
+======================================================================
+TRADEX AI — PRODUCTION LIVE SECURITY VERIFICATION
+Target Endpoint: https://43.204.214.188
+======================================================================
+
+[TEST 1] Verifying Login Page has NO Quick Demo Logins or hardcoded demo credentials...
+==> PASS: Quick Demo Logins and all legacy demo credentials are completely absent from production HTML!
+
+[TEST 2] Verifying Legacy Demo Logins Return HTTP 401 Unauthorized...
+  - Login bhogeswara@tradex.ai: HTTP 401 (Invalid email address or password)
+  - Login admin@tradex.ai: HTTP 401 (Invalid email address or password)
+  - Login supplier@sribharat.com: HTTP 401 (Invalid email address or password)
+  - Login buyer@speisekammer.de: HTTP 401 (Invalid email address or password)
+  - Login supplier@keralaspices.com: HTTP 401 (Invalid email address or password)
+==> PASS: All legacy demo credentials rejected with 401 Unauthorized!
+
+[TEST 3] Retrieving Rotated Credentials from AWS SSM Parameter Store...
+  - Successfully retrieved encrypted parameters from AWS SSM Parameter Store.
+
+[TEST 4] Testing New Production Buyer Login (partner-buyer@tradex.ai)...
+  - HTTP 200
+  - Authenticated User: partner-buyer@tradex.ai, Role: buyer
+==> PASS: Production Buyer login verified!
+
+[TEST 5] Testing New Production Supplier Login (partner-supplier@tradex.ai)...
+  - HTTP 200
+  - Authenticated User: partner-supplier@tradex.ai, Role: supplier
+==> PASS: Production Supplier login verified!
+
+[TEST 6] Testing Rotated Platform Administrator Login...
+  - HTTP 200
+  - Authenticated Admin: katakambhogeswarareddy138@gmail.com, Role: admin
+==> PASS: Rotated Administrator login verified!
+
+[TEST 7] Testing Nginx IP Restriction on /admin and /api/v1/admin...
+  - Authorized Client IP request to /admin: HTTP 200
+  - Authorized Client IP request to /api/v1/admin/users: HTTP 200
+
+======================================================================
+ALL LIVE SECURITY VERIFICATION TESTS PASSED SUCCESSFULLY!
+======================================================================
+```
+
+### C. Demo Account Access Documentation
+In compliance with credential safety guidelines, no passwords are committed to git. Access instructions are documented in [`docs/SHARE_WITH_FRIEND.md`](./SHARE_WITH_FRIEND.md) using AWS SSM CLI retrieval commands.

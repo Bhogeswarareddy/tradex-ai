@@ -56,30 +56,30 @@ def seed():
             if existing_admin:
                 raise RuntimeError("CRITICAL SECURITY ERROR: Demo admin (admin@tradex.ai) is prohibited in production!")
 
-        demo_users = [
-            ("bhogeswara@tradex.ai", "buyer123", "buyer", "Bhogeswara Reddy (Global Importer)"),
-            ("supplier@sribharat.com", "supplier123", "supplier", "Ramesh Kumar (Sri Bharat Spices)"),
-        ]
-        # Only seed demo admin if not in production
-        if current_env != "production":
-            demo_users.append(("admin@tradex.ai", "admin123", "admin", "TradeX System Admin"))
-
         users_dict = {}
-        for email, pwd, role_str, full_name in demo_users:
-            user = session.execute(select(User).where(User.email == email)).scalar_one_or_none()
-            if not user:
-                user = User(
-                    email=email,
-                    password_hash=hash_password(pwd),
-                    role=role_str,
-                    role_id=roles_dict[role_str].id,
-                    is_active=True,
-                    email_verified=True,
-                    full_name=full_name,
-                )
-                session.add(user)
-                session.flush()
-            users_dict[email] = user
+        if current_env == "production":
+            print("==> ENV=production: Skipping all demo users and demo admin seeding.")
+        else:
+            demo_users = [
+                ("bhogeswara@tradex.ai", "buyer123", "buyer", "Bhogeswara Reddy (Global Importer)"),
+                ("supplier@sribharat.com", "supplier123", "supplier", "Ramesh Kumar (Sri Bharat Spices)"),
+                ("admin@tradex.ai", "admin123", "admin", "TradeX System Admin"),
+            ]
+            for email, pwd, role_str, full_name in demo_users:
+                user = session.execute(select(User).where(User.email == email)).scalar_one_or_none()
+                if not user:
+                    user = User(
+                        email=email,
+                        password_hash=hash_password(pwd),
+                        role=role_str,
+                        role_id=roles_dict[role_str].id,
+                        is_active=True,
+                        email_verified=True,
+                        full_name=full_name,
+                    )
+                    session.add(user)
+                    session.flush()
+                users_dict[email] = user
 
         # 3. Buyer Company & Profile
         buyer_company = session.execute(select(Company).where(Company.name == "Reddy Global Trading GmbH")).scalar_one_or_none()
@@ -96,15 +96,20 @@ def seed():
             session.add(buyer_company)
             session.flush()
 
-        buyer_profile = session.execute(select(Buyer).where(Buyer.user_id == users_dict["bhogeswara@tradex.ai"].id)).scalar_one_or_none()
-        if not buyer_profile:
-            buyer_profile = Buyer(
-                company_id=buyer_company.id,
-                user_id=users_dict["bhogeswara@tradex.ai"].id,
-                import_destinations=["Germany", "Netherlands", "United Kingdom", "France"],
-            )
-            session.add(buyer_profile)
-            session.flush()
+        buyer_profile = None
+        if "bhogeswara@tradex.ai" in users_dict:
+            buyer_profile = session.execute(select(Buyer).where(Buyer.user_id == users_dict["bhogeswara@tradex.ai"].id)).scalar_one_or_none()
+            if not buyer_profile:
+                buyer_profile = Buyer(
+                    company_id=buyer_company.id,
+                    user_id=users_dict["bhogeswara@tradex.ai"].id,
+                    import_destinations=["Germany", "Netherlands", "United Kingdom", "France"],
+                )
+                session.add(buyer_profile)
+                session.flush()
+        else:
+            # When demo users are skipped, resolve any existing buyer profile
+            buyer_profile = session.execute(select(Buyer)).scalars().first()
 
         # 4. Certifications
         certs_data = [
@@ -199,8 +204,8 @@ def seed():
 
         suppliers_dict = {}
         for sm in suppliers_meta:
-            # Check or create supplier user if not Sri Bharat
-            if sm["email"] not in users_dict:
+            # In dev, check or create supplier user
+            if current_env != "production" and sm["email"] not in users_dict:
                 s_user = session.execute(select(User).where(User.email == sm["email"])).scalar_one_or_none()
                 if not s_user:
                     s_user = User(
@@ -271,9 +276,10 @@ def seed():
 
             supp = session.execute(select(Supplier).where(Supplier.company_id == comp.id)).scalar_one_or_none()
             if not supp:
+                supp_user_id = users_dict[sm["email"]].id if sm["email"] in users_dict else None
                 supp = Supplier(
                     company_id=comp.id,
-                    user_id=users_dict[sm["email"]].id,
+                    user_id=supp_user_id,
                     trust_score=sm["trust_score"],
                     on_time_rate=sm["on_time"],
                     capacity_per_month=sm["capacity"],
@@ -582,7 +588,7 @@ def seed():
         # 8. RFQ-2026-1042: Organic Turmeric Powder
         rfq_num = "RFQ-2026-1042"
         rfq = session.execute(select(RFQ).where(RFQ.rfq_number == rfq_num)).scalar_one_or_none()
-        if not rfq:
+        if not rfq and buyer_profile:
             rfq = RFQ(
                 rfq_number=rfq_num,
                 buyer_id=buyer_profile.id,

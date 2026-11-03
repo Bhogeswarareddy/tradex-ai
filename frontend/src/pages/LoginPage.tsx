@@ -36,6 +36,14 @@ export const LoginPage: React.FC = () => {
     }
   };
 
+  const showDemoLogin = import.meta.env.VITE_DEMO_LOGIN === "true";
+  const demoBuyerEmail = import.meta.env.VITE_DEMO_BUYER_EMAIL || "";
+  const demoBuyerPass = import.meta.env.VITE_DEMO_BUYER_PASSWORD || "";
+  const demoSupplierEmail = import.meta.env.VITE_DEMO_SUPPLIER_EMAIL || "";
+  const demoSupplierPass = import.meta.env.VITE_DEMO_SUPPLIER_PASSWORD || "";
+  const demoAdminEmail = import.meta.env.VITE_DEMO_ADMIN_EMAIL || "";
+  const demoAdminPass = import.meta.env.VITE_DEMO_ADMIN_PASSWORD || "";
+
   const fillDemoAccount = (demoEmail: string, demoPass: string) => {
     setEmail(demoEmail);
     setPassword(demoPass);
@@ -127,38 +135,40 @@ export const LoginPage: React.FC = () => {
             </Button>
           </form>
 
-          {/* Demo Accounts Quick-Fill Section */}
-          <div className="mt-6 pt-6 border-t border-slate-100">
-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-center mb-3">
-              Quick Demo Logins
-            </p>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => fillDemoAccount("bhogeswara@tradex.ai", "buyer123")}
-                className="px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-300 text-[11px] font-semibold text-slate-700 transition-colors text-center"
-              >
-                Buyer
-              </button>
-              <button
-                type="button"
-                onClick={() => fillDemoAccount("supplier@sribharat.com", "supplier123")}
-                className="px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-300 text-[11px] font-semibold text-slate-700 transition-colors text-center"
-              >
-                Supplier
-              </button>
-              <button
-                type="button"
-                onClick={() => fillDemoAccount("admin@tradex.ai", "admin123")}
-                className="px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-300 text-[11px] font-semibold text-slate-700 transition-colors text-center"
-              >
-                Admin
-              </button>
+          {/* Demo Accounts Quick-Fill Section - Rendered only in dev environments if VITE_DEMO_LOGIN is explicitly true */}
+          {showDemoLogin && (
+            <div className="mt-6 pt-6 border-t border-slate-100">
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-center mb-3">
+                Quick Demo Logins
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => fillDemoAccount(demoBuyerEmail, demoBuyerPass)}
+                  className="px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-300 text-[11px] font-semibold text-slate-700 transition-colors text-center"
+                >
+                  Buyer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fillDemoAccount(demoSupplierEmail, demoSupplierPass)}
+                  className="px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-300 text-[11px] font-semibold text-slate-700 transition-colors text-center"
+                >
+                  Supplier
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fillDemoAccount(demoAdminEmail, demoAdminPass)}
+                  className="px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-300 text-[11px] font-semibold text-slate-700 transition-colors text-center"
+                >
+                  Admin
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-400 text-center mt-2">
+                Development demo credentials from environment
+              </p>
             </div>
-            <p className="text-[10px] text-slate-400 text-center mt-2">
-              Pre-configured demo credentials from platform seed
-            </p>
-          </div>
+          )}
         </div>
       </div>
     </div>

@@ -88,9 +88,13 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_DEMO_LOGIN: "false"
     image: tradex-ai-frontend:latest
     container_name: react_app
     restart: unless-stopped
+    environment:
+      VITE_DEMO_LOGIN: "false"
     networks:
       - frontend_net
     healthcheck:

@@ -7,6 +7,8 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
+ARG VITE_DEMO_LOGIN=false
+ENV VITE_DEMO_LOGIN=false
 RUN npm run build
 
 # Production static serving stage
