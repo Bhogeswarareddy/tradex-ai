@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tradex
+  labels:
+    app.kubernetes.io/name: tradex-ai
+    app.kubernetes.io/part-of: tradex-platform

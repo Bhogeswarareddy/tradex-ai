@@ -109,3 +109,25 @@ ai-eval:
 reindex:
 	docker compose exec backend python -m app.cli reindex
 
+# Kubernetes (kind) Operations
+k8s-up:
+	@bash scripts/k8s-up.sh
+
+k8s-down:
+	@bash scripts/k8s-down.sh
+
+k8s-status:
+	@bash scripts/k8s-status.sh
+
+k8s-logs:
+	@bash scripts/k8s-logs.sh
+
+k8s-test:
+	@bash scripts/k8s-test.sh
+
+k8s-demo:
+	@bash scripts/k8s-demo.sh
+
+k8s-clean:
+	@bash scripts/k8s-down.sh
+

@@ -1,0 +1,45 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: tradex-migration
+  namespace: tradex
+  labels:
+    app: migration
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: migration
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: tradex-ai-backend:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              echo "==> Running Alembic migrations..."
+              alembic upgrade head
+              if [ "$DEMO_MODE" = "true" ]; then
+                echo "==> DEMO_MODE=true: Running idempotent base database seed..."
+                python -m app.seed || true
+                python -m app.services.market_data || true
+              fi
+              echo "==> Migration complete."
+          envFrom:
+            - configMapRef:
+                name: tradex-config
+            - secretRef:
+                name: tradex-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "384Mi"

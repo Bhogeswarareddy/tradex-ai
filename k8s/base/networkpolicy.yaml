@@ -1,0 +1,23 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-to-db
+  namespace: tradex
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow incoming traffic to Postgres on port 5432 strictly from backend and migration pods
+    - from:
+        - podSelector:
+            matchLabels:
+              app: backend
+        - podSelector:
+            matchLabels:
+              app: migration
+      ports:
+        - protocol: TCP
+          port: 5432

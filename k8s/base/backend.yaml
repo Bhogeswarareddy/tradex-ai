@@ -1,0 +1,103 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: uploads-pvc
+  namespace: tradex
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: tradex
+  labels:
+    app: backend
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http
+  selector:
+    app: backend
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: tradex
+  labels:
+    app: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: backend
+          image: tradex-ai-backend:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - gunicorn
+            - app.main:app
+            - -w
+            - "1"
+            - -k
+            - uvicorn.workers.UvicornWorker
+            - -b
+            - 0.0.0.0:8000
+            - --timeout
+            - "120"
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: tradex-config
+            - secretRef:
+                name: tradex-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "600m"
+              memory: "384Mi"
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: storage-volume
+              mountPath: /app/storage
+      volumes:
+        - name: storage-volume
+          persistentVolumeClaim:
+            claimName: uploads-pvc

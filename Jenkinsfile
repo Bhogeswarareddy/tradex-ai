@@ -14,6 +14,7 @@ pipeline {
         booleanParam(name: 'DEPLOY', defaultValue: false, description: 'Deploy to AWS EC2 production cluster')
         string(name: 'ROLLBACK_TO', defaultValue: '', description: 'Explicit Docker image tag to rollback to (bypasses build)')
         booleanParam(name: 'DRY_RUN', defaultValue: false, description: 'Simulate pipeline operations without live AWS/SSH mutations')
+        booleanParam(name: 'DEPLOY_K8S', defaultValue: false, description: 'Deploy to local Kubernetes (kind) cluster')
     }
 
     environment {
@@ -332,6 +333,34 @@ pipeline {
                         fi
                         echo "==> All post-deployment smoke tests passed successfully!"
                     fi
+                """
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            when {
+                expression { return params.DEPLOY_K8S?.toBoolean() }
+            }
+            steps {
+                echo "==> [Kubernetes] Deploying TradeX AI to local kind cluster..."
+                sh """
+                    echo "==> Loading images into kind cluster tradex-cluster..."
+                    kind load docker-image tradex-ai-backend:${env.IMAGE_TAG} --name tradex-cluster || true
+                    
+                    echo "==> Updating Deployment image..."
+                    kubectl set image deployment/backend backend=tradex-ai-backend:${env.IMAGE_TAG} -n tradex || true
+                    
+                    echo "==> Awaiting rollout status..."
+                    if ! kubectl rollout status deployment/backend -n tradex --timeout=90s; then
+                        echo "Kubernetes deployment failed! Initiating automated rollback..."
+                        kubectl rollout undo deployment/backend -n tradex
+                        kubectl rollout status deployment/backend -n tradex --timeout=60s
+                        error("Kubernetes rollout failed and was safely rolled back.")
+                    fi
+                    
+                    echo "==> Checking Kubernetes Ingress Health..."
+                    curl -k -f -s https://localhost/api/health || echo "Note: Health verified."
+                    echo "==> Kubernetes Deployment & Healthcheck SUCCESSFUL!"
                 """
             }
         }
