@@ -58,6 +58,8 @@ kubectl get pods -n tradex -l app=backend
 
 # Return to 1 replica
 kubectl scale deployment/backend --replicas=1 -n tradex >/dev/null 2>&1
+kubectl rollout status deployment/backend -n tradex --timeout=30s >/dev/null 2>&1 || true
+sleep 3
 
 echo -e "\n[STEP 7] Verifying Ingress Traffic & Real API Health..."
 echo "$ curl -k -i https://localhost/api/health"
